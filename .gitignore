@@ -51,6 +51,9 @@ coverage.xml
 .pytest_cache/
 cover/
 
+# ModSim Studio local session state
+.modsim/
+
 # Translations
 *.mo
 *.pot
@@ -205,6 +208,12 @@ tempCodeRunnerFile.py
 
 # Ruff stuff:
 .ruff_cache/
+
+# Repository-local tooling and test scratch space
+.local-tools/
+.uv-cache/
+.uv-python/
+.test-tmp/
 
 # PyPI configuration file
 .pypirc

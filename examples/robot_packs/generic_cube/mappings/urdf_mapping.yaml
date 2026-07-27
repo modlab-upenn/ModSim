@@ -1,0 +1,12 @@
+schema_version: "0.1"
+backend: urdf
+asset_catalog: urdf
+
+module_types:
+  generic_cube:
+    asset_ref: generic_cube
+    link_map:
+      base_link: base_link
+    joint_map: {}
+    connector_frame_map: {}
+    constraint_map: {}

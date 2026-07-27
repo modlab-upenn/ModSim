@@ -1,0 +1,31 @@
+schema_version: "0.1"
+
+module_types:
+  generic_cube:
+    name: Generic Cube
+    asset_ref: generic_cube
+    root_link: base_link
+    mass_kg: 1.0
+    joints: []
+    connectors:
+      - id: front
+        connector_type: fixed_face
+        parent_link: base_link
+        frame: null
+        local_pose:
+          xyz_m: [0.05, 0.0, 0.0]
+          rpy_rad: [0.0, 0.0, 0.0]
+        docking_axis: [1.0, 0.0, 0.0]
+        approach_axis: [1.0, 0.0, 0.0]
+      - id: rear
+        connector_type: fixed_face
+        parent_link: base_link
+        frame: null
+        local_pose:
+          xyz_m: [-0.05, 0.0, 0.0]
+          rpy_rad: [0.0, 0.0, 3.141592653589793]
+        docking_axis: [-1.0, 0.0, 0.0]
+        approach_axis: [-1.0, 0.0, 0.0]
+    capabilities:
+      - dock
+      - undock

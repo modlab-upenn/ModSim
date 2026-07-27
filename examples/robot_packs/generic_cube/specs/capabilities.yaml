@@ -1,0 +1,15 @@
+schema_version: "0.1"
+
+capabilities:
+  dock:
+    name: Dock
+    kind: primitive_action
+    description: Form a physical and logical connection through a compatible connector.
+    required_connector_types:
+      - fixed_face
+  undock:
+    name: Undock
+    kind: primitive_action
+    description: Release an existing connector connection.
+    required_connector_types:
+      - fixed_face

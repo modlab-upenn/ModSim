@@ -1,0 +1,134 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.11"
+          - "3.12"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.11.31"
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+
+      - name: Install locked development environment
+        run: uv sync --locked --extra dev --python "${{ matrix.python-version }}"
+
+      - name: Lint
+        run: uv run --no-sync ruff check .
+
+      - name: Check formatting
+        run: uv run --no-sync ruff format --check .
+
+      - name: Type check
+        run: uv run --no-sync pyright
+
+      - name: Test
+        run: uv run --no-sync pytest
+
+  studio:
+    name: Native Studio
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.11.31"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install locked Studio environment
+        run: uv sync --locked --extra dev --extra studio --python "3.12"
+
+      - name: Type check Studio
+        run: uv run --no-sync pyright --project pyright-studio.json
+
+      - name: Launch Studio smoke test
+        run: |
+          xvfb-run -a uv run --no-sync python - <<'PY'
+          from pathlib import Path
+          from PySide6.QtCore import QTimer
+          from PySide6.QtWidgets import QApplication
+          from modsim_studio.main_window import MainWindow
+          from modsim_studio.session_logging import (
+              configure_session_logging,
+              resolve_session_log_path,
+              shutdown_session_logging,
+          )
+
+          app = QApplication([])
+          pack_path = Path("examples/robot_packs/generic_cube")
+          log_path = resolve_session_log_path(pack_path)
+          logger = configure_session_logging(pack_path)
+          window = MainWindow(
+              initial_path=pack_path,
+              session_logger=logger,
+              session_log_path=log_path,
+          )
+          window.show()
+
+          def finish() -> None:
+              assert window.project is not None
+              assert window.project.pack.id == "generic_cube"
+              root = window.project_tree.topLevelItem(0)
+              module_item = root.child(2).child(0)
+              assert module_item.isExpanded()
+              window.project_tree.setCurrentItem(module_item)
+              assert "Opened Robot Pack 'generic_cube'" in window.log.toPlainText()
+              assert log_path.is_file()
+              window.project = None
+              window.close()
+              shutdown_session_logging()
+              app.quit()
+
+          QTimer.singleShot(500, finish)
+          app.exec()
+          PY
+
+  package:
+    name: Build and smoke-test distributions
+    needs:
+      - checks
+      - studio
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.11.31"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Build wheel and source distribution
+        run: uv build
+
+      - name: Smoke-test wheel
+        run: uv run --isolated --no-project --with dist/*.whl modsim --help
+
+      - name: Smoke-test source distribution
+        run: uv run --isolated --no-project --with dist/*.tar.gz modsim --help

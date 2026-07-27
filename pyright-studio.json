@@ -1,0 +1,9 @@
+{
+  "include": [
+    "src/modsim_studio"
+  ],
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "strict",
+  "venv": ".venv",
+  "venvPath": "."
+}
