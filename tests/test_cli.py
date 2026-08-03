@@ -71,6 +71,70 @@ def test_cli_inspect_reports_aggregate_counts(example_pack_dir: Path) -> None:
     assert "Connector types" in result.stdout
 
 
+def test_cli_dock_runs_a_mock_session(example_pack_dir: Path) -> None:
+    result = runner.invoke(app, ["dock", str(example_pack_dir), "--count", "3"])
+
+    assert result.exit_code == 0
+    assert "2 dock(s), 0 failure(s)" in result.stdout
+    assert "DockCommitted" in result.stdout
+    assert "assembly:generic_cube_0" in result.stdout
+
+
+def test_cli_dock_reports_why_nothing_latched(example_pack_dir: Path) -> None:
+    result = runner.invoke(app, ["dock", str(example_pack_dir), "--no-latch"])
+
+    assert result.exit_code == 0
+    assert "0 dock(s)" in result.stdout
+    assert "auto-latching" in result.stdout
+    assert "Pass --latch" in result.stdout
+
+
+def test_cli_dock_undock_restores_free_modules(example_pack_dir: Path) -> None:
+    result = runner.invoke(
+        app,
+        ["dock", str(example_pack_dir), "--count", "3", "--undock", "--output", "json"],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["pack"] == "generic_cube@0.1.0"
+    assert payload["connections"] == []
+    assert len(payload["assemblies"]) == 3
+    assert payload["metrics"]["undocking_success_count"] == 2
+
+
+def test_cli_dock_reports_modules_placed_out_of_range(example_pack_dir: Path) -> None:
+    result = runner.invoke(app, ["dock", str(example_pack_dir), "--spacing", "1.0"])
+
+    assert result.exit_code == 0
+    assert "0 dock(s)" in result.stdout
+    assert "detection radius" in result.stdout
+
+
+def test_cli_dock_reports_a_pair_blocked_by_policy(example_pack_dir: Path) -> None:
+    result = runner.invoke(app, ["dock", str(example_pack_dir), "--no-latch"])
+
+    assert result.exit_code == 0
+    assert "Pairs that did not dock" in result.stdout
+    assert "generic_cube_0/front" in result.stdout
+
+
+def test_cli_dock_rejects_an_unknown_module_type(example_pack_dir: Path) -> None:
+    result = runner.invoke(app, ["dock", str(example_pack_dir), "--module-type", "nope"])
+
+    assert result.exit_code == 2
+    assert "unknown module type" in result.output
+
+
+def test_cli_dock_rejects_an_invalid_pack(copied_pack: Path) -> None:
+    (copied_pack / "assets" / "urdf" / "generic_cube.urdf").unlink()
+
+    result = runner.invoke(app, ["dock", str(copied_pack)])
+
+    assert result.exit_code == 1
+    assert "INVALID" in result.stdout
+
+
 def test_cli_pack_init_creates_draft(tmp_path: Path, example_pack_dir: Path) -> None:
     destination = tmp_path / "draft"
     urdf = example_pack_dir / "assets" / "urdf" / "generic_cube.urdf"

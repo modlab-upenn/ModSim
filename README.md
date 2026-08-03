@@ -15,12 +15,19 @@ native ModSim Studio vertical slice:
 - typed URDF import and self-contained draft Robot Pack generation;
 - a standalone PySide6/PyVistaQt Studio for URDF visualization and Robot Pack
   authoring;
+- multi-module scene composition, canonical world state, and a derived assembly
+  index;
+- executable docking and undocking: compatibility, acceptance regions, guards,
+  two-phase commit against a backend, and an append-only event log;
+- a backend adapter contract and a dependency-free kinematic mock backend;
+- modular-robot runtime metrics;
 - the `modsim` command-line interface;
 - a simulator-neutral generic Robot Pack and test suite.
 
-The current version does **not** provide `modsim run`, docking execution,
-MuJoCo, Isaac Sim, or a physics runtime. The `simulation` validation profile is
-a stricter structural readiness check; it does not launch a simulator.
+The current version does **not** provide `modsim run`, a MuJoCo or Isaac Sim
+adapter, or any real physics. Docking executes end to end against the mock
+backend only. The `simulation` validation profile is a stricter structural
+readiness check; it does not launch a simulator.
 
 ## Install and use the package
 
@@ -82,6 +89,7 @@ modsim pack inspect examples/robot_packs/generic_cube
 modsim pack validate examples/robot_packs/generic_cube
 modsim pack validate examples/robot_packs/generic_cube --profile simulation
 modsim pack validate examples/robot_packs/generic_cube --output json
+modsim dock examples/robot_packs/generic_cube --count 3
 modsim studio examples/robot_packs/generic_cube
 ```
 
@@ -183,13 +191,72 @@ exported = RobotPackWriter().write(
 saved = RobotPackWriter().update(loaded)
 ```
 
+## Run a docking session
+
+The quickest check is the `modsim dock` command, which runs a mock docking
+session and reports whether a pack's connectors actually mate:
+
+```bash
+modsim dock examples/robot_packs/generic_cube --count 3
+modsim dock examples/robot_packs/generic_cube --count 3 --undock
+modsim dock examples/robot_packs/generic_cube --output json
+```
+
+It places `--count` modules `--spacing` metres apart, runs `--steps` steps of
+`--dt` seconds, and prints the event log, the resulting assemblies, and the
+runtime metrics. `--latch` (the default) issues a dock command for every pair
+whose geometry already satisfies acceptance; `--no-latch` leaves docking to each
+connector type's own `auto_latch` policy. When nothing docks, the command
+reports which criterion or guard blocked each pair.
+
+This exercises the real semantic pipeline against the kinematic mock backend. It
+runs no physics, so it answers "is this pack authored such that these connectors
+would latch?" rather than "will this robot work?".
+
+The same thing from Python, which is what to build on:
+
+```python
+from pathlib import Path
+
+from modsim import MockBackendAdapter, RobotPackLoader, RuntimeSession, SceneSpec
+from modsim.core.ids import ConnectorInstanceId
+
+pack = RobotPackLoader().load(Path("examples/robot_packs/generic_cube")).pack
+scene = SceneSpec.grid("generic_cube", 3, spacing_m=0.1)
+session = RuntimeSession.create(pack, scene, MockBackendAdapter())
+
+session.request_dock(
+    ConnectorInstanceId("generic_cube_0/front"),
+    ConnectorInstanceId("generic_cube_1/rear"),
+)
+for event in session.step(0.01):
+    print(event.kind, event.sequence)
+
+print(session.world.assemblies.assemblies)
+print(session.metrics().as_dict())
+```
+
+ModSim decides whether two connectors may mate and what it means when they do;
+the backend decides only whether the requested physical constraint exists. A
+logical connection is created only after the backend confirms the constraint, so
+semantic state can never claim a connection that no physics engine is
+enforcing.
+
+Connector types can declare a `docking_policy` controlling auto-latching,
+measured or nominal alignment, redock cooldown, and break force. See
+`docs/docking_semantics.md` for the full pipeline, the acceptance criteria, and
+the notes a MuJoCo adapter should follow.
+
 ## Design boundaries
 
 - URDF and meshes are imported mechanical assets, not canonical ModSim state.
 - Robot Pack YAML is the modular-robot semantic layer.
 - Graphs and matrices will be generated views, not canonical state.
 - Disconnected modules remain first-class entities.
-- Docking and undocking will be explicit lifecycle events.
+- Docking and undocking are explicit lifecycle events, and the event log is the
+  only path that mutates world state.
+- Assembly identity is derived from membership, not from a counter, so the same
+  configuration produces the same identifiers across runs and replays.
 - GUI and simulator dependencies stay outside the core package. Studio is a
   separate optional package and consumes the same public core API that future
   web or native C++ clients can target.

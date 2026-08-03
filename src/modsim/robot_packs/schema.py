@@ -147,6 +147,13 @@ class PhysicalConstraintType(StrEnum):
     CUSTOM = "custom"
 
 
+class AlignmentMode(StrEnum):
+    """How a committed connection's relative pose is chosen."""
+
+    MEASURED = "measured"
+    NOMINAL = "nominal"
+
+
 class CapabilityKind(StrEnum):
     """High-level capability category."""
 
@@ -348,6 +355,41 @@ class ConnectorLimits(StrictModel):
     max_bending_moment_nm: PositiveFloat | None = None
 
 
+class DockingPolicySpec(StrictModel):
+    """Runtime docking behaviour for a connector type.
+
+    The policy is advisory metadata for a runtime docking engine. It does not
+    change the mechanical description of a connector, so an omitted policy is
+    equivalent to this model's defaults.
+    """
+
+    auto_latch: StrictBool = Field(
+        default=False,
+        description=(
+            "Latch as soon as acceptance is satisfied, without an explicit dock command. "
+            "Passive connectors such as permanent magnets are usually auto-latching."
+        ),
+    )
+    alignment: AlignmentMode = Field(
+        default=AlignmentMode.MEASURED,
+        description=(
+            "Whether a committed connection freezes the measured relative pose or snaps "
+            "to the nominal mating pose implied by the docking axis and orientation set."
+        ),
+    )
+    redock_cooldown_s: PositiveFloat | None = Field(
+        default=None,
+        description="Minimum time a connector must stay free after undocking or a failed dock.",
+    )
+    break_force_n: PositiveFloat | None = Field(
+        default=None,
+        description=(
+            "Constraint force above which the connection releases on its own. "
+            "Null means the connection never breaks under load."
+        ),
+    )
+
+
 class ConnectorTypeSpec(StrictModel):
     """Reusable mechanical and semantic connector definition."""
 
@@ -361,6 +403,12 @@ class ConnectorTypeSpec(StrictModel):
     physical_connection: PhysicalConnectionSpec | None = None
     limits: ConnectorLimits | None = None
     supports_undocking: StrictBool = False
+    docking_policy: DockingPolicySpec | None = None
+
+    @property
+    def effective_docking_policy(self) -> DockingPolicySpec:
+        """Return the declared docking policy or the documented defaults."""
+        return self.docking_policy if self.docking_policy is not None else DockingPolicySpec()
 
     @field_validator("compatible_with")
     @classmethod

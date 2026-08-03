@@ -201,7 +201,29 @@ connector_types:
       max_shear_force_n: 40.0
       max_bending_moment_nm: 1.8
     supports_undocking: true
+    docking_policy:
+      auto_latch: false
+      alignment: measured
+      redock_cooldown_s: null
+      break_force_n: null
 ```
+
+`docking_policy` is optional runtime behaviour rather than mechanical
+description, so omitting it is identical to the defaults shown above:
+
+- `auto_latch` latches as soon as acceptance is satisfied, without an explicit
+  dock command. Passive connectors such as permanent magnets are usually
+  auto-latching; commanded connectors are not.
+- `alignment` is `measured` or `nominal`. `measured` freezes the observed
+  relative pose; `nominal` snaps the connector frames coincident with the
+  matched discrete orientation, which prevents pose drift accumulating over
+  repeated reconfiguration.
+- `redock_cooldown_s` is the minimum time a connector stays free after undocking
+  or a failed dock.
+- `break_force_n` releases the connection when the measured constraint force
+  exceeds it. Null means the connection never breaks under load.
+
+`docs/docking_semantics.md` describes how the runtime evaluates these fields.
 
 Connector genders are `male`, `female`, `hermaphroditic`, and `genderless`.
 Orientation mode is either:
