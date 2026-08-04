@@ -1,0 +1,15 @@
+# Core dependencies for modsim-robotics.
+# This project is managed with pyproject.toml + uv.lock (see README "Development install"
+# for `uv sync`); this file is a pip-friendly mirror for environments that don't use uv.
+#
+# Install core only:
+#   pip install -r requirements.txt
+# Install core + Studio visualizer + dev tools (recommended for this repo):
+#   pip install -r requirements.txt -r requirements-studio.txt -r requirements-dev.txt
+# Or, equivalently, install the package itself with extras:
+#   pip install -e ".[studio,dev]"
+
+pydantic>=2.10,<3
+rich>=13,<15
+ruamel.yaml>=0.18,<0.20
+typer>=0.12,<1

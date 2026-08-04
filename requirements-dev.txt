@@ -1,0 +1,7 @@
+# Development tooling for modsim-robotics.
+
+pre-commit>=4,<5
+pyright>=1.1.390,<2
+pytest>=8,<10
+pytest-cov>=5,<8
+ruff>=0.9,<1
