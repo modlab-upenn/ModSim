@@ -3,12 +3,14 @@
 
 from __future__ import annotations
 
+import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from enum import StrEnum
 from pathlib import Path
 from typing import cast
 
+from pydantic import JsonValue
 from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtGui import QAction, QCloseEvent
 from PySide6.QtWidgets import (
@@ -19,6 +21,7 @@ from PySide6.QtWidgets import (
     QDockWidget,
     QFileDialog,
     QFormLayout,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QMainWindow,
@@ -55,6 +58,11 @@ from modsim.robot_packs import (
     ValidationProfile,
 )
 from modsim_studio.project import StudioProject
+from modsim_studio.user_errors import (
+    error_log_details,
+    user_error_message,
+    validate_identifier,
+)
 from modsim_studio.viewport import RobotViewport
 
 _KIND_ROLE = int(Qt.ItemDataRole.UserRole)
@@ -81,6 +89,71 @@ class _QtLogHandler(logging.Handler):
             self.emitter.line.emit(self.format(record))
         except Exception:
             self.handleError(record)
+
+
+class _MetadataEditor(QWidget):
+    """Edit a bounded mapping of custom metadata keys to JSON values."""
+
+    def __init__(self, metadata: Mapping[str, JsonValue]) -> None:
+        super().__init__()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.table = QTableWidget(0, 2)
+        self.table.setHorizontalHeaderLabels(["Field", "JSON value"])
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.setMaximumHeight(180)
+        layout.addWidget(self.table)
+        buttons = QHBoxLayout()
+        add_button = QPushButton("Add field")
+        remove_button = QPushButton("Remove selected")
+        add_button.clicked.connect(self.add_field)
+        remove_button.clicked.connect(self.remove_selected)
+        buttons.addWidget(add_button)
+        buttons.addWidget(remove_button)
+        buttons.addStretch(1)
+        layout.addLayout(buttons)
+        guidance = QLabel('Values use JSON syntax; quote strings, for example "front".')
+        guidance.setWordWrap(True)
+        layout.addWidget(guidance)
+        for key, value in metadata.items():
+            self._append_row(key, json.dumps(value, ensure_ascii=False, sort_keys=True))
+
+    def add_field(self) -> None:
+        """Append one editable metadata row."""
+        self._append_row("custom_field", '""')
+
+    def remove_selected(self) -> None:
+        """Remove every selected row, or the current row when no cells are selected."""
+        rows = {index.row() for index in self.table.selectedIndexes()}
+        if not rows and self.table.currentRow() >= 0:
+            rows.add(self.table.currentRow())
+        for row in sorted(rows, reverse=True):
+            self.table.removeRow(row)
+
+    def value(self) -> dict[str, JsonValue]:
+        """Return validated JSON-compatible metadata from the table."""
+        result: dict[str, JsonValue] = {}
+        for row in range(self.table.rowCount()):
+            key_item = self.table.item(row, 0)
+            value_item = self.table.item(row, 1)
+            key = key_item.text().strip() if key_item is not None else ""
+            if not key:
+                raise ValueError(f"metadata row {row + 1} requires a field name")
+            if key in result:
+                raise ValueError(f"duplicate metadata field '{key}'")
+            raw_value = value_item.text() if value_item is not None else ""
+            try:
+                parsed = json.loads(raw_value)
+            except json.JSONDecodeError as error:
+                raise ValueError(f"metadata field '{key}' has invalid JSON: {error.msg}") from error
+            result[key] = cast(JsonValue, parsed)
+        return result
+
+    def _append_row(self, key: str, value: str) -> None:
+        row = self.table.rowCount()
+        self.table.insertRow(row)
+        self.table.setItem(row, 0, QTableWidgetItem(key))
+        self.table.setItem(row, 1, QTableWidgetItem(value))
 
 
 class MainWindow(QMainWindow):
@@ -189,9 +262,10 @@ class MainWindow(QMainWindow):
         for label, keyword, checked in (
             ("Visual", "visuals", True),
             ("Collision", "collisions", False),
-            ("Frames", "frames", True),
-            ("Joint axes", "joint_axes", True),
+            ("Frames", "frames", False),
+            ("Joint axes", "joint_axes", False),
             ("Connectors", "connectors", True),
+            ("Ground", "ground", True),
         ):
             action = QAction(label, self)
             action.setCheckable(True)
@@ -220,12 +294,13 @@ class MainWindow(QMainWindow):
 
     def _set_project(self, project: StudioProject) -> None:
         self.project = project
+        self._current_selection = None
         self.save_action.setEnabled(True)
         self.export_action.setEnabled(True)
         self._rebuild_tree()
         self._refresh_document_panels()
         self._render_first_module()
-        self._show_pack_properties()
+        self._select_tree_entity(("pack", project.pack.id, ""))
         self._update_title()
         self._logger.debug(
             "Document ready: modules=%d, connector_types=%d, imported_assets=%d",
@@ -252,6 +327,7 @@ class MainWindow(QMainWindow):
                 asset_item.addChild(QTreeWidgetItem([warning, "Warning"]))
 
         connector_types_item = QTreeWidgetItem(["Connector Types", "Catalog"])
+        self._set_item_data(connector_types_item, "connector_types", "", "")
         root.addChild(connector_types_item)
         for type_id, connector_type in self.project.pack.hardware_catalog.connector_types.items():
             item = QTreeWidgetItem([connector_type.name or type_id, connector_type.gender.value])
@@ -457,11 +533,15 @@ class MainWindow(QMainWindow):
         _previous: QTreeWidgetItem | None,
     ) -> None:
         if current is None:
+            self._current_selection = None
+            self._replace_properties(QLabel("Select a Robot Pack entity to edit."))
             return
         kind = current.data(0, _KIND_ROLE)
         entity_id = current.data(0, _ID_ROLE)
         module_id = current.data(0, _MODULE_ROLE)
         if not all(isinstance(value, str) for value in (kind, entity_id, module_id)):
+            self._current_selection = None
+            self._replace_properties(QLabel("This category has no editable fields."))
             return
         self._current_selection = (kind, entity_id, module_id)
         self._logger.debug(
@@ -497,6 +577,8 @@ class MainWindow(QMainWindow):
             self._show_connector_properties(entity_id, module_id)
         elif kind == "connector_type":
             self._show_connector_type_properties(entity_id)
+        elif kind == "connector_types":
+            self._show_connector_types_properties()
         elif kind == "module":
             self._show_module_properties(entity_id)
         else:
@@ -513,9 +595,11 @@ class MainWindow(QMainWindow):
         version = QLineEdit(manifest.version)
         description = QPlainTextEdit(manifest.description or "")
         description.setMaximumHeight(110)
+        metadata = _MetadataEditor(manifest.metadata)
         form.addRow("Name", name)
         form.addRow("Version", version)
         form.addRow("Description", description)
+        form.addRow("Custom metadata", metadata)
         apply_button = QPushButton("Apply metadata")
         apply_button.clicked.connect(
             lambda: self._apply_project_change(
@@ -523,6 +607,7 @@ class MainWindow(QMainWindow):
                     name=name.text(),
                     version=version.text(),
                     description=description.toPlainText(),
+                    metadata=metadata.value(),
                 )
             )
         )
@@ -637,20 +722,40 @@ class MainWindow(QMainWindow):
             return
         module = self.project.pack.hardware_catalog.module_types[module_id]
         connector = next(item for item in module.connectors if item.id == connector_id)
+        asset = self.project.imported_assets.get(module.asset_ref)
         panel = QWidget()
         form = QFormLayout(panel)
         form.addRow("Connector ID", QLabel(connector.id))
-        form.addRow("Type", QLabel(connector.connector_type))
-        form.addRow("Parent link", QLabel(connector.parent_link))
+        connector_type = QComboBox()
+        connector_type.addItems(list(self.project.pack.hardware_catalog.connector_types))
+        connector_type.setCurrentText(connector.connector_type)
+        parent_link = QComboBox()
+        parent_link.addItems(
+            [link.name for link in asset.links] if asset is not None else [connector.parent_link]
+        )
+        parent_link.setCurrentText(connector.parent_link)
+        form.addRow("Type", connector_type)
+        form.addRow("URDF body / link", parent_link)
+        frame = QLineEdit(connector.frame or "")
+        use_local_pose = QCheckBox()
+        use_local_pose.setChecked(connector.local_pose is not None)
+        form.addRow("Named frame (optional)", frame)
+        form.addRow("Use numeric local pose", use_local_pose)
         pose = connector.local_pose or PoseSpec()
         xyz = QLineEdit(_vector_text(pose.xyz_m))
         rpy = QLineEdit(_vector_text(pose.rpy_rad))
-        docking = QLineEdit(_vector_text(connector.docking_axis or (1.0, 0.0, 0.0)))
-        approach = QLineEdit(_vector_text(connector.approach_axis or (1.0, 0.0, 0.0)))
+        docking = QLineEdit(
+            _vector_text(connector.docking_axis) if connector.docking_axis is not None else ""
+        )
+        approach = QLineEdit(
+            _vector_text(connector.approach_axis) if connector.approach_axis is not None else ""
+        )
         form.addRow("Position xyz (m)", xyz)
         form.addRow("Rotation rpy (rad)", rpy)
         form.addRow("Docking axis", docking)
         form.addRow("Approach axis", approach)
+        metadata = _MetadataEditor(connector.metadata)
+        form.addRow("Custom fields", metadata)
 
         apply_button = QPushButton("Apply connector")
 
@@ -658,26 +763,49 @@ class MainWindow(QMainWindow):
             updated = ConnectorSpec.model_validate(
                 {
                     **connector.model_dump(mode="python"),
-                    "frame": None,
-                    "local_pose": PoseSpec(
-                        xyz_m=_parse_vector(xyz.text()),
-                        rpy_rad=_parse_vector(rpy.text()),
+                    "connector_type": connector_type.currentText(),
+                    "parent_link": parent_link.currentText(),
+                    "frame": frame.text().strip() or None,
+                    "local_pose": (
+                        PoseSpec(
+                            xyz_m=_parse_vector(xyz.text()),
+                            rpy_rad=_parse_vector(rpy.text()),
+                        )
+                        if use_local_pose.isChecked()
+                        else None
                     ),
-                    "docking_axis": _parse_vector(docking.text()),
-                    "approach_axis": _parse_vector(approach.text()),
+                    "docking_axis": _optional_vector(docking.text()),
+                    "approach_axis": _optional_vector(approach.text()),
+                    "metadata": metadata.value(),
                 }
             )
             return project.update_connector(module_id, updated)
 
-        apply_button.clicked.connect(lambda: self._apply_project_change(update))
+        apply_button.clicked.connect(
+            lambda: self._apply_project_change(
+                update,
+                selection_after=("connector", connector_id, module_id),
+            )
+        )
         form.addRow(apply_button)
         remove_button = QPushButton("Remove connector")
         remove_button.clicked.connect(
             lambda: self._apply_project_change(
-                lambda project: project.remove_connector(module_id, connector_id)
+                lambda project: project.remove_connector(module_id, connector_id),
+                selection_after=("link", connector.parent_link, module_id),
             )
         )
         form.addRow(remove_button)
+        self._replace_properties(panel)
+
+    def _show_connector_types_properties(self) -> None:
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        layout.addWidget(QLabel("Create reusable connector types before assigning connectors."))
+        add_button = QPushButton("Add connector type…")
+        add_button.clicked.connect(self._add_connector_type_dialog)
+        layout.addWidget(add_button)
+        layout.addStretch(1)
         self._replace_properties(panel)
 
     def _show_connector_type_properties(self, type_id: str) -> None:
@@ -776,6 +904,8 @@ class MainWindow(QMainWindow):
         form.addRow("Max shear force (N)", max_shear)
         form.addRow("Max bending moment (Nm)", max_bending)
         form.addRow("Supports undocking", supports_undocking)
+        metadata = _MetadataEditor(connector_type.metadata)
+        form.addRow("Custom metadata", metadata)
 
         apply_button = QPushButton("Apply connector type")
 
@@ -864,57 +994,155 @@ class MainWindow(QMainWindow):
                 physical_connection=physical_connection,
                 limits=connector_limits,
                 supports_undocking=supports_undocking.isChecked(),
+                metadata=metadata.value(),
             )
             return project.update_connector_type(updated)
 
-        apply_button.clicked.connect(lambda: self._apply_project_change(update))
+        apply_button.clicked.connect(
+            lambda: self._apply_project_change(
+                update,
+                selection_after=("connector_type", type_id, ""),
+            )
+        )
         form.addRow(apply_button)
+        remove_button = QPushButton("Remove connector type")
+        remove_button.clicked.connect(
+            lambda: self._apply_project_change(
+                lambda project: project.remove_connector_type(type_id),
+                selection_after=("connector_types", "", ""),
+            )
+        )
+        form.addRow(remove_button)
         self._replace_properties(panel)
 
-    def _add_connector_dialog(self, module_id: str, link_name: str) -> None:
+    def _add_connector_type_dialog(self) -> None:
+        if self.project is None:
+            return
         dialog = QDialog(self)
-        dialog.setWindowTitle(f"Add connector to {link_name}")
+        dialog.setWindowTitle("Add connector type")
         layout = QFormLayout(dialog)
-        connector_id = QLineEdit()
-        connector_type = QLineEdit("generic_connector")
-        xyz = QLineEdit("0, 0, 0")
-        rpy = QLineEdit("0, 0, 0")
-        docking = QLineEdit("1, 0, 0")
-        approach = QLineEdit("1, 0, 0")
-        layout.addRow("Connector ID", connector_id)
-        layout.addRow("Connector type", connector_type)
-        layout.addRow("Position xyz (m)", xyz)
-        layout.addRow("Rotation rpy (rad)", rpy)
-        layout.addRow("Docking axis", docking)
-        layout.addRow("Approach axis", approach)
+        type_id = QLineEdit()
+        type_id.setPlaceholderText("for example: smores_ep")
+        name = QLineEdit()
+        active = QCheckBox()
+        gender = _enum_combo(ConnectorGender, ConnectorGender.GENDERLESS.value)
+        metadata = _MetadataEditor({})
+        layout.addRow("Connector type ID", type_id)
+        id_help = QLabel(
+            "Lowercase YAML ID, such as ep or smores_ep. Use Name for display text such as EP."
+        )
+        id_help.setWordWrap(True)
+        layout.addRow("", id_help)
+        layout.addRow("Name", name)
+        layout.addRow("Active connector", active)
+        layout.addRow("Gender", gender)
+        layout.addRow("Custom metadata", metadata)
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
         layout.addRow(buttons)
-        if dialog.exec() != int(QDialog.DialogCode.Accepted):
+        connector_type: ConnectorTypeSpec | None = None
+        while dialog.exec() == int(QDialog.DialogCode.Accepted):
+            try:
+                connector_type_id = validate_identifier(
+                    type_id.text(),
+                    field_name="Connector type ID",
+                )
+                connector_type = ConnectorTypeSpec(
+                    id=connector_type_id,
+                    name=name.text().strip() or None,
+                    active=active.isChecked(),
+                    gender=ConnectorGender(gender.currentText()),
+                    compatible_with=(connector_type_id,),
+                    metadata=metadata.value(),
+                )
+            except Exception as error:
+                self._show_error("Invalid connector type", error)
+                continue
+            break
+        if connector_type is None:
             return
-        try:
-            connector = ConnectorSpec(
-                id=connector_id.text(),
-                connector_type=connector_type.text(),
-                parent_link=link_name,
-                local_pose=PoseSpec(
-                    xyz_m=_parse_vector(xyz.text()),
-                    rpy_rad=_parse_vector(rpy.text()),
-                ),
-                docking_axis=_parse_vector(docking.text()),
-                approach_axis=_parse_vector(approach.text()),
+        self._apply_project_change(
+            lambda project: project.add_connector_type(connector_type),
+            selection_after=("connector_type", connector_type.id, ""),
+        )
+
+    def _add_connector_dialog(self, module_id: str, link_name: str) -> None:
+        if self.project is None:
+            return
+        connector_type_ids = list(self.project.pack.hardware_catalog.connector_types)
+        if not connector_type_ids:
+            QMessageBox.information(
+                self,
+                "Create a connector type first",
+                "Select Connector Types and create a reusable type before adding a connector.",
             )
-        except Exception as error:
-            self._show_error("Invalid connector", error)
             return
-        self._apply_project_change(lambda project: project.add_connector(module_id, connector))
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Add connector to {link_name}")
+        layout = QFormLayout(dialog)
+        connector_id = QLineEdit()
+        connector_id.setPlaceholderText("for example: front_face")
+        connector_type = QComboBox()
+        connector_type.addItems(connector_type_ids)
+        xyz = QLineEdit("0, 0, 0")
+        rpy = QLineEdit("0, 0, 0")
+        docking = QLineEdit("1, 0, 0")
+        approach = QLineEdit("1, 0, 0")
+        metadata = _MetadataEditor({})
+        layout.addRow("Connector ID", connector_id)
+        id_help = QLabel("Lowercase YAML ID, such as front_face or dock_1.")
+        id_help.setWordWrap(True)
+        layout.addRow("", id_help)
+        layout.addRow("Connector type", connector_type)
+        layout.addRow("Position xyz (m)", xyz)
+        layout.addRow("Rotation rpy (rad)", rpy)
+        layout.addRow("Docking axis", docking)
+        layout.addRow("Approach axis", approach)
+        layout.addRow("Custom fields", metadata)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addRow(buttons)
+        connector: ConnectorSpec | None = None
+        while dialog.exec() == int(QDialog.DialogCode.Accepted):
+            try:
+                validated_connector_id = validate_identifier(
+                    connector_id.text(),
+                    field_name="Connector ID",
+                )
+                connector = ConnectorSpec(
+                    id=validated_connector_id,
+                    connector_type=connector_type.currentText(),
+                    parent_link=link_name,
+                    local_pose=PoseSpec(
+                        xyz_m=_parse_vector(xyz.text()),
+                        rpy_rad=_parse_vector(rpy.text()),
+                    ),
+                    docking_axis=_parse_vector(docking.text()),
+                    approach_axis=_parse_vector(approach.text()),
+                    metadata=metadata.value(),
+                )
+            except Exception as error:
+                self._show_error("Invalid connector", error)
+                continue
+            break
+        if connector is None:
+            return
+        self._apply_project_change(
+            lambda project: project.add_connector(module_id, connector),
+            selection_after=("connector", connector.id, module_id),
+        )
 
     def _apply_project_change(
         self,
         operation: Callable[[StudioProject], StudioProject],
+        *,
+        selection_after: tuple[str, str, str] | None = None,
     ) -> None:
         if self.project is None:
             return
@@ -923,7 +1151,7 @@ class MainWindow(QMainWindow):
         except Exception as error:
             self._show_error("Could not apply edit", error)
             return
-        selection = self._current_selection
+        selection = selection_after or self._current_selection
         self._rebuild_tree()
         self._refresh_document_panels()
         self._render_first_module()
@@ -933,10 +1161,29 @@ class MainWindow(QMainWindow):
             selection or "none",
             self.project.dirty,
         )
-        if selection is not None:
-            kind, entity_id, module_id = selection
-            if kind not in {"connector", "joint"}:
-                self._show_properties(kind, entity_id, module_id)
+        if selection is None or not self._select_tree_entity(selection):
+            self._current_selection = None
+            self._replace_properties(QLabel("Select a Robot Pack entity to edit."))
+
+    def _select_tree_entity(self, selection: tuple[str, str, str]) -> bool:
+        kind, entity_id, module_id = selection
+        pending: list[QTreeWidgetItem] = []
+        for index in range(self.project_tree.topLevelItemCount()):
+            item = self.project_tree.topLevelItem(index)
+            if item is not None:
+                pending.append(item)
+        while pending:
+            item = pending.pop()
+            if (
+                item.data(0, _KIND_ROLE) == kind
+                and item.data(0, _ID_ROLE) == entity_id
+                and item.data(0, _MODULE_ROLE) == module_id
+            ):
+                self.project_tree.setCurrentItem(item)
+                return True
+            for index in range(item.childCount()):
+                pending.append(item.child(index))
+        return False
 
     def _replace_properties(self, widget: QWidget) -> None:
         while self.properties_layout.count():
@@ -999,14 +1246,16 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"{self.project.pack.manifest.name}{marker} — ModSim Studio")
 
     def _show_error(self, title: str, error: Exception) -> None:
+        message = user_error_message(error)
         self._logger.error(
-            "%s: %s",
+            "%s\n%s",
             title,
-            error,
+            error_log_details(error),
             exc_info=(type(error), error, error.__traceback__),
         )
-        QMessageBox.critical(self, title, str(error))
-        self.statusBar().showMessage(str(error), 10000)
+        QMessageBox.critical(self, title, message)
+        status_message = " ".join(message.splitlines())
+        self.statusBar().showMessage(f"{title}: {status_message}", 10000)
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if self.project is not None and self.project.dirty:
@@ -1041,6 +1290,10 @@ def _parse_vector(value: str) -> tuple[float, float, float]:
         raise ValueError("expected exactly three numeric components")
     parsed = tuple(float(part) for part in parts)
     return parsed[0], parsed[1], parsed[2]
+
+
+def _optional_vector(value: str) -> tuple[float, float, float] | None:
+    return _parse_vector(value) if value.strip() else None
 
 
 def _vector_text(value: tuple[float, float, float]) -> str:

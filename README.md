@@ -22,6 +22,10 @@ The current version does **not** provide `modsim run`, docking execution,
 MuJoCo, Isaac Sim, or a physics runtime. The `simulation` validation profile is
 a stricter structural readiness check; it does not launch a simulator.
 
+For the exact implemented inventory, known defects, verification baseline, and
+recommended continuation order, see
+[`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md).
+
 ## Install and use the package
 
 ModSim requires Python 3.11 or newer. The distribution/install name is
@@ -37,7 +41,7 @@ python -m pip install .
 modsim --version
 ```
 
-This installs ModSim and all Phase 1 runtime dependencies into the virtual
+This installs ModSim and all current core dependencies into the virtual
 environment. The GUI is intentionally optional. Install Studio and development
 dependencies with:
 
@@ -89,9 +93,10 @@ A Robot Pack is a self-contained directory. Its root `robot_pack.yaml` refers to
 typed specification and backend-mapping documents and keyed local assets. Paths
 are portable, relative to the pack, and cannot escape it.
 
-The implemented format is documented in
-`docs/robot_pack_spec.md`. `docs/AGENTS.md` and `docs/HANDOFF.md` describe the
-broader architecture and future milestones.
+The implemented format is documented in `docs/robot_pack_spec.md`. Current
+implementation status and known bugs are tracked in
+`docs/IMPLEMENTATION_STATUS.md`. `docs/AGENTS.md` contains implementation rules,
+while `docs/HANDOFF.md` is the broader future architecture roadmap.
 
 ## Create a Robot Pack from URDF
 
@@ -124,11 +129,16 @@ Studio can also perform this workflow through **File → Create from URDF**. Its
 initial editor provides:
 
 - project, module, link, joint, and connector trees;
-- Robot Pack metadata editing through the Properties panel;
+- Robot Pack custom metadata editing through the Properties panel;
 - visual/collision geometry toggles;
 - link frames, joint axes, connector frames, docking axes, and approach axes;
+- URDF solid-color materials, smooth shaded surfaces, scene lighting, shadows,
+  a grid floor, and material-preserving link selection;
 - selection from the tree or 3D meshes;
-- numeric connector placement and joint metadata editing;
+- explicit connector-type create/edit/remove workflows;
+- connector reassignment to existing types and imported URDF bodies/links;
+- numeric connector placement, JSON-compatible custom connector fields, and
+  joint metadata editing;
 - live authoring/simulation validation and a read-only canonical YAML preview;
 - atomic Save and non-overwriting Export As.
 

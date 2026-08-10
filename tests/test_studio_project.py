@@ -48,9 +48,16 @@ def test_studio_project_edits_connector_and_exports(
         local_pose=PoseSpec(xyz_m=(0.0, 0.0, 0.05)),
         docking_axis=(0.0, 0.0, 1.0),
         approach_axis=(0.0, 0.0, 1.0),
+        metadata={"face_index": 3},
     )
 
-    edited = project.add_connector("generic_cube", connector)
+    edited = project.add_connector_type(
+        ConnectorTypeSpec(
+            id="debug_port",
+            name="Debug Port",
+            compatible_with=("debug_port",),
+        )
+    ).add_connector("generic_cube", connector)
 
     assert edited.dirty
     assert "debug_port" in edited.pack.hardware_catalog.connector_types
@@ -63,20 +70,158 @@ def test_studio_project_edits_connector_and_exports(
         item.id for item in reopened.pack.hardware_catalog.module_types["generic_cube"].connectors
     }
     assert connector_ids == {"front", "rear", "top"}
+    top = next(
+        item
+        for item in reopened.pack.hardware_catalog.module_types["generic_cube"].connectors
+        if item.id == "top"
+    )
+    assert top.metadata == {"face_index": 3}
 
 
-def test_studio_project_updates_metadata(example_pack_dir: Path) -> None:
-    project = StudioProject.open(example_pack_dir)
+def test_studio_project_updates_metadata(copied_pack: Path) -> None:
+    project = StudioProject.open(copied_pack)
 
     edited = project.update_manifest(
         name="Edited Generic Cube",
         version="0.2.0",
         description="Edited in Studio.",
+        metadata={"hardware_revision": "test", "tags": ["example", "edited"]},
     )
 
     assert edited.pack.manifest.name == "Edited Generic Cube"
     assert edited.pack.version == "0.2.0"
     assert "Edited in Studio" in edited.yaml_preview()
+    assert edited.pack.manifest.metadata["hardware_revision"] == "test"
+    saved = edited.save()
+    reopened = StudioProject.open(saved.loaded.root)
+    assert reopened.pack.manifest.metadata == {
+        "hardware_revision": "test",
+        "tags": ["example", "edited"],
+    }
+    root_yaml = (copied_pack / "robot_pack.yaml").read_text(encoding="utf-8")
+    assert "hardware_revision: test" in root_yaml
+
+
+def test_studio_project_requires_explicit_connector_type(example_pack_dir: Path) -> None:
+    project = StudioProject.open(example_pack_dir)
+    connector = ConnectorSpec(
+        id="top",
+        connector_type="missing_type",
+        parent_link="base_link",
+        local_pose=PoseSpec(),
+    )
+
+    with pytest.raises(ValueError, match="create the type first"):
+        project.add_connector("generic_cube", connector)
+
+
+def test_studio_project_adds_and_removes_connector_types(copied_pack: Path) -> None:
+    project = StudioProject.open(copied_pack)
+    added = project.add_connector_type(
+        ConnectorTypeSpec(
+            id="service_port",
+            name="Service Port",
+            compatible_with=("service_port",),
+            metadata={"protocol": "debug"},
+        )
+    )
+
+    assert added.pack.hardware_catalog.connector_types["service_port"].metadata == {
+        "protocol": "debug"
+    }
+    saved = added.save()
+    connector_yaml_path = copied_pack / "specs" / "connector_types.yaml"
+    assert "service_port:" in connector_yaml_path.read_text(encoding="utf-8")
+    assert StudioProject.open(copied_pack).pack.hardware_catalog.connector_types[
+        "service_port"
+    ].metadata == {"protocol": "debug"}
+
+    removed = saved.remove_connector_type("service_port").save()
+    assert "service_port" not in removed.pack.hardware_catalog.connector_types
+    assert "service_port:" not in connector_yaml_path.read_text(encoding="utf-8")
+
+
+def test_studio_project_blocks_removing_type_used_by_connector(example_pack_dir: Path) -> None:
+    project = StudioProject.open(example_pack_dir)
+
+    with pytest.raises(ValueError, match="still referenced"):
+        project.remove_connector_type("fixed_face")
+
+
+def test_studio_project_removes_type_and_cleans_semantic_references(
+    example_pack_dir: Path,
+) -> None:
+    project = StudioProject.open(example_pack_dir)
+    without_front = project.remove_connector("generic_cube", "front")
+    without_connectors = without_front.remove_connector("generic_cube", "rear")
+    removed = without_connectors.remove_connector_type("fixed_face")
+
+    assert "fixed_face" not in removed.pack.hardware_catalog.connector_types
+    assert all(
+        "fixed_face" not in capability.required_connector_types
+        for capability in removed.pack.capability_catalog.capabilities.values()
+    )
+
+
+def test_studio_project_removes_connector_backend_frame_mapping(copied_pack: Path) -> None:
+    mapping_path = copied_pack / "mappings" / "urdf_mapping.yaml"
+    mapping_path.write_text(
+        mapping_path.read_text(encoding="utf-8").replace(
+            "connector_frame_map: {}",
+            "connector_frame_map:\n      front: front_docking_frame",
+        ),
+        encoding="utf-8",
+    )
+    project = StudioProject.open(copied_pack)
+
+    edited = project.remove_connector("generic_cube", "front")
+
+    module_mapping = edited.pack.backend_mappings["urdf"].module_types["generic_cube"]
+    assert "front" not in module_mapping.connector_frame_map
+
+
+def test_studio_project_reassociates_connector_with_imported_urdf_body(
+    copied_pack: Path,
+) -> None:
+    urdf = copied_pack / "assets" / "urdf" / "generic_cube.urdf"
+    urdf.write_text(
+        urdf.read_text(encoding="utf-8").replace(
+            "</robot>",
+            '  <link name="tool_link"/>\n</robot>',
+        ),
+        encoding="utf-8",
+    )
+    project = StudioProject.open(copied_pack)
+    connector = project.pack.hardware_catalog.module_types["generic_cube"].connectors[0]
+    reassociated = ConnectorSpec.model_validate(
+        {
+            **connector.model_dump(mode="python"),
+            "parent_link": "tool_link",
+            "metadata": {"body_role": "moving_face"},
+        }
+    )
+
+    edited = project.update_connector("generic_cube", reassociated).save()
+    reopened = StudioProject.open(edited.loaded.root)
+    saved_connector = reopened.pack.hardware_catalog.module_types["generic_cube"].connectors[0]
+    assert saved_connector.parent_link == "tool_link"
+    assert saved_connector.metadata == {"body_role": "moving_face"}
+    module_yaml = (copied_pack / "specs" / "module_types.yaml").read_text(encoding="utf-8")
+    assert "parent_link: tool_link" in module_yaml
+    assert "body_role: moving_face" in module_yaml
+
+
+def test_studio_project_rejects_connector_body_missing_from_urdf(
+    example_pack_dir: Path,
+) -> None:
+    project = StudioProject.open(example_pack_dir)
+    connector = project.pack.hardware_catalog.module_types["generic_cube"].connectors[0]
+    invalid = ConnectorSpec.model_validate(
+        {**connector.model_dump(mode="python"), "parent_link": "missing_link"}
+    )
+
+    with pytest.raises(ValueError, match="not present in imported URDF"):
+        project.update_connector("generic_cube", invalid)
 
 
 def test_studio_project_updates_module_metadata_immutably(example_pack_dir: Path) -> None:

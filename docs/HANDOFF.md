@@ -1,8 +1,17 @@
-# ModSim Codex Handoff: Implementation Plan and UML Specification v0.3
+# ModSim design roadmap and UML specification v0.3
+
+> **Roadmap notice:** This document describes the intended architecture and
+> future milestones. It is not an inventory of code that currently exists, and
+> some proposed package names, commands, dependencies, and YAML examples are
+> deliberately ahead of format 0.1. Start with
+> [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md) for the current
+> implementation, known defects, and continuation plan. Use
+> [`robot_pack_spec.md`](robot_pack_spec.md), the typed schema, and the example
+> pack as the authoritative current Robot Pack contract.
 
 **Project:** ModSim  
 **Purpose:** A backend-agnostic framework for defining modular robot hardware, building robot packs from CAD-generated robot assets, managing modular-robot runtime state, generating mathematical model views, and coordinating simulator-backed execution with docking/undocking semantics.  
-**Status:** Implementation handoff v0.3  
+**Status:** Future architecture roadmap v0.3
 **Primary implementation focus:** Build the first working vertical slice around **robot-pack definition and hardware description using ModSim Studio**, a standalone desktop Python application built with **PySide6/Qt**, **PyVistaQt/PyVista**, and **PyQtGraph**. The workflow imports a CAD-generated URDF/meshes, visualizes and annotates hardware, connectors, docking interfaces, and constraints, saves a validated Robot Pack, previews mathematical model views, then runs a MuJoCo-backed runtime where ModSim manages state and MuJoCo manages physics.
 
 ---

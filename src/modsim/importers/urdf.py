@@ -40,6 +40,15 @@ class ImportedGeometry:
 
 
 @dataclass(frozen=True, slots=True)
+class ImportedMaterial:
+    """A resolved URDF visual material supported by the authoring viewport."""
+
+    name: str | None = None
+    color_rgba: tuple[float, float, float, float] | None = None
+    texture_filename: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class ImportedVisual:
     """Geometry attached to a link at a local pose."""
 
@@ -47,6 +56,7 @@ class ImportedVisual:
     origin_xyz_m: tuple[float, float, float]
     origin_rpy_rad: tuple[float, float, float]
     geometry: ImportedGeometry
+    material: ImportedMaterial | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,6 +103,7 @@ class ImportedRobotAsset:
     joints: tuple[ImportedJoint, ...]
     root_links: tuple[str, ...]
     warnings: tuple[str, ...]
+    materials: tuple[ImportedMaterial, ...] = ()
 
     def link(self, name: str) -> ImportedLink:
         """Return a link by source name."""
@@ -144,11 +155,23 @@ class URDFImporter:
 
         resolved_roots = tuple(Path(os.path.abspath(Path(root_path))) for root_path in asset_roots)
         warnings: list[str] = []
+        materials = tuple(
+            self._parse_material(element, context="robot material", require_name=True)
+            for element in self._children(root, "material")
+        )
+        material_catalog: dict[str, ImportedMaterial] = {}
+        for material in materials:
+            if material.name is None:
+                raise URDFImportError("robot material requires attribute 'name'")
+            if material.name in material_catalog:
+                raise URDFImportError(f"URDF material names must be unique: '{material.name}'")
+            material_catalog[material.name] = material
         links = tuple(
             self._parse_link(
                 element,
                 source_path=source_path,
                 asset_roots=resolved_roots,
+                material_catalog=material_catalog,
                 warnings=warnings,
             )
             for element in self._children(root, "link")
@@ -189,6 +212,7 @@ class URDFImporter:
             joints=joints,
             root_links=root_links,
             warnings=tuple(warnings),
+            materials=materials,
         )
 
     def _parse_link(
@@ -197,6 +221,7 @@ class URDFImporter:
         *,
         source_path: Path,
         asset_roots: tuple[Path, ...],
+        material_catalog: dict[str, ImportedMaterial],
         warnings: list[str],
     ) -> ImportedLink:
         name = self._required_attribute(element, "name", context="link")
@@ -205,6 +230,7 @@ class URDFImporter:
                 visual,
                 source_path=source_path,
                 asset_roots=asset_roots,
+                material_catalog=material_catalog,
                 warnings=warnings,
                 context=f"link '{name}' visual",
             )
@@ -215,6 +241,7 @@ class URDFImporter:
                 collision,
                 source_path=source_path,
                 asset_roots=asset_roots,
+                material_catalog=material_catalog,
                 warnings=warnings,
                 context=f"link '{name}' collision",
             )
@@ -241,6 +268,7 @@ class URDFImporter:
         *,
         source_path: Path,
         asset_roots: tuple[Path, ...],
+        material_catalog: dict[str, ImportedMaterial],
         warnings: list[str],
         context: str,
     ) -> ImportedVisual:
@@ -295,11 +323,80 @@ class URDFImporter:
             geometry = ImportedGeometry(kind=GeometryKind.SPHERE, radius_m=radius)
         else:
             raise URDFImportError(f"{context} uses unsupported geometry <{kind}>")
+        material = self._resolve_visual_material(
+            element,
+            material_catalog=material_catalog,
+            warnings=warnings,
+            context=context,
+        )
         return ImportedVisual(
             name=element.attrib.get("name"),
             origin_xyz_m=xyz,
             origin_rpy_rad=rpy,
             geometry=geometry,
+            material=material,
+        )
+
+    @classmethod
+    def _resolve_visual_material(
+        cls,
+        visual: ElementTree.Element,
+        *,
+        material_catalog: dict[str, ImportedMaterial],
+        warnings: list[str],
+        context: str,
+    ) -> ImportedMaterial | None:
+        element = cls._child(visual, "material")
+        if element is None:
+            return None
+        material = cls._parse_material(element, context=f"{context} material")
+        if material.color_rgba is not None or material.texture_filename is not None:
+            resolved = material
+        elif material.name is None:
+            warnings.append(f"{context}: material has no name, color, or texture")
+            return None
+        else:
+            resolved = material_catalog.get(material.name)
+            if resolved is None:
+                warnings.append(f"{context}: material '{material.name}' is not defined")
+                return None
+        if resolved.texture_filename is not None:
+            warnings.append(
+                f"{context}: texture material '{resolved.texture_filename}' is not rendered or "
+                "copied automatically"
+            )
+        return resolved
+
+    @classmethod
+    def _parse_material(
+        cls,
+        element: ElementTree.Element,
+        *,
+        context: str,
+        require_name: bool = False,
+    ) -> ImportedMaterial:
+        name = element.attrib.get("name", "").strip() or None
+        if require_name and name is None:
+            raise URDFImportError(f"{context} requires attribute 'name'")
+        color_rgba: tuple[float, float, float, float] | None = None
+        color = cls._child(element, "color")
+        if color is not None:
+            color_rgba = cls._rgba(
+                cls._required_attribute(color, "rgba", context=f"{context} color"),
+                context=f"{context} color rgba",
+            )
+        texture_filename: str | None = None
+        texture = cls._child(element, "texture")
+        if texture is not None:
+            texture_filename = cls._required_attribute(
+                texture,
+                "filename",
+                context=f"{context} texture",
+            )
+        return ImportedMaterial(
+            name=name,
+            color_rgba=color_rgba,
+            texture_filename=texture_filename,
         )
 
     def _parse_joint(self, element: ElementTree.Element) -> ImportedJoint:
@@ -481,6 +578,21 @@ class URDFImporter:
             raise URDFImportError(f"{context} must have {size} components")
         parsed = tuple(cls._float(part, context=context) for part in parts)
         return parsed[0], parsed[1], parsed[2]
+
+    @classmethod
+    def _rgba(
+        cls,
+        value: str,
+        *,
+        context: str,
+    ) -> tuple[float, float, float, float]:
+        parts = value.replace(",", " ").split()
+        if len(parts) != 4:
+            raise URDFImportError(f"{context} must have 4 components")
+        parsed = tuple(cls._float(part, context=context) for part in parts)
+        if any(component < 0.0 or component > 1.0 for component in parsed):
+            raise URDFImportError(f"{context} components must be between 0 and 1")
+        return parsed[0], parsed[1], parsed[2], parsed[3]
 
     @staticmethod
     def _local_name(tag: str) -> str:

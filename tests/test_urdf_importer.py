@@ -68,6 +68,101 @@ def test_importer_resolves_relative_mesh(tmp_path: Path) -> None:
     assert not asset.warnings
 
 
+def test_importer_resolves_global_and_inline_visual_colors(tmp_path: Path) -> None:
+    urdf = tmp_path / "materials.urdf"
+    urdf.write_text(
+        """<robot name="materials">
+  <material name="body_silver"><color rgba="0.7 0.72 0.75 1"/></material>
+  <link name="base">
+    <visual>
+      <geometry><box size="1 1 1"/></geometry>
+      <material name="body_silver"/>
+    </visual>
+    <visual>
+      <geometry><sphere radius="0.1"/></geometry>
+      <material name="accent"><color rgba="0.9, 0.2, 0.1, 0.6"/></material>
+    </visual>
+  </link>
+</robot>
+""",
+        encoding="utf-8",
+    )
+
+    asset = URDFImporter().load(urdf)
+
+    assert asset.materials[0].name == "body_silver"
+    assert asset.links[0].visuals[0].material == asset.materials[0]
+    inline = asset.links[0].visuals[1].material
+    assert inline is not None
+    assert inline.name == "accent"
+    assert inline.color_rgba == (0.9, 0.2, 0.1, 0.6)
+    assert not asset.warnings
+
+
+def test_importer_warns_for_undefined_visual_material(tmp_path: Path) -> None:
+    urdf = tmp_path / "undefined_material.urdf"
+    urdf.write_text(
+        """<robot name="materials">
+  <link name="base">
+    <visual>
+      <geometry><box size="1 1 1"/></geometry>
+      <material name="missing"/>
+    </visual>
+  </link>
+</robot>
+""",
+        encoding="utf-8",
+    )
+
+    asset = URDFImporter().load(urdf)
+
+    assert asset.links[0].visuals[0].material is None
+    assert asset.warnings == ("link 'base' visual: material 'missing' is not defined",)
+
+
+def test_importer_records_texture_reference_and_warns_that_it_is_deferred(tmp_path: Path) -> None:
+    urdf = tmp_path / "texture_material.urdf"
+    urdf.write_text(
+        """<robot name="materials">
+  <material name="paint"><texture filename="textures/paint.png"/></material>
+  <link name="base">
+    <visual>
+      <geometry><box size="1 1 1"/></geometry>
+      <material name="paint"/>
+    </visual>
+  </link>
+</robot>
+""",
+        encoding="utf-8",
+    )
+
+    asset = URDFImporter().load(urdf)
+
+    material = asset.links[0].visuals[0].material
+    assert material is not None
+    assert material.texture_filename == "textures/paint.png"
+    assert asset.warnings == (
+        "link 'base' visual: texture material 'textures/paint.png' is not rendered or copied "
+        "automatically",
+    )
+
+
+@pytest.mark.parametrize("rgba", ["1 0 0", "1.1 0 0 1", "nan 0 0 1"])
+def test_importer_rejects_invalid_material_color(tmp_path: Path, rgba: str) -> None:
+    urdf = tmp_path / "bad_material.urdf"
+    urdf.write_text(
+        f"""<robot name="materials">
+  <material name="bad"><color rgba="{rgba}"/></material>
+  <link name="base"/>
+</robot>
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(URDFImportError, match="color rgba"):
+        URDFImporter().load(urdf)
+
+
 def test_importer_rejects_document_type(tmp_path: Path) -> None:
     path = tmp_path / "unsafe.urdf"
     path.write_text(

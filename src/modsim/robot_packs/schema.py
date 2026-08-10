@@ -13,6 +13,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    JsonValue,
     StrictBool,
     StrictFloat,
     StringConstraints,
@@ -63,6 +64,16 @@ Identifier = Annotated[
     ),
 ]
 NonEmptyString = Annotated[str, StringConstraints(min_length=1, strip_whitespace=True)]
+MetadataKey = Annotated[
+    str,
+    StringConstraints(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z][A-Za-z0-9_.:-]*$",
+        strip_whitespace=True,
+    ),
+]
+Metadata = dict[MetadataKey, JsonValue]
 SemanticVersion = Annotated[
     str,
     StringConstraints(
@@ -275,6 +286,7 @@ class ConnectorSpec(StrictModel):
         default=None,
         description="Unit approach axis expressed in the connector parent-link frame.",
     )
+    metadata: Metadata = Field(default_factory=dict, max_length=128)
 
     @model_validator(mode="after")
     def require_location(self) -> Self:
@@ -361,6 +373,7 @@ class ConnectorTypeSpec(StrictModel):
     physical_connection: PhysicalConnectionSpec | None = None
     limits: ConnectorLimits | None = None
     supports_undocking: StrictBool = False
+    metadata: Metadata = Field(default_factory=dict, max_length=128)
 
     @field_validator("compatible_with")
     @classmethod
@@ -545,6 +558,7 @@ class RobotPackManifest(StrictModel):
     name: NonEmptyString
     version: SemanticVersion
     description: str | None = None
+    metadata: Metadata = Field(default_factory=dict, max_length=128)
     assets: AssetManifest
     specs: SpecFileManifest
     mappings: dict[Identifier, PackRelativePath] = Field(default_factory=dict)

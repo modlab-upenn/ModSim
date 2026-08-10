@@ -1,5 +1,14 @@
 # AGENTS.md — ModSim Implementation Instructions v0.3
 
+## Read before changing code
+
+Read `IMPLEMENTATION_STATUS.md` first for the current inventory, known bugs,
+verification baseline, and recommended next iteration. Read
+`robot_pack_spec.md` for the implemented format-0.1 contract and `studio.md` for
+the current desktop workflow. `HANDOFF.md` is the future architecture roadmap;
+do not infer that its proposed packages, APIs, CLI commands, or milestones are
+implemented.
+
 ## Project goal
 
 Implement ModSim, a Python-first backend-agnostic framework for modular robotics, with ModSim Studio as a standalone desktop PySide6/PyVistaQt application.
@@ -47,6 +56,10 @@ ModSim should let users:
 - Add tests with every substantive change.
 
 ## Recommended packages
+
+The lists below are roadmap candidates, not the current installed dependency
+set. Add a package only when the active milestone requires it, and treat
+`pyproject.toml` plus `uv.lock` as authoritative for what is installed now.
 
 Core:
 
@@ -101,19 +114,24 @@ hypothesis
 pre-commit
 ```
 
-## First implementation order
+## Roadmap implementation order and current progress
 
-1. Project skeleton and tooling.
-2. Robot Pack schema, loader, writer, validator.
-3. URDF importer and draft Robot Pack builder.
-4. ModSim Studio shell using PySide6 with an embedded PyVistaQt viewport.
-5. URDF/mesh visualization, link/joint/frame tree, and selection model.
-6. Connector, docking-interface, joint, and hardware constraint editors.
-7. ModelViewRegistry and first view previews inside Studio.
-8. Runtime core and mock backend.
-9. Runtime Inspector mode in Studio with PyQtGraph metrics.
-10. MuJoCo backend MVP.
-11. Docking/undocking with backend bridge.
+1. Project skeleton and tooling — implemented.
+2. Robot Pack schema, loader, writer, validator — implemented for format 0.1.
+3. URDF importer and draft Robot Pack builder — implemented with the
+   limitations in `IMPLEMENTATION_STATUS.md`.
+4. ModSim Studio shell using PySide6 with an embedded PyVistaQt viewport —
+   implemented.
+5. URDF/mesh visualization, link/joint/frame tree, and selection model —
+   implemented for one-module authoring, with known selection defects.
+6. Connector, docking-interface, joint, and hardware constraint editors —
+   partially implemented; connector lifecycle UX and capability/mapping
+   editors remain incomplete.
+7. ModelViewRegistry and first view previews inside Studio — not started.
+8. Runtime core and mock backend — not started.
+9. Runtime Inspector mode in Studio with PyQtGraph metrics — not started.
+10. MuJoCo backend MVP — not started.
+11. Docking/undocking with backend bridge — not started.
 
 ## ModSim Studio implementation rules
 
@@ -125,7 +143,9 @@ pre-commit
 - PyVistaQt overlays should show link frames, joint axes, connector frames, docking approach directions, and acceptance regions.
 - Runtime Inspector should show ModSim semantics, not replace the simulator viewer: WorldState, assemblies, connections, docking lifecycle, ModelViews, metrics, and backend status.
 - Use PyQtGraph for live metrics and simple matrix/model-view panels.
-- Keep Studio optional through packaging extras: `modsim[studio]`.
+- Keep Studio optional through packaging extras:
+  `modsim-robotics[studio]` after publication or `.[studio]` from a source
+  checkout.
 
 ## Do not build first
 
@@ -153,15 +173,12 @@ minimal CLI path
 no hidden global state
 ```
 
-Use this preferred Codex starting prompt:
+Use this preferred Codex starting prompt for the next iteration:
 
 ```text
-Read AGENTS.md and HANDOFF.md. Implement Milestone 0 and 1 only: Python project skeleton, pyproject.toml, package layout, CLI shell, Robot Pack schema models, YAML loader/writer, validator skeleton, and example generic Robot Pack. Add tests for schema validation and YAML round-trip. Do not implement PySide6/PyVistaQt GUI, MuJoCo, or docking yet.
-```
-
-
-Use this preferred Codex prompt for the first GUI milestone:
-
-```text
-Read AGENTS.md and HANDOFF.md. Implement Milestone 3 only: create the ModSim Studio PySide6 shell with dockable panels, project open/save, URDF link/joint tree, embedded PyVistaQt viewport, validation panel, and a basic connector editor. Keep GUI code in modsim-studio and do not import PySide6/PyVista from modsim-core. Add smoke tests for view models and skip rendering-heavy tests unless stable in CI.
+Read docs/AGENTS.md, docs/IMPLEMENTATION_STATUS.md,
+docs/robot_pack_spec.md, and docs/studio.md. Add stable Qt regression coverage
+for connector and connector-type create/edit/remove, custom metadata,
+URDF-body reassociation, category/project selection, and Save/reopen. Preserve
+the core/Studio dependency boundary and run all repository checks.
 ```

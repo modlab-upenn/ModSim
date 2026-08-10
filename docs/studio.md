@@ -6,21 +6,53 @@ backends are not part of this milestone.
 
 ## Install and launch
 
-From a source checkout:
+Create a repository-local virtual environment and install the current checkout
+in editable mode:
 
 ```bash
-python -m pip install -e ".[studio,dev]"
-modsim studio
+python3 -m venv .venv
+.venv/bin/python -m pip install -e ".[studio,dev]"
+.venv/bin/modsim studio
 ```
 
 Open a pack directly:
 
 ```bash
-modsim studio /absolute/path/to/robot_pack
+.venv/bin/modsim studio /absolute/path/to/robot_pack
 ```
 
 The standalone `modsim-studio` command and `python -m modsim_studio` are
-equivalent.
+equivalent. Running through `.venv/bin/python -m modsim_studio` is useful while
+developing because the editable install uses the current source tree.
+
+## Current feature inventory
+
+The current Studio MVP provides:
+
+- a project tree for imported URDF assets, connector types, module types,
+  links, joints, and connector instances;
+- Properties editors for pack and module fields, custom pack/connector/type
+  metadata, joint control modes and limits, connector pose and axes, and
+  reusable connector-type semantics;
+- explicit connector-type creation and reference-safe removal, plus connector
+  reassignment to an existing type and an imported URDF body/link;
+- connector-type fields for gender, compatibility, allowed orientations,
+  acceptance tolerances, physical constraints, compliance, load limits, and
+  undocking support;
+- a read-only preview of the canonical split-YAML documents;
+- authoring validation with `F6` and stricter structural
+  simulation-readiness validation with `F7`;
+- atomic in-place Save and non-overwriting Export As;
+- an embedded viewport for URDF visual and collision geometry, link frames,
+  joint axes, and connector frames and axes;
+- resolved URDF solid-color materials, smooth PBR surface shading, scene
+  lighting, a shadowed grid floor, and non-destructive link-selection bounds;
+  and
+- a local per-launch session log mirrored in the **Session Log** tab.
+
+The viewport renders one module type at a time in the URDF zero-joint
+configuration. Simulation readiness is a validation profile; it does not start
+a simulator or physics runtime.
 
 ## Session logging
 
@@ -46,10 +78,31 @@ MODSIM_STUDIO_LOG=/path/to/studio.log modsim studio /path/to/robot_pack
 
 The **Session Log** tab mirrors the same file during the running session.
 It records startup context, open/import operations, edits, validation issues,
-save/export operations, and full Python exception traces. The `.modsim`
+save/export operations, and full Python exception traces. Studio dialogs show
+concise field-oriented validation guidance, while the log retains the model,
+field location, error type, rejected value, and traceback needed for debugging.
+The `.modsim`
 directory is local runtime state and is ignored by Git. Keeping the active log
 beside, rather than inside, the Robot Pack ensures that atomic Save operations
 cannot replace it.
+
+For a repeatable current-source debugging session, launch from the repository
+root and keep the log in the ignored repository-local `.modsim` directory:
+
+```bash
+mkdir -p .modsim/logs
+MODSIM_STUDIO_LOG="$PWD/.modsim/logs/studio-dev.log" \
+  .venv/bin/python -m modsim_studio /absolute/path/to/robot_pack
+```
+
+Reproduce one problem per launch because the file is truncated when the
+session starts. Inspect the **Session Log** tab while reproducing it, then use
+the file for the complete timestamped validation messages and Python
+tracebacks. Record the selected tree entity and the action immediately before
+an error; selection state is relevant to the known GUI issues below. Launching
+with the pack path also makes the startup and open operation part of the same
+log. If Studio is launched without a pack and the pack is opened later, the
+session continues to use the working-directory log chosen at startup.
 
 ## URDF-to-Robot-Pack workflow
 
@@ -59,20 +112,67 @@ cannot replace it.
 4. Choose a new Robot Pack directory. Existing destinations are refused.
 5. Inspect imported links, joints, visual geometry, collision geometry, link
    frames, and joint axes.
-6. Select a link and choose **Add connector to this link**.
-7. Enter the connector ID/type, local pose, docking axis, and approach axis.
-8. Select joints to add control modes and unit-bearing limits.
-9. Select the Robot Pack or module item to edit its exposed metadata in the
-   Properties panel.
-10. Run authoring validation with `F6` and simulation-readiness validation with
+6. Select **Connector Types**, choose **Add connector type**, and define the
+   reusable interface.
+7. Select a link and choose **Add connector to this link**.
+8. Enter the connector ID, select an existing type, and enter its local pose,
+   axes, and optional custom fields.
+9. Select an existing connector under the module's **Connectors** group to
+   change its type, imported URDF body/link, frame/pose, axes, custom fields,
+   or to remove it.
+10. Select joints to add control modes and unit-bearing limits.
+11. Select the Robot Pack to edit custom metadata in the Properties panel.
+12. Run authoring validation with `F6` and simulation-readiness validation with
    `F7`.
-11. Use **Save** to update the open pack or **Export As** to create a new pack.
+13. Use **Save** to update the open pack or **Export As** to create a new pack.
 
 Save stages a complete copy, reloads it, compares its semantic model, and then
 atomically swaps the pack directory. It writes metadata and semantic edits to
 the canonical split-YAML documents. Export As never overwrites its destination.
 The YAML preview is read-only; use the Properties panel and dedicated editors
-to make changes.
+to make changes. Add, edit, and remove operations initially change only the
+in-memory document. They are not persisted until **Save** or **Export As**
+completes.
+
+### Connector add, edit, and remove details
+
+Create a type first by selecting the **Connector Types** catalog row and using
+**Add connector type**. Creation requires an explicit lowercase snake_case ID
+such as `ep` or `smores_ep`; put display capitalization such as `EP` in the
+separate Name field. New types initially declare themselves compatible using
+that validated ID. The dialog also exposes the active flag, gender, and custom
+metadata. Select the new concrete type row to edit compatibility, orientation,
+acceptance, physical, load, undocking, and custom-metadata fields. **Remove
+connector type** refuses deletion while a connector instance uses the type.
+When an unused type is removed, compatible type and capability references to
+it are cleaned so the YAML remains valid.
+
+To add a connector, select a concrete link row under **Module Types → module →
+Links**. The link's Properties panel contains **Add connector to this link**.
+The dialog requires a schema-valid lower-case identifier, an existing type
+selected from the catalog, numeric `xyz` and `rpy` triples, and unit-length
+docking and approach axes. The selected imported URDF link becomes the
+connector's initial parent body.
+
+To edit or remove an instance, select its concrete row under **Module Types →
+module → Connectors**. Its stable ID remains read-only. Its type and parent
+body/link use dropdowns populated from the current connector-type catalog and
+the module's imported URDF. The named frame, numeric local-pose mode, pose,
+axes, and custom fields are editable. **Remove connector** removes the instance
+and any backend connector-frame mapping for its ID from the in-memory document,
+without a confirmation dialog or undo. Close and discard the document to
+abandon an unsaved removal, or use **Save** to persist it.
+
+### Custom metadata fields
+
+The Robot Pack, connector-instance, and connector-type Properties panels each
+contain a two-column custom metadata editor. Use **Add field** and **Remove
+selected** to manage entries. Values use JSON syntax: strings need quotes,
+while numbers, booleans, nulls, lists, and nested objects can be entered
+directly. The schema permits at most 128 fields per metadata mapping and checks
+field-name portability. Applying an editor changes the in-memory document;
+**Save** or **Export As** writes the values to the appropriate canonical YAML
+file.
 
 ## Editing boundaries
 
@@ -86,6 +186,15 @@ Studio does not yet provide an interactive translation or rotation gizmo.
 
 ## Viewport conventions
 
+- Visuals use resolved global or inline URDF `rgba` material colors. Visuals
+  without a supported color use the diagnostic link palette.
+- Smooth surface normals, rough nonmetallic PBR shading, multiple lights, and
+  shadows provide shape and depth cues even for untextured STL meshes.
+- A large grid floor extends well beyond the robot and is enabled by default.
+  Camera framing uses only the robot bounds, so the expanded floor does not
+  shrink the model in the view. Toggle the floor with **Ground** in the
+  viewport toolbar.
+- Selecting a link draws gold bounds around it without replacing its material.
 - Red, green, and blue frame arrows are local X, Y, and Z.
 - Yellow arrows are imported joint axes.
 - Bright green arrows are connector docking axes.
@@ -94,9 +203,39 @@ Studio does not yet provide an interactive translation or rotation gizmo.
 - Connector docking and approach axes are expressed in their parent-link
   frame, matching Robot Pack format 0.1.
 
-The viewport uses the URDF zero joint configuration. Joint animation and 3D
-translation/rotation gizmos are not implemented yet; numeric connector pose
-changes are immediately redrawn.
+The viewport uses the URDF zero joint configuration. Link frames and joint axes
+are available from the toolbar but default to hidden so they do not obscure the
+robot. Joint animation and 3D translation/rotation gizmos are not implemented
+yet; numeric connector pose changes are immediately redrawn.
+
+## Known bugs and UX limitations
+
+These are current-source limitations, not intended long-term behavior:
+
+- **Connectors cannot be selected or moved in 3D.** Mesh picking selects links
+  only. Connector selection is through the project tree, and placement is
+  through numeric fields; there is no translation or rotation gizmo.
+- **Named-frame-only connectors are not drawn.** Studio preserves named-frame
+  and numeric-local-pose location modes, but the viewport does not yet resolve
+  arbitrary named frames. A connector without `local_pose` therefore has no
+  rendered connector glyph.
+- **Mechanical-name validation is split.** Studio now verifies connector
+  parent-body changes against the imported URDF link list. The standalone Robot
+  Pack validator still does not parse referenced URDFs to cross-check module
+  roots, connector parents, source joints, named frames, or backend mapping
+  names after the URDF is changed externally.
+- **Viewport coverage is intentionally limited.** Acceptance-region geometry
+  is editable but not rendered. The viewport shows one module type rather than
+  a multi-module assembly, has no joint animation, and does not display
+  contacts, physics, docking execution, or runtime state. A document edit
+  rebuilds the scene, resets the camera, and currently returns multi-module
+  documents to the first renderable module.
+- **Native GUI regression coverage is not established.** Document-model tests
+  cover connector/type mutation, URDF-body association, metadata persistence,
+  and selection-supporting state changes, but there are no automated
+  MainWindow/viewport tests for the corresponding dialogs, tree-selection
+  lifecycle, or 3D interaction. Treat manual reproduction steps and the session
+  log as required evidence when reporting these GUI issues.
 
 ## Import support and limitations
 
@@ -105,6 +244,7 @@ The importer currently supports:
 - links and tree-structured joints;
 - fixed, revolute, continuous, prismatic, floating, and planar joints;
 - origins, axes, scalar limits, and link masses;
+- named and inline URDF solid-color materials with validated `rgba` values;
 - box, cylinder, sphere, and local mesh geometry;
 - relative, `file://`, and locally resolvable `package://` mesh references;
 - self-contained asset copying and URDF mesh-path rewriting.
@@ -115,12 +255,16 @@ It intentionally does not:
 - fetch HTTP or HTTPS assets;
 - import transmissions or simulator-specific XML extensions;
 - infer connectors, compatibility, acceptance regions, or capabilities;
+- render or automatically copy texture-image material dependencies;
 - copy every external texture referenced indirectly by OBJ/DAE material files;
 - modify CAD or generate URDF.
 
 Mesh decoding depends on formats supported by the installed VTK/PyVista stack.
 STL, OBJ, PLY, VTK-family, and common polygon formats are the safest first
-targets. Verify materials and external textures after importing OBJ or DAE.
+targets. Solid URDF colors work with any decoded geometry. Texture references
+are retained in the imported model and reported as deferred, but texture images
+are not yet bundled or displayed; verify all external assets after importing
+OBJ or DAE.
 
 ## Package boundary
 

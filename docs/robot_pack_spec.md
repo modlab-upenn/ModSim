@@ -1,6 +1,6 @@
 # Robot Pack format 0.1
 
-This document is the implemented Phase 1 contract for Robot Packs. The broader
+This document is the implemented format 0.1 contract for Robot Packs. The broader
 architecture in `HANDOFF.md` is a roadmap; when examples differ, this document
 and the typed models in `src/modsim/robot_packs/schema.py` describe the code that
 currently runs.
@@ -9,6 +9,20 @@ Format 0.1 covers structural authoring, persistence, and validation. The
 separate URDF importer can generate a draft format-0.1 pack and source-name
 mapping, but format validation still does not launch a simulator or prove that
 a backend can execute a pack.
+
+## Implementation status
+
+Implemented now are the strict split-document loader and schema, authoring and
+simulation validation profiles, deterministic new-directory export,
+transactional in-place save, URDF-to-draft-pack import, and the Studio project
+model and editor surfaces for current manifest, module, joint, connector, and
+connector-type metadata.
+
+Still deferred are MuJoCo and Isaac Sim execution adapters, capability
+execution, runtime docking behavior, actuator and transmission catalogs,
+validator-level cross-checking of authored source names against referenced URDF
+files, and the extra parameters needed to simulate `hinge`, `ball`, and `custom`
+connections.
 
 ## Directory layout
 
@@ -47,6 +61,30 @@ symlinks.
 Identifiers use lower snake case, begin with a letter, and are at most 64
 characters. Pack versions use semantic version syntax such as `0.1.0`.
 
+## Custom metadata
+
+Format 0.1 provides a `metadata` mapping on the root manifest, every connector
+instance, and every connector-type definition. Use it for project- or
+hardware-specific data that does not yet have a normative Robot Pack field.
+Metadata values may be JSON-compatible strings, finite numbers, booleans,
+nulls, lists, or nested mappings. A metadata mapping may contain at most 128
+fields. Field names must begin with a letter, be at most 128 characters, and
+may then contain letters, numbers, `_`, `.`, `:`, or `-`.
+
+```yaml
+metadata:
+  hardware.revision: EP-4
+  manufacturer: ModLab
+  calibration:
+    encoder_offsets_rad: [0.0, 0.012, -0.008]
+  experimentally_verified: false
+```
+
+Custom data must be placed under `metadata`; arbitrary sibling fields remain
+forbidden by the strict schema. Metadata is descriptive and is preserved by
+load, Studio editing, Save, and Export As, but it does not alter validation or
+runtime behavior unless a future consumer explicitly interprets a field.
+
 ## Units and directions
 
 All physical values use SI units. Units are carried in field names:
@@ -80,6 +118,8 @@ id: my_robot
 name: My Modular Robot
 version: 0.1.0
 description: Optional description.
+metadata:
+  hardware.revision: prototype_a
 
 assets:
   urdf:
@@ -151,6 +191,9 @@ module_types:
           rpy_rad: [0.0, 0.0, 0.0]
         docking_axis: [1.0, 0.0, 0.0]
         approach_axis: [1.0, 0.0, 0.0]
+        metadata:
+          face_label: front
+          electrical_channels: 4
     capabilities: [dock, undock]
 ```
 
@@ -171,8 +214,9 @@ prismatic joints support scalar control modes and limits in format 0.1.
 Angular joints use the `_rad`, `_rad_per_s`, and `_nm` limit fields. Prismatic
 joints use `_m`, `_m_per_s`, and `_n`. Continuous joints cannot define angular
 position bounds. Control modes are `position`, `velocity`, and `effort`.
-Actuator and transmission catalogs are intentionally deferred until the URDF
-import milestone rather than represented by an unresolvable string reference.
+Actuator and transmission catalogs are not part of format 0.1; imported
+transmission declarations are not represented rather than being stored as
+unresolvable string references.
 
 ## Connector types
 
@@ -201,6 +245,8 @@ connector_types:
       max_shear_force_n: 40.0
       max_bending_moment_nm: 1.8
     supports_undocking: true
+    metadata:
+      interface.standard: smores_ep
 ```
 
 Connector genders are `male`, `female`, `hermaphroditic`, and `genderless`.
@@ -239,7 +285,7 @@ capabilities:
 ```
 
 Capability kinds are `primitive_action` and `behavior`. Capability definitions
-advertise semantic support; Phase 1 does not execute them.
+advertise semantic support; current tooling validates but does not execute them.
 
 ## Backend mappings
 
@@ -290,14 +336,15 @@ metadata as warnings where continued editing is reasonable. Cross-reference,
 schema, path, and asset failures are always errors.
 
 `simulation` promotes completeness warnings to errors. It means “structurally
-ready for a future simulator adapter”; it does not run physics, parse the URDF,
-or guarantee backend support.
+ready for a future simulator adapter.” `RobotPackValidator` does not run physics,
+parse referenced URDF files, cross-check authored source names against those
+files, or guarantee backend support.
 
 Issues include a stable code, severity, document, JSON-pointer-style path,
 optional entity reference, and optional suggested fix. Invalid packs produce
 CLI exit status 1; valid packs produce 0.
 
-## Python loading and canonical export
+## Python loading, export, and save
 
 ```python
 from pathlib import Path
@@ -322,16 +369,22 @@ exported = RobotPackWriter().write(
 )
 ```
 
-The Phase 1 writer is a canonical exporter:
+`RobotPackWriter.write` is a canonical, non-destructive exporter:
 
 - the destination must not already exist;
 - the supplied destination cannot be a symbolic link;
 - a complete export is staged, reloaded, compared with the source model, and
   then atomically published;
 - declared assets are copied without following symlinks;
-- source files are never modified;
-- YAML ordering and output are deterministic for a given model;
-- comments, anchors, quote choices, and hand formatting are not preserved.
+- source files are never modified.
+
+`RobotPackWriter.update` is the explicit transactional in-place save operation
+used by Studio. It stages and verifies a complete sibling copy, swaps the
+existing directory only after verification, and attempts to restore the
+original directory if publication fails.
+
+Both operations produce deterministic YAML for a given model. Canonical writing
+does not preserve comments, anchors, quote choices, or hand formatting.
 
 Model attributes and sequence fields are frozen, but keyed catalogs are
 currently shallow-frozen Python dictionaries. Treat loaded models as read-only.
@@ -339,24 +392,41 @@ For programmatic edits, rebuild models through Pydantic validation and run
 `RobotPackValidator` before export; the validator and writer both revalidate
 their in-memory snapshots.
 
-Transactional editing of an existing pack is deferred to the Studio document
-model milestone.
+`StudioProject` provides strictly revalidated editing methods. Its `save()`
+method calls the transactional in-place update, while `export()` writes a new
+pack directory.
 
 ## Starting a SMORES-EP pack
 
-Until the URDF importer exists, use the generic pack as a manual template:
+Create the initial draft directly from a local URDF:
 
-1. Copy `examples/robot_packs/generic_cube` to a new directory.
-2. Change the root ID, name, version, asset catalogs, and mapping references.
-3. Put the SMORES-EP URDF and any redistributable mesh directory under
-   `assets/`.
-4. Define each module type, source joint, unit-bearing limit, connector
-   instance, connector frame or pose, and docking/approach axis.
-5. Define connector compatibility, orientation states, docking tolerances,
+```bash
+modsim pack init \
+  --from-urdf path/to/smores_ep.urdf \
+  --out path/to/smores_ep_pack
+```
+
+Add one or more `--asset-root path/to/local/assets` options when mesh references
+cannot be resolved relative to the URDF. The importer parses link, joint,
+geometry, mass, and limit data; copies resolvable local meshes; rewrites their
+paths into the self-contained pack; resolves named and inline URDF solid-color
+materials for Studio preview; and creates the initial URDF mapping. It refuses
+to overwrite an existing destination or create a pack with unresolved mesh
+references. Texture material references are detected but their image
+dependencies are not yet copied or rendered.
+
+Then open the draft in Studio or edit its YAML documents to:
+
+1. Review the generated module ID, root link, joints, limits, and mapping.
+2. Add connector instances, connector frames or poses, and docking and approach
+   axes.
+3. Define connector compatibility, orientation states, docking tolerances,
    physical connection intent, and known load limits.
-6. Define advertised capabilities and their required connector types.
-7. Update the URDF mapping with exact source link and joint names.
-8. Run inspect, authoring validation, and then simulation-profile validation.
+4. Define advertised capabilities and their required connector types.
+5. Run inspect, authoring validation, and then simulation-profile validation.
+
+`examples/robot_packs/generic_cube` remains available as a manual format
+reference when starting without a URDF.
 
 Do not add proprietary or redistribution-restricted CAD, URDF, or mesh assets
 to the repository until their distribution terms are confirmed.

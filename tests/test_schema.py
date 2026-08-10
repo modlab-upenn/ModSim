@@ -12,6 +12,7 @@ from modsim.robot_packs import (
     AcceptanceShape,
     AssetManifest,
     ConnectorSpec,
+    ConnectorTypeSpec,
     JointLimits,
     JointSpec,
     JointType,
@@ -80,6 +81,38 @@ def test_connector_accepts_explicit_local_pose() -> None:
     )
     assert connector.local_pose is not None
     assert connector.local_pose.xyz_m == (0.1, 0.0, 0.0)
+
+
+def test_connector_and_type_accept_json_custom_metadata() -> None:
+    connector = ConnectorSpec(
+        id="front",
+        connector_type="fixed_face",
+        parent_link="base_link",
+        local_pose=PoseSpec(),
+        metadata={
+            "hardware.revision": "4.2",
+            "channel_count": 4,
+            "enabled": True,
+            "calibration": [0.1, 0.2],
+            "vendor": {"serial": None},
+        },
+    )
+    connector_type = ConnectorTypeSpec(
+        id="fixed_face",
+        metadata={"electrical.bus": "can", "pins": 8},
+    )
+
+    assert connector.metadata["channel_count"] == 4
+    assert connector.metadata["vendor"] == {"serial": None}
+    assert connector_type.metadata == {"electrical.bus": "can", "pins": 8}
+
+
+def test_custom_metadata_rejects_bad_keys_and_non_json_values() -> None:
+    with pytest.raises(ValidationError):
+        ConnectorTypeSpec(id="fixed_face", metadata={"bad field": True})
+
+    with pytest.raises(ValidationError):
+        ConnectorTypeSpec.model_validate({"id": "fixed_face", "metadata": {"path": object()}})
 
 
 def test_schema_rejects_duplicate_module_child_ids() -> None:
