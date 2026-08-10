@@ -89,6 +89,10 @@ class DockingManager:
         default_factory=set[tuple[ConnectorInstanceId, ConnectorInstanceId]]
     )
     requested_releases: set[ConnectionId] = field(default_factory=set[ConnectionId])
+    _detected: set[tuple[ConnectorInstanceId, ConnectorInstanceId]] = field(
+        default_factory=set[tuple[ConnectorInstanceId, ConnectorInstanceId]]
+    )
+    """Pairs that were already in candidacy on the previous pass."""
 
     # ------------------------------------------------------------------
     # commands
@@ -429,12 +433,20 @@ class DockingManager:
         except KeyError:
             return True
 
-    @staticmethod
     def _mark_detections(
+        self,
         world: WorldState,
         proposals: Iterable[DockProposal],
     ) -> tuple[Event, ...]:
+        """Set detection lifecycle states and log newly detected pairs.
+
+        A pair that stays in range for a thousand steps is one detection, not a
+        thousand. The event log records transitions, so an entry is written only
+        when a pair enters candidacy, and the previous pass's set is what makes
+        that decision.
+        """
         events: list[Event] = []
+        detected: set[tuple[ConnectorInstanceId, ConnectorInstanceId]] = set()
         for proposal in proposals:
             if not proposal.compatibility.compatible:
                 continue
@@ -445,6 +457,10 @@ class DockingManager:
             )
             for connector_id in (proposal.connector_a, proposal.connector_b):
                 world.mark_lifecycle(connector_id, state)
+            pair = (proposal.connector_a, proposal.connector_b)
+            detected.add(pair)
+            if pair in self._detected:
+                continue
             events.append(
                 world.apply(
                     DockCandidateDetected(
@@ -454,6 +470,7 @@ class DockingManager:
                     )
                 )
             )
+        self._detected = detected
         return tuple(events)
 
 

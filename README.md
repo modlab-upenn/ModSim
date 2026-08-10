@@ -19,15 +19,18 @@ native ModSim Studio vertical slice:
   index;
 - executable docking and undocking: compatibility, acceptance regions, guards,
   two-phase commit against a backend, and an append-only event log;
-- a backend adapter contract and a dependency-free kinematic mock backend;
+- a backend adapter contract, a named backend registry, a dependency-free
+  kinematic mock backend, and a MuJoCo backend for real rigid-body physics;
+- a cross-backend conformance suite;
 - modular-robot runtime metrics;
 - the `modsim` command-line interface;
 - a simulator-neutral generic Robot Pack and test suite.
 
-The current version does **not** provide `modsim run`, a MuJoCo or Isaac Sim
-adapter, or any real physics. Docking executes end to end against the mock
-backend only. The `simulation` validation profile is a stricter structural
-readiness check; it does not launch a simulator.
+The current version does **not** provide an Isaac Sim adapter, contact exclusion
+between welded modules, or constraint-force reporting under MuJoCo — so
+break-force release and connector-load metrics stay dormant on that backend. The
+`simulation` validation profile is a stricter structural readiness check; it does
+not launch a simulator.
 
 ## Install and use the package
 
@@ -193,8 +196,8 @@ saved = RobotPackWriter().update(loaded)
 
 ## Run a docking session
 
-The quickest check is the `modsim dock` command, which runs a mock docking
-session and reports whether a pack's connectors actually mate:
+The quickest check is the `modsim dock` command, which runs a docking session
+and reports whether a pack's connectors actually mate:
 
 ```bash
 modsim dock examples/robot_packs/generic_cube --count 3
@@ -244,8 +247,56 @@ enforcing.
 
 Connector types can declare a `docking_policy` controlling auto-latching,
 measured or nominal alignment, redock cooldown, and break force. See
-`docs/docking_semantics.md` for the full pipeline, the acceptance criteria, and
-the notes a MuJoCo adapter should follow.
+`docs/docking_semantics.md` for the full pipeline and the acceptance criteria.
+
+## Switch between backends
+
+ModSim owns modular-robot semantics; a backend owns physics. Backends are
+selected by name, so the same pack and scene can be run against either without
+changing code:
+
+```bash
+modsim backends                                   # what is registered and installed
+modsim dock examples/robot_packs/generic_cube --backend mujoco --no-gravity
+MODSIM_BACKEND=mujoco modsim dock examples/robot_packs/generic_cube
+```
+
+```python
+session = RuntimeSession.create(loaded, scene, "mujoco", gravity=(0.0, 0.0, 0.0))
+```
+
+Resolution order is the explicit argument, then `MODSIM_BACKEND`, then `mock`.
+
+The MuJoCo backend is an optional extra and lives in its own package, so
+importing `modsim` never imports a physics engine:
+
+```bash
+python -m pip install -e ".[mujoco]"
+```
+
+Docking and undocking execute under MuJoCo: a scene is compiled with a pool of
+reserved weld constraints, and a committed connection claims one, re-points it
+at the mating bodies, and activates it. Releasing returns the slot to the pool.
+
+```bash
+# on macOS the viewer must run under mjpython, not python
+mjpython -m modsim run examples/robot_packs/generic_cube --backend mujoco \
+  --count 2 --duration 8 --undock-at 4 --view
+```
+
+`modsim run` places modules in a row, drives the last one toward the first,
+latches every pair that satisfies acceptance, and releases on a schedule — the
+smallest scenario that exercises approach, latch, and release under real
+dynamics. `--view` opens the MuJoCo passive viewer, paces the run to wall clock,
+and holds the window open at the end.
+
+Note that releasing a constraint does not separate anything: two welded modules
+share a velocity, so on release they coast along together still touching. The
+runner backs the driven module away at `--retract` (default: the approach speed)
+so the undock is visible. `--retract 0` shows the coasting behaviour instead.
+
+`docs/backends.md` covers the adapter contract, the differences between the two
+backends, and the cross-backend conformance suite.
 
 ## Design boundaries
 

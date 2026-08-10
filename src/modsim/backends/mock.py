@@ -11,6 +11,7 @@ it lets them move independently again.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from modsim.backends.base import (
     BackendCapabilities,
@@ -82,8 +83,19 @@ class MockBackendAdapter:
             supports_module_pose_write=True,
         )
 
-    def load(self, pack: RobotPack, scene: SceneSpec) -> BackendHandleRegistry:
-        """Instantiate every placement as one rigid body per module."""
+    def load(
+        self,
+        pack: RobotPack,
+        scene: SceneSpec,
+        *,
+        root: Path | None = None,
+    ) -> BackendHandleRegistry:
+        """Instantiate every placement as one rigid body per module.
+
+        ``root`` is ignored: the mock reads no mechanical assets, which is
+        exactly why it can run from an in-memory Robot Pack.
+        """
+        del root
         links_by_module = scene.module_links(pack)
         self._bodies = {
             placement.instance_id: _Body(

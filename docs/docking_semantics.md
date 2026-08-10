@@ -255,31 +255,45 @@ declares `break_force_n`, a measured force above the limit emits
 `ConnectorOverloaded` and releases the connection. The *lower* of the two
 declared break forces governs: a joint is only as strong as its weakest half.
 
-## 9. Notes for a MuJoCo adapter
+## 9. The MuJoCo backend
 
-None of the following changes the contract above; it records what the adapter is
-expected to do.
+`modsim_backend_mujoco` implements the observation half of the contract. See
+`docs/backends.md` for scene composition, naming, and options. What matters for
+docking semantics:
 
-- **Weld pool.** MuJoCo topology is fixed at compile time, so pre-allocate `K`
-  inactive `<equality><weld>` elements and rewrite `eq_obj1id`, `eq_obj2id`, and
-  `eq_data` in place at dock time, then set `eq_active` and call `mj_forward`.
-  `eq_active` moved from `mjModel` to `mjData` around MuJoCo 2.3.4; check the
-  field names against the pinned version.
-- **Connector frames.** Map connector ids to MuJoCo sites through the existing
-  `connector_frame_map`, and report them in `snapshot.connector_frames`.
-- **Contact.** Welded modules are in contact and the solver will fight itself.
-  Disable contact between welded pairs on dock and restore it on undock.
+**Done.** Connector frames are materialised as MuJoCo sites and reported in
+`snapshot.connector_frames`, so acceptance is evaluated against frames measured
+by the engine. Docking and undocking execute: a committed connection claims a
+reserved weld, re-points it at the mating bodies, and activates it; release
+returns the slot to the pool. An exhausted pool refuses rather than faking a
+latch.
+
+**Not done**, in the order I would take them:
+
+- **Contact exclusion.** Welded modules interpenetrate at recessed connectors
+  and the solver fights itself. `exclude_signature` is runtime-writable, so an
+  exclude pool reserved the same way as the weld pool is the mechanism. Flush
+  face-to-face mates converge correctly without it, which is why it is not
+  blocking today.
+- **Constraint forces.** Report them in `snapshot.constraint_forces_n` and
+  break-force release plus connector-load metrics — already implemented in core
+  — start working with no further change.
 - **Compliance.** `constraint: compliant` maps to the weld's `solref`/`solimp`,
   not to a separate constraint type. The schema's stiffness values are in
   physical units and `solref` is in time-constant form, so the conversion must be
   explicit and documented.
-- **Weld chains are soft.** A long chain of welds is measurably less stiff and
-  slower than the equivalent compiled rigid body. An optional `mjSpec` recompile
-  path that fuses a stable assembly into a real kinematic tree is worth adding
-  *after* the weld path works, not instead of it.
-- **Constraint forces.** Report them in `snapshot.constraint_forces_n` so that
-  overload detection and connector load metrics start working without any change
-  to core.
+- **Weld chains are soft.** A long chain is measurably less stiff and slower
+  than the equivalent compiled rigid body. An optional `mjSpec` recompile path
+  that fuses a stable assembly into a real kinematic tree is worth adding *after*
+  the weld path works, not instead of it.
+
+Two things real dynamics exposed that the mock hid. The relative-velocity
+criterion now matters: an approach faster than the connector type's
+`max_relative_velocity_m_s` is rejected, which is correct but is the most likely
+cause of a scenario that "won't dock". And an auto-latching pair with no
+`redock_cooldown_s` re-latches in the *same step* it is released, because a
+docking pass evaluates releases before detection and the two halves are still
+touching. Authoring a cooldown is the intended remedy.
 
 ## 10. Mock backend
 
@@ -304,7 +318,35 @@ modsim dock path/to/pack --count 3 --spacing 0.1
 modsim dock path/to/pack --count 3 --undock
 modsim dock path/to/pack --no-latch          # honour each type's auto_latch only
 modsim dock path/to/pack --output json
+modsim dock path/to/pack --backend mujoco --no-gravity
 ```
+
+`modsim dock` is a one-shot authoring check: it places modules already in range
+and asks whether they would latch. `modsim run` is the scripted simulation —
+modules approach under physics, latch, and release on a schedule:
+
+```bash
+modsim run path/to/pack --backend mujoco --count 2 --duration 6 --undock-at 4
+modsim run path/to/pack --backend mujoco --view          # real-time viewer
+modsim run path/to/pack --gravity --ground --height 0.2  # let them settle first
+modsim run path/to/pack --undock-at 4 --retract 0        # release without retracting
+```
+
+On macOS, `--view` must run under `mjpython` rather than `python`.
+
+### 11.3 Releasing is not separating
+
+Worth stating plainly, because it surprises everyone once: **removing a
+constraint does not push anything apart.** Two welded modules share a velocity,
+so the instant the weld is released they keep coasting side by side, in contact,
+at the same speed. The connection is gone — `UndockCommitted` and
+`AssemblySplit` are both logged, and the assembly index shows two components —
+but nothing moves relative to anything.
+
+Separation is an *actuation* step, in simulation exactly as it would be on real
+hardware. `modsim run` therefore backs the driven module away after release, at
+`--retract` (defaulting to the approach speed). Passing `--retract 0` reproduces
+the coast-together behaviour, which is itself worth seeing once.
 
 `--latch` (the default) issues a dock command for every pair whose geometry
 already satisfies acceptance, which is what makes the command useful on a pack
@@ -338,7 +380,8 @@ print(session.metrics().as_dict())
 ## 12. Not yet implemented
 
 ```text
-MuJoCo or Isaac backend adapters
+runtime docking under MuJoCo (the weld pool is reserved, not claimed)
+an Isaac Sim adapter
 articulated kinematics in the mock backend
 ALIGNING and LOAD_BEARING lifecycle transitions driven by the engine
 hinge, ball, and custom physical connections

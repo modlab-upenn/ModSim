@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from modsim.core.ids import (
@@ -21,7 +22,7 @@ from modsim.core.ids import (
 )
 from modsim.core.scene import SceneSpec
 from modsim.core.snapshot import BackendStateSnapshot
-from modsim.core.transforms import Transform
+from modsim.core.transforms import ZERO_VEC3, Transform, Vec3
 from modsim.robot_packs.schema import PhysicalConnectionSpec, RobotPack
 
 
@@ -110,6 +111,31 @@ class BackendHandleRegistry:
 
 
 @runtime_checkable
+class SupportsModuleKinematics(Protocol):
+    """Optional backend ability to place and drive whole modules directly.
+
+    This is deliberately not part of :class:`BackendAdapter`. Writing a pose or
+    velocity bypasses whatever dynamics a backend has, so it belongs to
+    scenario setup and testing rather than to the simulation contract. A caller
+    should check for it rather than assume it.
+    """
+
+    def set_module_pose(self, module_id: ModuleInstanceId, pose: Transform) -> None:
+        """Place one module, clearing any velocity it had."""
+        ...
+
+    def set_module_twist(
+        self,
+        module_id: ModuleInstanceId,
+        *,
+        linear_m_s: Vec3 = ZERO_VEC3,
+        angular_rad_s: Vec3 = ZERO_VEC3,
+    ) -> None:
+        """Set one module's world-frame linear and angular velocity."""
+        ...
+
+
+@runtime_checkable
 class BackendAdapter(Protocol):
     """Minimal interface a physics backend must provide to ModSim."""
 
@@ -117,8 +143,19 @@ class BackendAdapter(Protocol):
         """Return what this backend supports."""
         ...
 
-    def load(self, pack: RobotPack, scene: SceneSpec) -> BackendHandleRegistry:
-        """Instantiate every module placement and return the handle registry."""
+    def load(
+        self,
+        pack: RobotPack,
+        scene: SceneSpec,
+        *,
+        root: Path | None = None,
+    ) -> BackendHandleRegistry:
+        """Instantiate every module placement and return the handle registry.
+
+        ``root`` is the Robot Pack directory. A backend that must read
+        mechanical assets from disk requires it; one that works purely from the
+        semantic model, such as the mock, ignores it.
+        """
         ...
 
     def step(self, dt_s: float) -> None:

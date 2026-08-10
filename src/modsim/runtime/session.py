@@ -4,14 +4,17 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
 
 from modsim.backends.base import BackendAdapter, BackendHandleRegistry
+from modsim.backends.registry import create_backend
 from modsim.connectors.docking import DockingManager, DockProposal
 from modsim.core.events import ConnectorOverloaded, Event
 from modsim.core.ids import ConnectionId, ConnectorInstanceId, ConstraintHandle
 from modsim.core.scene import SceneSpec
 from modsim.core.state import WorldState
-from modsim.robot_packs.schema import RobotPack
+from modsim.robot_packs.schema import LoadedRobotPack, RobotPack
 from modsim.runtime.metrics import DockingMetrics, collect_metrics
 
 
@@ -27,23 +30,38 @@ class RuntimeSession:
     @classmethod
     def create(
         cls,
-        pack: RobotPack,
+        source: LoadedRobotPack | RobotPack,
         scene: SceneSpec,
-        adapter: BackendAdapter,
+        adapter: BackendAdapter | str | None = None,
         *,
+        root: Path | None = None,
         docking: DockingManager | None = None,
+        **backend_options: Any,
     ) -> RuntimeSession:
-        """Load a scene into a backend and build the matching world state."""
+        """Load a scene into a backend and build the matching world state.
+
+        ``adapter`` may be an adapter instance, a registered backend name, or
+        ``None`` to resolve one from ``MODSIM_BACKEND`` and fall back to the
+        default. Passing a :class:`LoadedRobotPack` supplies the pack directory
+        automatically, which backends that read mechanical assets require.
+        """
+        pack = source.pack if isinstance(source, LoadedRobotPack) else source
+        pack_root = root if root is not None else getattr(source, "root", None)
         scene.validate_against(pack)
-        handles = adapter.load(pack, scene)
+        resolved = (
+            adapter
+            if isinstance(adapter, BackendAdapter) and not isinstance(adapter, str)
+            else create_backend(adapter, **backend_options)
+        )
+        handles = resolved.load(pack, scene, root=pack_root)
         world = WorldState.from_scene(pack, scene)
         session = cls(
             world=world,
-            adapter=adapter,
+            adapter=resolved,
             docking=docking if docking is not None else DockingManager(),
             handles=handles,
         )
-        world.ingest(adapter.snapshot())
+        world.ingest(resolved.snapshot())
         return session
 
     # ------------------------------------------------------------------

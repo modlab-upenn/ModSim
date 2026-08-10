@@ -27,6 +27,10 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
+mujoco = [
+  "mujoco>=3.2,<4",
+  "numpy>=1.26,<3",
+]
 studio = [
   "numpy>=1.26,<3",
   "pyqtgraph>=0.13,<1",
@@ -47,7 +51,7 @@ modsim = "modsim.cli:app"
 modsim-studio = "modsim_studio.launcher:cli"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/modsim", "src/modsim_studio"]
+packages = ["src/modsim", "src/modsim_studio", "src/modsim_backend_mujoco"]
 
 [tool.hatch.version]
 path = "src/modsim/__init__.py"
@@ -83,10 +87,17 @@ exclude = [
   "src/modsim_studio/app.py",
   "src/modsim_studio/main_window.py",
   "src/modsim_studio/viewport.py",
+  # MuJoCo ships no type stubs, so strict mode reports every engine call as
+  # partially unknown. Checked separately by pyright-mujoco.json, which runs at
+  # standard strictness where the optional dependency is installed.
+  "src/modsim_backend_mujoco",
+  "tests/test_mujoco_backend.py",
+  "tests/test_mujoco_docking.py",
+  "tests/test_mujoco_welds.py",
 ]
-pythonVersion = "3.11"
+pythonVersion = "3.14"
 typeCheckingMode = "strict"
-venv = ".venv"
+venv = "venv"
 venvPath = "."
 
 [tool.pytest.ini_options]
@@ -100,6 +111,9 @@ addopts = [
   "--cov-report=term-missing",
 ]
 testpaths = ["tests"]
+markers = [
+  "mujoco: requires the optional MuJoCo backend dependencies",
+]
 
 [tool.coverage.run]
 branch = true

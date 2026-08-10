@@ -14,6 +14,7 @@ from modsim.core.events import (
     AssemblyMerged,
     AssemblySplit,
     ConnectorOverloaded,
+    DockCandidateDetected,
     DockCommitted,
     DockFailed,
     DockFailureReason,
@@ -454,6 +455,36 @@ def test_a_docked_chain_moves_as_one_rigid_body(example_pack: RobotPack) -> None
     for module_id, module in session.world.modules.items():
         moved = vec_sub(module.pose.translation, before[module_id])
         assert moved == pytest.approx((0.0, 0.0, 0.1), abs=1e-9)
+
+
+def test_a_pair_in_range_is_logged_once_not_every_step(example_pack: RobotPack) -> None:
+    """The event log records transitions, not steady state.
+
+    Two connectors parked in range would otherwise emit a detection every step,
+    which makes the log useless over a run of any length.
+    """
+    session = session_for(example_pack)
+    for _ in range(20):
+        session.step(0.01)
+
+    detections = session.world.event_log.of_kind(DockCandidateDetected)
+    assert len(detections) == 1
+
+
+def test_leaving_and_re_entering_range_logs_a_second_detection(
+    example_pack: RobotPack,
+) -> None:
+    adapter = MockBackendAdapter()
+    session = session_for(example_pack, adapter=adapter)
+    session.step(0.01)
+    assert len(session.world.event_log.of_kind(DockCandidateDetected)) == 1
+
+    adapter.set_module_pose(CUBE_1, Transform.from_translation((5.0, 0.0, 0.0)))
+    session.step(0.01)
+    adapter.set_module_pose(CUBE_1, Transform.from_translation((SPACING_M, 0.0, 0.0)))
+    session.step(0.01)
+
+    assert len(session.world.event_log.of_kind(DockCandidateDetected)) == 2
 
 
 def test_event_sequence_numbers_are_dense_and_monotonic(example_pack: RobotPack) -> None:

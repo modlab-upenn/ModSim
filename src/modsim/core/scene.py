@@ -12,7 +12,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
 from modsim.core.ids import ModuleInstanceId
-from modsim.core.transforms import Transform
+from modsim.core.transforms import ZERO_VEC3, Transform, Vec3
 from modsim.robot_packs.schema import RobotPack
 
 
@@ -49,11 +49,14 @@ class SceneSpec:
         spacing_m: float,
         prefix: str | None = None,
         axis: int = 0,
+        origin: Vec3 = ZERO_VEC3,
     ) -> SceneSpec:
         """Return ``count`` instances of one module type spaced along one axis.
 
         This is the smallest useful multi-module scene and exists so that tests
-        and examples do not each reinvent placement arithmetic.
+        and examples do not each reinvent placement arithmetic. ``origin``
+        shifts the whole row, which is how a scene is lifted clear of a ground
+        plane.
         """
         if count < 1:
             raise SceneError("a scene requires at least one module placement")
@@ -62,8 +65,8 @@ class SceneSpec:
         name = prefix if prefix is not None else module_type_id
         placements: list[ModulePlacement] = []
         for index in range(count):
-            offset = [0.0, 0.0, 0.0]
-            offset[axis] = spacing_m * index
+            offset = [origin[0], origin[1], origin[2]]
+            offset[axis] += spacing_m * index
             placements.append(
                 ModulePlacement(
                     instance_id=ModuleInstanceId(f"{name}_{index}"),

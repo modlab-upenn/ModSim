@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import cast
 
+import pytest
 from typer.testing import CliRunner
 
 from modsim import __version__
+from modsim.backends.registry import BACKEND_ENV_VAR
 from modsim.cli import app
 
 runner = CliRunner()
@@ -133,6 +136,165 @@ def test_cli_dock_rejects_an_invalid_pack(copied_pack: Path) -> None:
 
     assert result.exit_code == 1
     assert "INVALID" in result.stdout
+
+
+def test_cli_backends_lists_the_mock(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(BACKEND_ENV_VAR, raising=False)
+    result = runner.invoke(app, ["backends"])
+
+    assert result.exit_code == 0
+    assert "mock (active)" in result.stdout
+    assert "mujoco" in result.stdout
+
+
+def test_cli_backends_json_reports_the_active_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(BACKEND_ENV_VAR, "mock")
+    result = runner.invoke(app, ["backends", "--output", "json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["active"] == "mock"
+    assert {entry["name"] for entry in payload["backends"]} >= {"mock", "mujoco"}
+
+
+def test_cli_dock_reports_the_backend_it_used(example_pack_dir: Path) -> None:
+    result = runner.invoke(app, ["dock", str(example_pack_dir), "--backend", "mock"])
+
+    assert result.exit_code == 0
+    assert "on the mock backend" in result.stdout
+
+
+def test_cli_dock_honours_the_backend_environment_variable(
+    example_pack_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(BACKEND_ENV_VAR, "mock")
+    result = runner.invoke(app, ["dock", str(example_pack_dir), "--output", "json"])
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout)["backend"] == "mock"
+
+
+def test_cli_dock_rejects_an_unknown_backend(example_pack_dir: Path) -> None:
+    result = runner.invoke(app, ["dock", str(example_pack_dir), "--backend", "nope"])
+
+    assert result.exit_code == 2
+    assert "unknown backend" in result.output
+
+
+def test_cli_no_gravity_notes_that_the_mock_has_none(example_pack_dir: Path) -> None:
+    result = runner.invoke(
+        app, ["dock", str(example_pack_dir), "--backend", "mock", "--no-gravity"]
+    )
+
+    assert result.exit_code == 0
+    assert "has no gravity" in result.output
+
+
+def test_cli_run_executes_a_scripted_scenario(example_pack_dir: Path) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            str(example_pack_dir),
+            "--count",
+            "2",
+            "--spacing",
+            "0.1",
+            "--duration",
+            "0.2",
+            "--output",
+            "json",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["backend"] == "mock"
+    assert len(payload["connections"]) == 1
+
+
+def test_cli_run_releases_at_the_scheduled_time(example_pack_dir: Path) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            str(example_pack_dir),
+            "--count",
+            "2",
+            "--spacing",
+            "0.1",
+            "--duration",
+            "0.4",
+            "--undock-at",
+            "0.2",
+            "--output",
+            "json",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["connections"] == []
+    assert payload["metrics"]["undocking_success_count"] == 1
+
+
+def run_scenario(example_pack_dir: Path, *extra: str) -> dict[str, object]:
+    """Run a scripted scenario and return its JSON report."""
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            str(example_pack_dir),
+            "--count",
+            "2",
+            "--spacing",
+            "0.1",
+            "--output",
+            "json",
+            *extra,
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    payload: dict[str, object] = json.loads(result.stdout)
+    return payload
+
+
+def module_gap(payload: dict[str, object]) -> float:
+    """Return the x separation between the two modules in a scenario report."""
+    positions = cast("dict[str, list[float]]", payload["module_positions"])
+    first, second = (positions[name][0] for name in sorted(positions))
+    return abs(second - first)
+
+
+def test_cli_run_retracts_the_driver_after_release(example_pack_dir: Path) -> None:
+    """Releasing a weld does not separate anything by itself.
+
+    Two welded modules share a velocity, so on release they coast along
+    together. The retract step is what makes an undock visible.
+    """
+    payload = run_scenario(
+        example_pack_dir, "--duration", "3", "--undock-at", "1", "--retract", "0.05"
+    )
+
+    assert payload["connections"] == []
+    assert module_gap(payload) > 0.15
+
+
+def test_cli_run_with_zero_retract_leaves_the_pair_coasting(example_pack_dir: Path) -> None:
+    payload = run_scenario(
+        example_pack_dir, "--duration", "3", "--undock-at", "1", "--retract", "0"
+    )
+
+    assert payload["connections"] == []
+    # Still adjacent: the constraint is gone but nothing pushed them apart.
+    assert module_gap(payload) == pytest.approx(0.1, abs=0.02)
+
+
+def test_cli_run_requires_mujoco_for_the_viewer(example_pack_dir: Path) -> None:
+    result = runner.invoke(app, ["run", str(example_pack_dir), "--backend", "mock", "--view"])
+
+    assert result.exit_code == 2
+    assert "requires the MuJoCo backend" in result.output
 
 
 def test_cli_pack_init_creates_draft(tmp_path: Path, example_pack_dir: Path) -> None:
