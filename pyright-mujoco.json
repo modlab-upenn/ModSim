@@ -1,0 +1,14 @@
+{
+  "include": [
+    "src/modsim_backend_mujoco",
+    "tests/test_mujoco_backend.py",
+    "tests/test_mujoco_docking.py",
+    "tests/test_mujoco_welds.py"
+  ],
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "standard",
+  "reportMissingTypeStubs": false,
+  "reportAttributeAccessIssue": false,
+  "venv": ".venv",
+  "venvPath": "."
+}

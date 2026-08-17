@@ -7,13 +7,14 @@ without relying on prior conversation history.
 
 ## Snapshot and document authority
 
-- Snapshot date: 2026-08-10
+- Snapshot date: 2026-08-17
 - Distribution: `modsim-robotics`
 - Package version: `0.1.0`
 - Robot Pack format: `0.1`
 - Supported Python: 3.11 and 3.12; repository default: 3.12
-- Branch at the start of this documentation update: `main`
-- Implementation baseline commit: `badf8b2c52bc`
+- Integration branch: `integration/mujoco-smores-ep`
+- Integration parents: `main` at `7d3a3ba7c08f` and
+  `origin/docking-exec-aw` at `e2ec0b20a3ef`
 - Project status: pre-alpha
 
 When sources disagree, use this order:
@@ -37,8 +38,8 @@ code. Do not treat it as an inventory of implemented modules.
   will own physics.
 - URDF and meshes are imported mechanical assets. Robot Pack YAML is the
   canonical modular-robot semantic description.
-- MuJoCo is the first intended physics backend; Isaac Sim remains a later
-  adapter. Neither adapter exists yet.
+- MuJoCo is the first operational physics backend. Isaac Sim remains a later
+  adapter and must implement the same backend contract.
 - The first UI is a standalone native Python desktop application using
   PySide6 and PyVistaQt. The core API must remain usable by a future browser
   frontend or native/C++ client.
@@ -68,8 +69,8 @@ or committing excerpts.
 
 ## Current system boundary
 
-The implemented vertical slice is a Robot Pack authoring system, not yet a
-simulator:
+The implemented vertical slice now covers Robot Pack authoring plus a
+backend-neutral docking runtime:
 
 ```text
 local URDF + meshes
@@ -88,12 +89,23 @@ loader -> strict typed model -> validator
                     |
                     v
              ModSim Studio editor + one-module 3D preview
+                    |
+                    v
+       SceneSpec -> RuntimeSession -> WorldState + EventLog
+                            |
+                            v
+             connector acceptance + docking guards
+                            |
+                            v
+                mock backend or MuJoCo backend
 ```
 
-There is currently no world state, simulation clock, backend protocol,
-docking execution, assembly computation, control loop, MuJoCo adapter, Isaac
-adapter, or `modsim run` command. The validation profile named `simulation`
-only performs stricter structural readiness checks.
+World state, a simulation clock, assemblies, connector acceptance, two-phase
+dock/undock commits, runtime metrics, a mock backend, and a MuJoCo weld-backed
+adapter are operational. Model views, the Studio Runtime Inspector, joint
+command/control APIs, reconfiguration planning, and the Isaac adapter remain
+deferred. The validation profile named `simulation` still performs structural
+readiness checks; it does not launch a backend.
 
 ## What is implemented
 
@@ -105,12 +117,16 @@ only performs stricter structural readiness checks.
   PyVistaQt.
 - The optional `dev` extra installs Ruff, Pyright, pytest, pytest-cov, and
   pre-commit.
+- The optional `mujoco` extra installs MuJoCo and NumPy without adding either
+  dependency to the core or Studio-only installation.
 - A committed `uv.lock` provides reproducible dependency resolution.
 - Console commands are `modsim` and `modsim-studio`.
-- Wheels contain both `modsim` and `modsim_studio`; documentation, tests, and
-  examples are included in the source distribution.
-- CI checks Python 3.11 and 3.12, runs a native Studio smoke under Xvfb, builds
-  wheel and source distributions, and smoke-tests both artifacts.
+- Wheels contain `modsim`, `modsim_studio`, and the optional
+  `modsim_backend_mujoco` adapter; documentation, tests, and examples are
+  included in the source distribution.
+- CI checks Python 3.11 and 3.12, runs a native Studio smoke under Xvfb, runs a
+  separate headless MuJoCo backend/conformance job, builds wheel and source
+  distributions, and smoke-tests both artifacts.
 
 ### Robot Pack schema
 
@@ -120,6 +136,8 @@ only performs stricter structural readiness checks.
 - module types, joints, limits, connector instances, and connector types;
 - connector compatibility, orientation, acceptance regions, physical
   constraints, compliance, load limits, and undocking intent;
+- connector docking policy: explicit/automatic latch, measured/nominal
+  alignment, redock cooldown, and optional break force;
 - bounded JSON-compatible custom metadata on the manifest, connector
   instances, and connector types;
 - advertised capabilities;
@@ -210,10 +228,47 @@ modsim pack init --from-urdf SOURCE --out DESTINATION [--asset-root PATH]
 modsim pack inspect PACK [--output text|json]
 modsim pack validate PACK [--profile authoring|simulation] [--output text|json]
 modsim studio [PACK]
+modsim backends
+modsim dock PACK [--backend mock|mujoco]
+modsim run PACK [--backend mock|mujoco] [--view]
 ```
 
-Invalid packs return a nonzero validation exit status. There is no runtime
-launch command.
+`modsim dock` checks authored docking semantics in a one-shot session.
+`modsim run` approaches, docks, optionally releases, and retracts modules under
+the selected backend. Supplying `--fixed-connector` and `--moving-connector`
+measures those connector frames after backend load, arranges them in a valid
+mating orientation, and drives along the actual docking axis instead of
+assuming an X-axis layout.
+
+### Runtime, docking, and backends
+
+`src/modsim/core`, `src/modsim/connectors`, `src/modsim/runtime`, and
+`src/modsim/backends` provide:
+
+- multi-module `SceneSpec` placement and stable runtime identifiers;
+- canonical modules, connectors, logical connections, backend snapshots, and
+  an append-only event log;
+- assemblies derived as connected components, including free one-module
+  assemblies;
+- spatial candidate detection, mutual compatibility and gender rules,
+  position/axis/roll/relative-velocity acceptance, and docking guards;
+- two-phase commits: logical connections are created only after a backend
+  confirms the physical constraint;
+- release, cooldown, overload hooks, assembly merge/split events, and modular
+  runtime metrics;
+- a dependency-free kinematic mock adapter; and
+- an optional MuJoCo adapter that composes multiple URDF/MJCF module instances,
+  reports measured link/site frames, steps rigid-body physics, and implements
+  runtime dock/undock with reserved weld equality constraints.
+
+`stage_docking_pair` is reusable scenario setup. It derives a whole-module
+placement from measured connector and module-root frames, including connectors
+on articulated child bodies. Nominal alignment similarly preserves the
+measured root-to-parent-body transform before activating a weld.
+
+MuJoCo currently supports only fixed connections. Compliant, hinge, ball, and
+custom constraints are refused explicitly. Joint command capability is not
+advertised until a real actuator/command API exists.
 
 ### ModSim Studio
 
@@ -276,14 +331,24 @@ problem per launch when collecting a clean debugging log.
 
 - `examples/robot_packs/generic_cube` is the only committed Robot Pack. It is
   intentionally simulator-neutral and self-contained.
-- Test modules cover schemas, loading, writing, validation, CLI behavior, URDF
-  import, Studio logging, and the GUI-independent Studio project model.
-- The latest verification recorded for this snapshot collects 108 test cases
-  from 97 test functions and reports 82% branch-aware core coverage.
+- Test modules also cover transforms, acceptance, assembly derivation, docking
+  lifecycle, runtime scenarios, backend registration/conformance, MuJoCo scene
+  compilation, weld allocation, physical dock/undock, and articulated-connector
+  nominal snapping.
+- The complete integration verification passes 304 tests with native MuJoCo
+  enabled and reports 87% branch-aware core coverage. The focused native
+  MuJoCo/backend-conformance selection passes 62 tests.
 - The CI Studio smoke opens the generic cube in a real Qt/PyVista window under
   Xvfb, selects a module tree item, and verifies session logging.
 
-SMORES-EP assets and a SMORES-specific example have not been added.
+The working SMORES-EP pack remains private and ignored at
+`.modsim/robot_packs/smores_ep`; its Fusion-exported visual assets are not
+committed pending an explicit redistribution decision. The integration copy now
+has a provisional genderless `ep_face` type; bottom, pan, left, and right
+connector instances; docking/undocking capabilities; and four 12-triangle OBJ
+collision proxies. All four same-face pairs complete a headless MuJoCo dock in
+the connector-pair scenario. The pre-integration local pack is backed up at
+`.modsim/backups/smores_ep-pre-mujoco-integration`.
 
 ## Actual repository map
 
@@ -298,8 +363,13 @@ docs/robot_pack_spec.md        implemented format-0.1 contract
 docs/studio.md                 current desktop workflow and limitations
 examples/robot_packs/          committed generic example
 src/modsim/cli.py              Typer CLI
+src/modsim/core/               runtime identifiers, transforms, state, events, assemblies
+src/modsim/connectors/         compatibility, acceptance, guards, docking execution
+src/modsim/backends/           adapter contract, registry, mock backend
+src/modsim/runtime/            runtime session, metrics, scenario setup
 src/modsim/importers/          URDF parser and draft builder
 src/modsim/robot_packs/        schema, loader, validator, writer, issues
+src/modsim_backend_mujoco/     optional MuJoCo scene, adapter, weld pool, viewer
 src/modsim_studio/app.py       Qt application lifecycle
 src/modsim_studio/main_window.py
                                menus, tree, panels, Properties editors
@@ -309,12 +379,13 @@ src/modsim_studio/session_logging.py
 src/modsim_studio/viewport.py  PyVista rendering and mesh picking
 tests/                         core, importer, CLI, and project-model tests
 pyproject.toml                 package metadata, extras, tool configuration
+pyright-mujoco.json            optional-backend type-check configuration
 pyright-studio.json            strict Studio type-check configuration
 uv.lock                        committed dependency lock
 ```
 
-The future packages named `modsim_runtime`, `modsim_models`, and
-`modsim_backends` in `HANDOFF.md` do not exist.
+`HANDOFF.md` uses some future package names and layouts that are not literal.
+The implemented runtime and backend namespaces above are authoritative.
 
 ## Known defects
 
@@ -396,13 +467,24 @@ tests cover the corresponding dialogs, tree selection, project switching, or
 
 These are either deliberate format-0.1 boundaries or work not yet implemented:
 
-- Compatibility checks verify referenced target IDs but not reciprocal
-  compatibility or meaningful gender pairing.
-- Connector `active`, `gender`, `supports_undocking`, physical constraints,
-  and capabilities are declarative. No runtime consumes them.
-- Fixed and compliant connection descriptions are shaped for validation.
-  `hinge`, `ball`, and `custom` can be named but lack the parameters and
-  backend translation needed for simulation.
+- Connector compatibility is reciprocal and gender-aware at runtime.
+  Connector `active` and capabilities remain declarative; `supports_undocking`,
+  physical connection intent, and docking policy are consumed.
+- Fixed connections run on both backends. The MuJoCo adapter explicitly refuses
+  compliant, hinge, ball, and custom requests; compliant stiffness translation
+  and the other constraint types are not implemented.
+- The MuJoCo adapter does not yet honor the complete backend mapping document;
+  its first slice expects identity-compatible URDF/MJCF body and joint names.
+- Named-frame-only connectors are refused by MuJoCo until frame mappings are
+  resolved. Connectors with a numeric `local_pose` are materialized as measured
+  MuJoCo sites.
+- There is no joint-command/actuator API. The docking demo drives a module's
+  root free joint for scenario testing, not SMORES wheel or joint actuators.
+- MuJoCo does not report equality-constraint forces, so connector break-force
+  release and load metrics remain dormant on that backend.
+- Welded module contact exclusion is not implemented. Flush lightweight
+  collision proxies are suitable for the current demo; recessed or
+  interpenetrating connector geometry can make the solver fight the weld.
 - Pydantic models are frozen, but keyed dictionaries are shallow-mutable.
   Loader/validator/writer defensively revalidate; callers should still treat
   loaded packs as immutable.
@@ -424,6 +506,8 @@ These are either deliberate format-0.1 boundaries or work not yet implemented:
   complete dedicated Studio editors.
 - The viewport shows one module at zero joint configuration. It has no joint
   animation, multi-module assembly view, contacts, runtime state, or physics.
+- There is no Studio Runtime Inspector, ModelViewRegistry, cohort system,
+  docking controller, approach planner, or reconfiguration planner.
 - Canonical saves intentionally rewrite YAML formatting.
 - There is no migration framework for future Robot Pack format versions.
 - There is no project license, publication channel, public project URL, or
@@ -431,78 +515,53 @@ These are either deliberate format-0.1 boundaries or work not yet implemented:
 
 ## Recommended next implementation iteration
 
-Keep the next iteration focused on making the existing authoring loop safe and
-usable before adding runtime architecture.
+Keep the next iteration focused on making the new MuJoCo slice trustworthy for
+real robot packs before adding model views or a runtime dashboard.
 
-### 1. Establish GUI regression tests
+1. Honor backend mappings when selecting assets and resolving body, joint, and
+   connector-frame names. Add mechanical-source validation so identity-name
+   assumptions fail before backend compilation.
+2. Replace provisional SMORES connector poses, tolerances, orientation rules,
+   and load limits with values verified from CAD and hardware data. Keep the
+   `provisional_demo` metadata until that review is complete.
+3. Add a joint/actuator command contract and populate joint state/handle maps.
+   Then drive SMORES through wheel/pan/tilt commands rather than root free-joint
+   scenario controls.
+4. Add contact-exclusion reservation alongside the weld pool and report
+   equality-constraint forces. This unlocks recessed connectors, overload
+   release, and useful connector-load metrics.
+5. Add a checked-in synthetic articulated Robot Pack fixture for complete
+   cross-backend scenario regression without committing private SMORES assets.
+6. Continue the existing mechanical-validation and Studio GUI-regression work.
+   Model views, dashboard panels, and runtime visualization remain deliberately
+   deferred until this execution boundary is stable.
 
-- Add stable Qt tests for category selection, project replacement, connector
-  Add/Apply/Remove, type creation, Save/reopen, and named-frame preservation.
-- Keep geometry-heavy cases behind an Xvfb/native smoke where appropriate.
-- Consider `pytest-qt` only when it materially simplifies lifecycle and signal
-  testing; add it to locked dependencies if adopted.
+## SMORES-EP MuJoCo workflow
 
-Acceptance: each fixed `STUDIO-*` defect has a regression test and CI stays
-green on Python 3.11/3.12 plus the Studio job.
-
-### 2. Complete mechanical-reference validation
-
-- Parse/cache referenced URDF assets for CLI/validator cross-validation.
-- Reject or clearly report missing module roots, parent links, source joints,
-  named frames, and mapping names even when YAML was edited outside Studio.
-- Render resolvable named-frame connectors or report why they cannot render.
-
-Acceptance: all URDF-owned names are checked before simulation-readiness can
-pass, independent of which editor produced the YAML.
-
-### 3. Improve connector-action and dialog UX
-
-- Add context-menu or toolbar entry points where they improve discoverability.
-- Validate add-dialog input without closing and losing entered values.
-- Add confirmation/undo or a clear unsaved-change recovery path for removals.
-- Decide whether stable connector IDs need an explicit rename operation.
-- Preserve selected module and viewport camera through semantic edits.
-
-Acceptance: connector and type workflows are discoverable, recoverable, and do
-not require re-entering data after a validation error.
-
-### 4. Exercise the workflow with SMORES-EP locally
-
-- Start with one redistributable or private local SMORES-EP URDF.
-- Generate a draft with `modsim pack init`.
-- Record all importer failures before expanding importer scope.
-- Author real connector types, instances, tolerances, and mapping data.
-- Validate under both profiles, Save, reopen, and visually compare frames.
-- Keep private assets outside Git until redistribution is approved. A small
-  synthetic fixture may be committed to reproduce a generic bug.
-
-Acceptance: the locally held SMORES-EP pack completes connector-type creation,
-URDF-body association, custom-field editing, Save/reopen, and both validation
-profiles; all generic failures have tests that do not require private assets.
-
-After these steps, add capability/mapping editor coverage. Only then begin the
-roadmap's `ModelViewRegistry`, canonical runtime state, and mock backend. Use a
-mock backend to settle runtime APIs before implementing MuJoCo.
-
-## SMORES-EP first-use workflow
-
-From a configured development environment:
+The current private development pack is:
 
 ```bash
-modsim pack init \
-  --from-urdf /local/path/to/smores_ep.urdf \
-  --asset-root /local/path/to/any/package/root \
-  --out /local/path/to/smores_ep_robot_pack
-
-modsim pack inspect /local/path/to/smores_ep_robot_pack
-modsim studio /local/path/to/smores_ep_robot_pack
+modsim pack inspect .modsim/robot_packs/smores_ep
+modsim pack validate .modsim/robot_packs/smores_ep --profile simulation
+modsim studio .modsim/robot_packs/smores_ep
 ```
 
-Omit `--asset-root` if all mesh paths resolve relative to the URDF. In Studio,
-review generated module/joint metadata, create connector types explicitly,
-place connector instances, validate with both profiles, Save, close, reopen,
-and validate again. A simulation-profile pass means the pack is structurally
-complete; it still cannot run until a backend/runtime exists.
+Run a headless pan-face approach, fixed weld, release, and retract:
+
+```bash
+modsim run .modsim/robot_packs/smores_ep \
+  --backend mujoco \
+  --fixed-connector pan \
+  --moving-connector pan \
+  --connector-gap 0.02 \
+  --approach 0.03 \
+  --duration 1.5 \
+  --undock-at 1.0
+```
+
+Replace both `pan` values with `bottom`, `left`, or `right` to exercise the
+other same-face demos. On macOS, add `--view` and launch the same command with
+`.venv/bin/mjpython -m modsim` so MuJoCo owns the main thread.
 
 ## Fresh-machine setup
 
@@ -510,8 +569,9 @@ After cloning or copying the complete repository, including `uv.lock`:
 
 ```bash
 cd ModSim
-uv sync --locked --extra dev --extra studio --python 3.12
+uv sync --locked --extra dev --extra studio --extra mujoco --python 3.12
 uv run --no-sync modsim --version
+uv run --no-sync modsim backends
 uv run --no-sync modsim pack validate examples/robot_packs/generic_cube
 uv run --no-sync modsim studio examples/robot_packs/generic_cube
 ```
@@ -521,7 +581,7 @@ The standard-library virtual-environment alternative is:
 ```bash
 cd ModSim
 python3.12 -m venv .venv
-.venv/bin/python -m pip install -e ".[studio,dev]"
+.venv/bin/python -m pip install -e ".[studio,dev,mujoco]"
 .venv/bin/modsim --version
 .venv/bin/modsim studio examples/robot_packs/generic_cube
 ```
@@ -536,7 +596,7 @@ managed Python installation into ignored repository directories:
 
 ```bash
 UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
-  uv sync --locked --extra dev --extra studio --python 3.12
+  uv sync --locked --extra dev --extra studio --extra mujoco --python 3.12
 ```
 
 For the pip alternative, use `PIP_NO_CACHE_DIR=1` during installation so pip
@@ -554,6 +614,7 @@ uv lock --check
 uv run --no-sync ruff check .
 uv run --no-sync ruff format --check .
 uv run --no-sync pyright
+uv run --no-sync pyright --project pyright-mujoco.json
 uv run --no-sync pyright --project pyright-studio.json
 uv run --no-sync pytest
 git diff --check
@@ -588,8 +649,9 @@ A useful starting request for the next implementation session is:
 
 ```text
 Read docs/AGENTS.md, docs/IMPLEMENTATION_STATUS.md,
-docs/robot_pack_spec.md, and docs/studio.md. Add stable Qt regression coverage
-for connector and connector-type create/edit/remove, custom metadata,
-URDF-body reassociation, category/project selection, and Save/reopen. Preserve
-the core/Studio dependency boundary and run all repository checks.
+docs/robot_pack_spec.md, docs/studio.md, docs/backends.md, and
+docs/docking_semantics.md. Make the MuJoCo adapter honor Robot Pack backend
+mappings for assets, links, joints, and connector frames. Preserve the optional
+backend dependency boundary and run core, Studio, MuJoCo, packaging, and
+cross-backend checks.
 ```

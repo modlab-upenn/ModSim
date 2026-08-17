@@ -5,24 +5,25 @@ architecture in `HANDOFF.md` is a roadmap; when examples differ, this document
 and the typed models in `src/modsim/robot_packs/schema.py` describe the code that
 currently runs.
 
-Format 0.1 covers structural authoring, persistence, and validation. The
-separate URDF importer can generate a draft format-0.1 pack and source-name
-mapping, but format validation still does not launch a simulator or prove that
-a backend can execute a pack.
+Format 0.1 covers structural authoring, persistence, validation, and the
+connector semantics consumed by the runtime. The separate URDF importer can
+generate a draft format-0.1 pack and source-name mapping. Format validation
+still does not launch a simulator or prove that a backend can execute a pack;
+that is verified by a runtime session and backend-specific tests.
 
 ## Implementation status
 
 Implemented now are the strict split-document loader and schema, authoring and
 simulation validation profiles, deterministic new-directory export,
-transactional in-place save, URDF-to-draft-pack import, and the Studio project
-model and editor surfaces for current manifest, module, joint, connector, and
-connector-type metadata.
+transactional in-place save, URDF-to-draft-pack import, Studio editor surfaces,
+backend-neutral docking execution, and fixed dock/undock constraints under the
+mock and optional MuJoCo backends.
 
-Still deferred are MuJoCo and Isaac Sim execution adapters, capability
-execution, runtime docking behavior, actuator and transmission catalogs,
-validator-level cross-checking of authored source names against referenced URDF
-files, and the extra parameters needed to simulate `hinge`, `ball`, and `custom`
-connections.
+Still deferred are the Isaac Sim adapter, capability execution, actuator and
+transmission catalogs, joint commands, validator-level cross-checking of
+authored source names against referenced URDF files, complete backend-mapping
+resolution in MuJoCo, and simulation support for compliant, `hinge`, `ball`,
+and `custom` connections.
 
 ## Directory layout
 
@@ -245,9 +246,34 @@ connector_types:
       max_shear_force_n: 40.0
       max_bending_moment_nm: 1.8
     supports_undocking: true
+    docking_policy:
+      auto_latch: false
+      alignment: measured
+      redock_cooldown_s: null
+      break_force_n: null
     metadata:
       interface.standard: smores_ep
 ```
+
+`docking_policy` is optional runtime behaviour rather than mechanical
+description, so omitting it is identical to the defaults shown above:
+
+- `auto_latch` latches as soon as acceptance is satisfied, without an explicit
+  dock command. Passive connectors such as permanent magnets are usually
+  auto-latching; commanded connectors are not.
+- `alignment` is `measured` or `nominal`. `measured` freezes the observed
+  relative pose; `nominal` snaps the connector frames coincident with the
+  matched discrete orientation, which prevents pose drift accumulating over
+  repeated reconfiguration.
+- `redock_cooldown_s` is the minimum time a connector stays free after undocking
+  or a failed dock.
+- `break_force_n` releases the connection when the measured constraint force
+  exceeds it. Null means the connection never breaks under load.
+
+`docs/docking_semantics.md` describes how the runtime evaluates these fields.
+The optional `metadata` and `docking_policy` mappings are independent: custom
+descriptive fields are preserved without changing docking behaviour, while the
+typed policy fields are consumed by the runtime.
 
 Connector genders are `male`, `female`, `hermaphroditic`, and `genderless`.
 Orientation mode is either:
@@ -336,9 +362,10 @@ metadata as warnings where continued editing is reasonable. Cross-reference,
 schema, path, and asset failures are always errors.
 
 `simulation` promotes completeness warnings to errors. It means “structurally
-ready for a future simulator adapter.” `RobotPackValidator` does not run physics,
-parse referenced URDF files, cross-check authored source names against those
-files, or guarantee backend support.
+ready to attempt a simulator adapter.” `RobotPackValidator` does not run
+physics, parse referenced URDF files, cross-check authored source names against
+those files, or guarantee that a selected backend supports every requested
+feature.
 
 Issues include a stable code, severity, document, JSON-pointer-style path,
 optional entity reference, and optional suggested fix. Invalid packs produce

@@ -10,9 +10,11 @@ from pydantic import ValidationError
 from modsim.robot_packs import (
     AcceptanceRegion,
     AcceptanceShape,
+    AlignmentMode,
     AssetManifest,
     ConnectorSpec,
     ConnectorTypeSpec,
+    DockingPolicySpec,
     JointLimits,
     JointSpec,
     JointType,
@@ -105,6 +107,41 @@ def test_connector_and_type_accept_json_custom_metadata() -> None:
     assert connector.metadata["channel_count"] == 4
     assert connector.metadata["vendor"] == {"serial": None}
     assert connector_type.metadata == {"electrical.bus": "can", "pins": 8}
+
+
+def test_connector_type_combines_metadata_with_runtime_docking_policy() -> None:
+    connector_type = ConnectorTypeSpec(
+        id="ep_face",
+        metadata={"interface.standard": "smores_ep", "pins": 4},
+        docking_policy=DockingPolicySpec(
+            auto_latch=True,
+            alignment=AlignmentMode.NOMINAL,
+            redock_cooldown_s=0.25,
+            break_force_n=80.0,
+        ),
+    )
+
+    restored = ConnectorTypeSpec.model_validate(connector_type.model_dump(mode="python"))
+
+    assert restored == connector_type
+    assert restored.metadata["interface.standard"] == "smores_ep"
+    assert restored.effective_docking_policy.alignment is AlignmentMode.NOMINAL
+    assert restored.effective_docking_policy.break_force_n == 80.0
+
+
+def test_connector_type_uses_docking_policy_defaults_without_declaring_one() -> None:
+    connector_type = ConnectorTypeSpec(id="ep_face")
+
+    assert connector_type.docking_policy is None
+    assert connector_type.effective_docking_policy == DockingPolicySpec()
+    assert not connector_type.effective_docking_policy.auto_latch
+    assert connector_type.effective_docking_policy.alignment is AlignmentMode.MEASURED
+
+
+@pytest.mark.parametrize("field", ["redock_cooldown_s", "break_force_n"])
+def test_docking_policy_rejects_nonpositive_thresholds(field: str) -> None:
+    with pytest.raises(ValidationError):
+        DockingPolicySpec.model_validate({field: 0.0})
 
 
 def test_custom_metadata_rejects_bad_keys_and_non_json_values() -> None:

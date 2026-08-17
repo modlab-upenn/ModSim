@@ -41,6 +41,7 @@ from modsim.importers import URDFImporter
 from modsim.robot_packs import (
     AcceptanceRegion,
     AcceptanceShape,
+    AlignmentMode,
     AllowedOrientations,
     ComplianceSpec,
     ConnectorGender,
@@ -48,6 +49,7 @@ from modsim.robot_packs import (
     ConnectorSpec,
     ConnectorTypeSpec,
     ControlMode,
+    DockingPolicySpec,
     JointLimits,
     JointSpec,
     JointType,
@@ -904,6 +906,36 @@ class MainWindow(QMainWindow):
         form.addRow("Max shear force (N)", max_shear)
         form.addRow("Max bending moment (Nm)", max_bending)
         form.addRow("Supports undocking", supports_undocking)
+
+        policy = connector_type.docking_policy
+        declare_policy = QCheckBox()
+        declare_policy.setChecked(policy is not None)
+        auto_latch = QCheckBox()
+        auto_latch.setChecked(policy.auto_latch if policy is not None else False)
+        alignment = _enum_combo(
+            AlignmentMode,
+            policy.alignment.value if policy is not None else AlignmentMode.MEASURED.value,
+        )
+        redock_cooldown = QLineEdit(
+            _optional_number(policy.redock_cooldown_s if policy is not None else None)
+        )
+        break_force = QLineEdit(
+            _optional_number(policy.break_force_n if policy is not None else None)
+        )
+
+        def set_policy_fields_enabled(enabled: bool) -> None:
+            auto_latch.setEnabled(enabled)
+            alignment.setEnabled(enabled)
+            redock_cooldown.setEnabled(enabled)
+            break_force.setEnabled(enabled)
+
+        declare_policy.toggled.connect(set_policy_fields_enabled)
+        set_policy_fields_enabled(declare_policy.isChecked())
+        form.addRow("Declare docking policy", declare_policy)
+        form.addRow("Automatic latching", auto_latch)
+        form.addRow("Docking alignment", alignment)
+        form.addRow("Redock cooldown (s)", redock_cooldown)
+        form.addRow("Break force (N)", break_force)
         metadata = _MetadataEditor(connector_type.metadata)
         form.addRow("Custom metadata", metadata)
 
@@ -981,20 +1013,33 @@ class MainWindow(QMainWindow):
                 if any(value is not None for value in limit_values)
                 else None
             )
-            updated = ConnectorTypeSpec(
-                id=connector_type.id,
-                name=name.text() or None,
-                active=active.isChecked(),
-                gender=ConnectorGender(gender.currentText()),
-                compatible_with=tuple(
-                    value.strip() for value in compatible.text().split(",") if value.strip()
-                ),
-                allowed_orientations=allowed_orientations,
-                acceptance_region=acceptance_region,
-                physical_connection=physical_connection,
-                limits=connector_limits,
-                supports_undocking=supports_undocking.isChecked(),
-                metadata=metadata.value(),
+            docking_policy = (
+                DockingPolicySpec(
+                    auto_latch=auto_latch.isChecked(),
+                    alignment=AlignmentMode(alignment.currentText()),
+                    redock_cooldown_s=_optional_float(redock_cooldown.text()),
+                    break_force_n=_optional_float(break_force.text()),
+                )
+                if declare_policy.isChecked()
+                else None
+            )
+            updated = ConnectorTypeSpec.model_validate(
+                {
+                    **connector_type.model_dump(mode="python"),
+                    "name": name.text() or None,
+                    "active": active.isChecked(),
+                    "gender": ConnectorGender(gender.currentText()),
+                    "compatible_with": tuple(
+                        value.strip() for value in compatible.text().split(",") if value.strip()
+                    ),
+                    "allowed_orientations": allowed_orientations,
+                    "acceptance_region": acceptance_region,
+                    "physical_connection": physical_connection,
+                    "limits": connector_limits,
+                    "supports_undocking": supports_undocking.isChecked(),
+                    "docking_policy": docking_policy,
+                    "metadata": metadata.value(),
+                }
             )
             return project.update_connector_type(updated)
 

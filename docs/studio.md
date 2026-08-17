@@ -38,7 +38,7 @@ The current Studio MVP provides:
   reassignment to an existing type and an imported URDF body/link;
 - connector-type fields for gender, compatibility, allowed orientations,
   acceptance tolerances, physical constraints, compliance, load limits, and
-  undocking support;
+  undocking support, plus optional runtime docking policy;
 - a read-only preview of the canonical split-YAML documents;
 - authoring validation with `F6` and stricter structural
   simulation-readiness validation with `F7`;
@@ -146,6 +146,13 @@ acceptance, physical, load, undocking, and custom-metadata fields. **Remove
 connector type** refuses deletion while a connector instance uses the type.
 When an unused type is removed, compatible type and capability references to
 it are cleaned so the YAML remains valid.
+
+The connector-type Properties panel also exposes an optional docking policy.
+Enable **Declare docking policy** to edit automatic latching, measured versus
+nominal alignment, redock cooldown, and break force. Disabling it removes the
+explicit policy and restores the documented runtime defaults. Applying any
+other connector-type edit preserves both a declared docking policy and custom
+metadata.
 
 To add a connector, select a concrete link row under **Module Types → module →
 Links**. The link's Properties panel contains **Add connector to this link**.

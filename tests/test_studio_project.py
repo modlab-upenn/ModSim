@@ -10,11 +10,13 @@ from pydantic import ValidationError
 from modsim.robot_packs import (
     AcceptanceRegion,
     AcceptanceShape,
+    AlignmentMode,
     AllowedOrientations,
     ConnectorGender,
     ConnectorLimits,
     ConnectorSpec,
     ConnectorTypeSpec,
+    DockingPolicySpec,
     OrientationMode,
     PhysicalConnectionSpec,
     PhysicalConstraintType,
@@ -297,8 +299,8 @@ def test_studio_project_saves_existing_pack_atomically(copied_pack: Path) -> Non
     assert not list(copied_pack.parent.glob(f".{copied_pack.name}.update.*"))
 
 
-def test_studio_project_updates_connector_type(example_pack_dir: Path) -> None:
-    project = StudioProject.open(example_pack_dir)
+def test_studio_project_updates_connector_type(copied_pack: Path) -> None:
+    project = StudioProject.open(copied_pack)
     updated_type = ConnectorTypeSpec(
         id="fixed_face",
         name="Edited Fixed Face",
@@ -319,11 +321,26 @@ def test_studio_project_updates_connector_type(example_pack_dir: Path) -> None:
             max_bending_moment_nm=1.0,
         ),
         supports_undocking=True,
+        docking_policy=DockingPolicySpec(
+            auto_latch=True,
+            alignment=AlignmentMode.NOMINAL,
+            redock_cooldown_s=0.5,
+            break_force_n=25.0,
+        ),
+        metadata={"interface.standard": "smores_ep"},
     )
 
-    edited = project.update_connector_type(updated_type)
+    edited = project.update_connector_type(updated_type).save()
+    reopened = StudioProject.open(edited.loaded.root)
+    saved_type = reopened.pack.hardware_catalog.connector_types["fixed_face"]
 
-    assert edited.pack.hardware_catalog.connector_types["fixed_face"].name == "Edited Fixed Face"
+    assert saved_type.name == "Edited Fixed Face"
+    assert saved_type.metadata == {"interface.standard": "smores_ep"}
+    assert saved_type.docking_policy is not None
+    assert saved_type.docking_policy.auto_latch
+    assert saved_type.docking_policy.alignment is AlignmentMode.NOMINAL
+    assert saved_type.docking_policy.redock_cooldown_s == 0.5
+    assert saved_type.docking_policy.break_force_n == 25.0
     assert edited.validate(ValidationProfile.SIMULATION).valid
 
 
