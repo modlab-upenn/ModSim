@@ -24,6 +24,9 @@ from modsim.runtime.scenarios import stage_docking_pair
 from modsim.runtime.session import RuntimeSession
 from modsim_backend_mujoco.adapter import MuJoCoBackendAdapter
 from modsim_backend_mujoco.scene import (
+    ENVIRONMENT_GEOM_GROUP,
+    GROUND_GEOM,
+    URDF_COLLISION_GEOM_GROUP,
     MuJoCoSceneError,
     body_name,
     build_scene,
@@ -78,6 +81,89 @@ def test_each_placement_becomes_its_own_body(loaded_pack: LoadedRobotPack) -> No
         module = ModuleInstanceId(f"{MODULE_TYPE}_{index}")
         assert (module, "base_link") in compiled.body_ids
         assert compiled.handles.bodies[(module, "base_link")] == body_name(module, "base_link")
+
+
+def test_urdf_visuals_are_retained_while_collision_proxies_stay_physical(
+    copied_pack: Path,
+) -> None:
+    """ModSim must override MuJoCo's visual-discarding URDF default."""
+    asset = copied_pack / "assets" / "urdf" / "generic_cube.urdf"
+    asset.write_text(
+        """<?xml version="1.0"?>
+<robot name="generic_cube">
+  <link name="base_link">
+    <inertial>
+      <mass value="1"/>
+      <inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01"/>
+    </inertial>
+    <visual name="visual_shell">
+      <geometry><box size="0.08 0.06 0.04"/></geometry>
+      <material name="red"><color rgba="1 0 0 1"/></material>
+    </visual>
+    <collision name="collision_proxy">
+      <geometry><box size="0.04 0.04 0.04"/></geometry>
+    </collision>
+  </link>
+</robot>
+""",
+        encoding="utf-8",
+    )
+    loaded = RobotPackLoader().load(copied_pack)
+
+    compiled = build_scene(
+        loaded.pack,
+        SceneSpec.grid(MODULE_TYPE, 1, spacing_m=SPACING_M),
+        loaded.root,
+    )
+    model = compiled.model
+    visual = model.geom(f"{CUBE_0}/visual_shell").id
+    collision = model.geom(f"{CUBE_0}/collision_proxy").id
+
+    assert model.ngeom == 2
+    assert visual >= 0
+    assert collision >= 0
+    assert int(model.geom_group[visual]) == 1
+    assert int(model.geom_contype[visual]) == 0
+    assert int(model.geom_conaffinity[visual]) == 0
+    assert int(model.geom_group[collision]) == URDF_COLLISION_GEOM_GROUP
+    assert int(model.geom_contype[collision]) == 1
+    assert int(model.geom_conaffinity[collision]) == 1
+
+
+def test_collision_only_urdf_remains_visible_and_physical(copied_pack: Path) -> None:
+    """A legacy collision-only model must not vanish with hidden proxy group 3."""
+    asset = copied_pack / "assets" / "urdf" / "generic_cube.urdf"
+    asset.write_text(
+        """<?xml version="1.0"?>
+<robot name="generic_cube">
+  <link name="base_link">
+    <inertial>
+      <mass value="1"/>
+      <inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01"/>
+    </inertial>
+    <collision name="only_geometry">
+      <geometry><box size="0.04 0.04 0.04"/></geometry>
+    </collision>
+  </link>
+</robot>
+""",
+        encoding="utf-8",
+    )
+    loaded = RobotPackLoader().load(copied_pack)
+
+    compiled = build_scene(
+        loaded.pack,
+        SceneSpec.grid(MODULE_TYPE, 1, spacing_m=SPACING_M),
+        loaded.root,
+    )
+    model = compiled.model
+    collision = model.geom(f"{CUBE_0}/only_geometry").id
+
+    assert model.ngeom == 1
+    assert collision >= 0
+    assert int(model.geom_group[collision]) == 0
+    assert int(model.geom_contype[collision]) == 1
+    assert int(model.geom_conaffinity[collision]) == 1
 
 
 def test_every_connector_becomes_a_site(loaded_pack: LoadedRobotPack) -> None:
@@ -222,6 +308,19 @@ def test_a_ground_plane_stops_modules_falling(loaded_pack: LoadedRobotPack) -> N
 
     # A 0.1 m cube resting on a plane at z = 0 sits with its centre at 0.05.
     assert session.world.modules[CUBE_0].pose.translation[2] == pytest.approx(0.05, abs=1e-3)
+
+
+def test_ground_uses_a_visible_environment_geom_group(loaded_pack: LoadedRobotPack) -> None:
+    compiled = build_scene(
+        loaded_pack.pack,
+        SceneSpec.grid(MODULE_TYPE, 1, spacing_m=SPACING_M),
+        loaded_pack.root,
+        ground=True,
+    )
+    ground = compiled.model.geom(GROUND_GEOM).id
+
+    assert ground >= 0
+    assert int(compiled.model.geom_group[ground]) == ENVIRONMENT_GEOM_GROUP
 
 
 def test_without_a_ground_plane_modules_keep_falling(loaded_pack: LoadedRobotPack) -> None:

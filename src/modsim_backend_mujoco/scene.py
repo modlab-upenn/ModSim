@@ -11,6 +11,7 @@ ModSim identifiers onto MuJoCo ids without guessing.
 
 from __future__ import annotations
 
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -28,6 +29,8 @@ WORLD_BODY = "world"
 GROUND_GEOM = "modsim_ground"
 GROUND_HALF_EXTENT_M = 10.0
 GROUND_THICKNESS_M = 0.05
+ENVIRONMENT_GEOM_GROUP = 2
+URDF_COLLISION_GEOM_GROUP = 3
 DEFAULT_GRAVITY: Vec3 = (0.0, 0.0, -9.81)
 MIN_WELD_POOL = 8
 
@@ -69,7 +72,11 @@ class CompiledScene:
     """
 
 
-def _asset_path(pack: RobotPack, root: Path, module_type: ModuleType) -> Path:
+def _asset_path(
+    pack: RobotPack,
+    root: Path,
+    module_type: ModuleType,
+) -> tuple[AssetCatalogKind, Path]:
     """Return the mechanical asset backing one module type.
 
     A pack that ships a MuJoCo asset for the module's ``asset_ref`` is preferred,
@@ -83,24 +90,80 @@ def _asset_path(pack: RobotPack, root: Path, module_type: ModuleType) -> Path:
             path = root / relative
             if not path.is_file():
                 raise MuJoCoSceneError(f"declared asset is missing on disk: {path}")
-            return path
+            return catalog, path
     raise MuJoCoSceneError(
         f"module type '{module_type.id}' references asset '{module_type.asset_ref}', "
         "which is not declared in the urdf or mujoco catalog"
     )
 
 
-def _module_spec(path: Path) -> mujoco.MjSpec:
+def _module_spec(path: Path, catalog: AssetCatalogKind) -> mujoco.MjSpec:
     """Parse one mechanical asset into a fresh spec.
 
     A spec is re-parsed for every placement rather than reused, because
     ``attach`` mutates its argument and reusing one spec stacks prefixes onto a
     single body instead of producing independent copies.
+
+    MuJoCo's URDF compiler discards ``<visual>`` geometry unless
+    ``discardvisual`` is explicitly disabled. Robot Packs distinguish visual
+    and collision geometry, so ModSim opts into retaining visuals when the URDF
+    does not state a preference. Collision-only geoms are moved to group 3,
+    MuJoCo's hidden-by-default debug group, without changing their contact
+    masks. A pack can therefore use lightweight collision proxies while the
+    viewer draws the detailed visual mesh.
     """
     try:
+        if catalog is AssetCatalogKind.URDF:
+            spec = _urdf_spec(path)
+            _group_urdf_geometry(spec)
+            return spec
         return mujoco.MjSpec.from_file(str(path))
-    except (ValueError, RuntimeError) as error:
+    except (ET.ParseError, OSError, ValueError, RuntimeError) as error:
         raise MuJoCoSceneError(f"MuJoCo could not parse '{path}': {error}") from error
+
+
+def _urdf_spec(path: Path) -> mujoco.MjSpec:
+    """Parse a URDF while retaining its authored visual geometry by default."""
+    root = ET.parse(path).getroot()
+    if root.tag != "robot":
+        raise ValueError(f"expected a URDF <robot> root, found <{root.tag}>")
+
+    mujoco_options = root.find("mujoco")
+    if mujoco_options is None:
+        mujoco_options = ET.SubElement(root, "mujoco")
+    compiler = mujoco_options.find("compiler")
+    if compiler is None:
+        compiler = ET.SubElement(mujoco_options, "compiler")
+
+    # Respect an explicit author choice, but avoid MuJoCo's surprising URDF
+    # default of throwing visual geometry away.
+    if compiler.get("discardvisual") is None:
+        compiler.set("discardvisual", "false")
+
+    # Parsing from a string loses the source filename used to resolve relative
+    # mesh paths. Re-establish that base without modifying the Robot Pack URDF.
+    mesh_directory = compiler.get("meshdir")
+    if mesh_directory is None:
+        resolved_mesh_directory = path.parent
+    else:
+        configured = Path(mesh_directory)
+        resolved_mesh_directory = (
+            configured if configured.is_absolute() else path.parent / configured
+        )
+    compiler.set("meshdir", str(resolved_mesh_directory.resolve()))
+
+    return mujoco.MjSpec.from_string(ET.tostring(root, encoding="unicode"))
+
+
+def _group_urdf_geometry(spec: mujoco.MjSpec) -> None:
+    """Hide URDF collision proxies by default when separate visuals exist."""
+    has_visual_geometry = any(geom.contype == 0 and geom.conaffinity == 0 for geom in spec.geoms)
+    if not has_visual_geometry:
+        # A collision-only URDF must remain visible instead of disappearing.
+        return
+    for geom in spec.geoms:
+        if geom.contype != 0 or geom.conaffinity != 0:
+            geom.group = URDF_COLLISION_GEOM_GROUP
 
 
 def build_scene(
@@ -136,13 +199,13 @@ def build_scene(
     for placement in scene.placements:
         module_type = pack.hardware_catalog.module_types[placement.module_type_id]
         module_types[placement.instance_id] = module_type
-        asset = _asset_path(pack, root, module_type)
+        asset_catalog, asset = _asset_path(pack, root, module_type)
         frame = spec.worldbody.add_frame(
             pos=list(placement.pose.translation),
             quat=list(placement.pose.rotation),
         )
         spec.attach(
-            _module_spec(asset),
+            _module_spec(asset, asset_catalog),
             prefix=f"{placement.instance_id}{INSTANCE_SEPARATOR}",
             frame=frame,
         )
@@ -166,6 +229,7 @@ def _add_ground(spec: mujoco.MjSpec, height_m: float) -> None:
     geom.type = mujoco.mjtGeom.mjGEOM_PLANE
     geom.size = [GROUND_HALF_EXTENT_M, GROUND_HALF_EXTENT_M, GROUND_THICKNESS_M]
     geom.pos = [0.0, 0.0, height_m]
+    geom.group = ENVIRONMENT_GEOM_GROUP
 
 
 def _add_freejoints(spec: mujoco.MjSpec, module_types: dict[ModuleInstanceId, ModuleType]) -> None:

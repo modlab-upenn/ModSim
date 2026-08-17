@@ -258,8 +258,10 @@ assuming an X-axis layout.
   runtime metrics;
 - a dependency-free kinematic mock adapter; and
 - an optional MuJoCo adapter that composes multiple URDF/MJCF module instances,
-  reports measured link/site frames, steps rigid-body physics, and implements
-  runtime dock/undock with reserved weld equality constraints.
+  retains URDF visual meshes while hiding separate collision proxies in a
+  viewer debug group, reports measured link/site frames, steps rigid-body
+  physics, and implements runtime dock/undock with reserved weld equality
+  constraints.
 
 `stage_docking_pair` is reusable scenario setup. It derives a whole-module
 placement from measured connector and module-root frames, including connectors
@@ -335,7 +337,7 @@ problem per launch when collecting a clean debugging log.
   lifecycle, runtime scenarios, backend registration/conformance, MuJoCo scene
   compilation, weld allocation, physical dock/undock, and articulated-connector
   nominal snapping.
-- The complete integration verification passes 304 tests with native MuJoCo
+- The complete integration verification passes 308 tests with native MuJoCo
   enabled and reports 87% branch-aware core coverage. The focused native
   MuJoCo/backend-conformance selection passes 62 tests.
 - The CI Studio smoke opens the generic cube in a real Qt/PyVista window under
@@ -462,6 +464,10 @@ tests cover the corresponding dialogs, tree selection, project switching, or
 - The Studio project boundary now rejects connector body/link associations
   absent from the imported URDF and removes obsolete connector-frame mappings
   when a connector is deleted.
+- **MUJOCO-VIS-001:** URDF visual geometry is retained by default instead of
+  being discarded by MuJoCo. Separate collision geoms remain active for
+  physics in hidden viewer group 3, so lightweight proxies no longer cover the
+  detailed robot meshes.
 
 ## Known core limitations and technical debt
 
@@ -545,6 +551,11 @@ modsim pack inspect .modsim/robot_packs/smores_ep
 modsim pack validate .modsim/robot_packs/smores_ep --profile simulation
 modsim studio .modsim/robot_packs/smores_ep
 ```
+
+Its five detailed Fusion STL meshes are the MuJoCo visual geometry. The four
+simple face proxies remain active collision geometry but start hidden in native
+viewer group 3. The current visuals use one solid silver URDF material; texture
+assets and richer material graphs remain future work.
 
 Run a headless pan-face approach, fixed weld, release, and retract:
 

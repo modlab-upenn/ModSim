@@ -162,6 +162,16 @@ a named `frame` is refused until that mapping is implemented; use a numeric
 holds the window open when the scenario ends so the final configuration can be
 inspected.
 
+MuJoCo normally discards URDF `<visual>` geometry unless the URDF opts out.
+The ModSim adapter retains it by default, while respecting an explicit
+`discardvisual` setting authored in the URDF. When separate visual geometry is
+available, imported URDF collision geoms are assigned to geom group 3. The
+native viewer starts that debug group hidden, so detailed meshes in visual
+group 1 are shown without opaque collision proxies covering them. Contacts
+still use the hidden collision geoms; the viewer's **Group 3** toggle reveals
+them when debugging. The ModSim ground belongs to visible environment group 2.
+Hand-authored MJCF geom groups are not rewritten.
+
 **On macOS this must run under `mjpython`.** MuJoCo's passive viewer needs to own
 the main thread, so `python` raises. The MuJoCo wheel installs `mjpython`
 alongside `python` in the same environment:

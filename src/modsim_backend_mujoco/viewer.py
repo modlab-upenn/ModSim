@@ -16,6 +16,7 @@ from modsim.backends.base import BackendError
 from modsim.core.events import Event
 from modsim.runtime.session import RuntimeSession
 from modsim_backend_mujoco.adapter import MuJoCoBackendAdapter
+from modsim_backend_mujoco.scene import URDF_COLLISION_GEOM_GROUP
 
 Stepper = Callable[[], tuple[Event, ...]]
 
@@ -60,6 +61,11 @@ def run_with_viewer(
         raise
 
     with handle as viewer:
+        # URDF collision proxies stay active in physics but start hidden so
+        # detailed visual meshes are not covered by opaque boxes. The native
+        # viewer's geom-group controls can re-enable group 3 for debugging.
+        with viewer.lock():
+            viewer.opt.geomgroup[URDF_COLLISION_GEOM_GROUP] = 0
         wall_start = time.perf_counter()
         while viewer.is_running() and session.world.time_s < duration_s:
             collected.extend(step_once())

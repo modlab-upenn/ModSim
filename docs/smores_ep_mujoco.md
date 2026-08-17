@@ -47,6 +47,14 @@ references onto one scale and create false initial contacts.
 These face boxes are docking-demo proxies, not a complete collision model for
 locomotion, stability, or manipulation.
 
+The SMORES URDF explicitly retains its five detailed Fusion STL visual meshes
+for MuJoCo. ModSim assigns the four collision proxies to MuJoCo geom group 3,
+which the viewer hides initially while physics continues to use them. Toggle
+**Group 3** in the native viewer to inspect the proxies. The visual meshes are
+currently uniformly silver: STL contains geometry but no texture coordinates
+or material graph, and the URDF assigns the same solid RGBA material to every
+link.
+
 ## Setup and validation
 
 ```bash
