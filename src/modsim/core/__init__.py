@@ -33,7 +33,7 @@ from modsim.core.ids import (
 )
 from modsim.core.scene import ModulePlacement, SceneError, SceneSpec
 from modsim.core.snapshot import BackendStateSnapshot, BodyState, JointState
-from modsim.core.state import WorldState, WorldStateError
+from modsim.core.state import WorldState, WorldStateError, WorldStateRevision
 from modsim.core.transforms import Transform, Vec3
 
 __all__ = [
@@ -70,6 +70,7 @@ __all__ = [
     "Vec3",
     "WorldState",
     "WorldStateError",
+    "WorldStateRevision",
     "assembly_id",
     "connection_id",
     "connector_instance_id",

@@ -14,6 +14,7 @@ from modsim.robot_packs import (
     ConnectorTypeSpec,
     JointSpec,
     LoadedRobotPack,
+    ModelViewSpec,
     ModuleType,
     RobotPack,
     RobotPackLoader,
@@ -98,6 +99,38 @@ class StudioProject:
         typed_manifest["version"] = version
         typed_manifest["description"] = description or None
         typed_manifest["metadata"] = self.pack.manifest.metadata if metadata is None else metadata
+        return self._with_pack(RobotPack.model_validate(data))
+
+    def add_model_view(self, model_view: ModelViewSpec) -> StudioProject:
+        """Add one named model-view generation recipe to the manifest."""
+        if model_view.id in {existing.id for existing in self.pack.manifest.model_views}:
+            raise ValueError(f"model view '{model_view.id}' already exists")
+        data = self.pack.model_dump(mode="python")
+        manifest = self._manifest_data(data)
+        manifest["model_views"] = (*self.pack.manifest.model_views, model_view)
+        return self._with_pack(RobotPack.model_validate(data))
+
+    def update_model_view(self, model_view: ModelViewSpec) -> StudioProject:
+        """Replace an existing model-view recipe by its stable ID."""
+        if model_view.id not in {existing.id for existing in self.pack.manifest.model_views}:
+            raise KeyError(model_view.id)
+        data = self.pack.model_dump(mode="python")
+        manifest = self._manifest_data(data)
+        manifest["model_views"] = tuple(
+            model_view if existing.id == model_view.id else existing
+            for existing in self.pack.manifest.model_views
+        )
+        return self._with_pack(RobotPack.model_validate(data))
+
+    def remove_model_view(self, model_view_id: str) -> StudioProject:
+        """Remove an existing model-view recipe without mutating the source project."""
+        if model_view_id not in {existing.id for existing in self.pack.manifest.model_views}:
+            raise KeyError(model_view_id)
+        data = self.pack.model_dump(mode="python")
+        manifest = self._manifest_data(data)
+        manifest["model_views"] = tuple(
+            existing for existing in self.pack.manifest.model_views if existing.id != model_view_id
+        )
         return self._with_pack(RobotPack.model_validate(data))
 
     def update_module_metadata(
@@ -337,6 +370,13 @@ class StudioProject:
             loaded=self.loaded.with_pack(pack),
             dirty=True,
         )
+
+    @staticmethod
+    def _manifest_data(pack_data: dict[str, object]) -> dict[str, object]:
+        manifest = pack_data["manifest"]
+        if not isinstance(manifest, dict):
+            raise TypeError("invalid in-memory manifest")
+        return cast(dict[str, object], manifest)
 
     @staticmethod
     def _connector_type_data(pack_data: dict[str, object]) -> dict[str, object]:

@@ -8,6 +8,7 @@ event log is a complete and replayable description of everything that happened.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 
 from modsim.core.assemblies import AssemblyIndex
 from modsim.core.entities import (
@@ -42,6 +43,20 @@ class WorldStateError(RuntimeError):
     """Raised when an event cannot be applied to the world."""
 
 
+@dataclass(frozen=True, slots=True)
+class WorldStateRevision:
+    """Immutable change stamp for incrementally derived world views.
+
+    Each counter identifies an independent class of source changes so a
+    consumer can invalidate only the projections affected by that change.
+    """
+
+    sample_sequence: int = 0
+    topology_revision: int = 0
+    docking_revision: int = 0
+    event_revision: int = 0
+
+
 class WorldState:
     """All modules, connectors, connections, and derived assemblies in one world."""
 
@@ -53,6 +68,7 @@ class WorldState:
         "_event_log",
         "_modules",
         "_pack",
+        "_revision",
         "_time_s",
     )
 
@@ -65,6 +81,7 @@ class WorldState:
         self._connections: dict[ConnectionId, ConnectionRuntime] = {}
         self._assemblies = AssemblyIndex()
         self._event_log = EventLog()
+        self._revision = WorldStateRevision()
 
     # ------------------------------------------------------------------
     # construction
@@ -154,6 +171,11 @@ class WorldState:
         """Return the append-only event log."""
         return self._event_log
 
+    @property
+    def revision(self) -> WorldStateRevision:
+        """Return immutable revision counters for the current world state."""
+        return self._revision
+
     def connector(self, connector: ConnectorInstanceId) -> ConnectorInstance:
         """Return one connector instance."""
         try:
@@ -215,6 +237,7 @@ class WorldState:
                 module.angular_velocity_rad_s = root.angular_velocity_rad_s
         self._refresh_connector_frames(snapshot)
         self._clear_transient_states()
+        self._advance_revision(sample=True)
 
     def _refresh_connector_frames(self, snapshot: BackendStateSnapshot | None = None) -> None:
         for connector in self._connectors.values():
@@ -265,9 +288,13 @@ class WorldState:
             ConnectorLifecycleState.IN_ACCEPTANCE_REGION,
             ConnectorLifecycleState.FAILED,
         }
+        changed = False
         for connector in self._connectors.values():
             if connector.lifecycle_state in transient:
                 connector.lifecycle_state = ConnectorLifecycleState.FREE
+                changed = True
+        if changed:
+            self._advance_revision(docking=True)
 
     @staticmethod
     def _connector_spec(specs: Iterable[ConnectorSpec], connector_id: str) -> ConnectorSpec:
@@ -282,19 +309,31 @@ class WorldState:
 
     def apply(self, event: Event) -> Event:
         """Apply one event to the world and record it in the log."""
+        topology_changed = False
+        docking_changed = False
         if isinstance(event, DockCommitted):
             self._apply_dock_committed(event)
+            topology_changed = True
+            docking_changed = True
         elif isinstance(event, UndockCommitted):
             self._apply_undock_committed(event)
+            topology_changed = True
+            docking_changed = True
         elif isinstance(event, DockFailed):
-            self._apply_dock_failed(event)
+            docking_changed = self._apply_dock_failed(event)
         elif isinstance(event, ConnectorOverloaded):
-            self._apply_overload(event)
+            docking_changed = self._apply_overload(event)
         elif not isinstance(event, AssemblyMerged | AssemblySplit):
             # Detection and assembly events are observational; the assembly
             # index is updated alongside the dock or undock that caused them.
             pass
-        return self._event_log.append(event)
+        recorded = self._event_log.append(event)
+        self._advance_revision(
+            topology=topology_changed,
+            docking=docking_changed,
+            event=True,
+        )
+        return recorded
 
     def apply_all(self, events: Iterable[Event]) -> tuple[Event, ...]:
         """Apply several events in order."""
@@ -342,18 +381,28 @@ class WorldState:
                 self.adjacency(),
             )
 
-    def _apply_dock_failed(self, event: DockFailed) -> None:
+    def _apply_dock_failed(self, event: DockFailed) -> bool:
+        changed = False
         for connector_id in (event.connector_a, event.connector_b):
             connector = self._connectors.get(connector_id)
             if connector is None or connector.is_engaged:
                 continue
-            connector.lifecycle_state = ConnectorLifecycleState.FAILED
-            connector.available_at_s = event.time_s + self._cooldown_s(connector_id)
+            available_at_s = event.time_s + self._cooldown_s(connector_id)
+            if (
+                connector.lifecycle_state is not ConnectorLifecycleState.FAILED
+                or connector.available_at_s != available_at_s
+            ):
+                connector.lifecycle_state = ConnectorLifecycleState.FAILED
+                connector.available_at_s = available_at_s
+                changed = True
+        return changed
 
-    def _apply_overload(self, event: ConnectorOverloaded) -> None:
+    def _apply_overload(self, event: ConnectorOverloaded) -> bool:
         connection = self._connections.get(event.connection_id)
-        if connection is not None:
-            connection.measured_force_n = event.measured_force_n
+        if connection is None or connection.measured_force_n == event.measured_force_n:
+            return False
+        connection.measured_force_n = event.measured_force_n
+        return True
 
     def _cooldown_s(self, connector_id: ConnectorInstanceId) -> float:
         try:
@@ -386,6 +435,24 @@ class WorldState:
         if state not in allowed:
             raise WorldStateError(f"state '{state}' must be reached through an event")
         connector = self.connector(connector_id)
-        if connector.is_engaged:
+        if connector.is_engaged or connector.lifecycle_state is state:
             return
         connector.lifecycle_state = state
+        self._advance_revision(docking=True)
+
+    def _advance_revision(
+        self,
+        *,
+        sample: bool = False,
+        topology: bool = False,
+        docking: bool = False,
+        event: bool = False,
+    ) -> None:
+        """Advance selected revision domains as one atomic state stamp."""
+        current = self._revision
+        self._revision = WorldStateRevision(
+            sample_sequence=current.sample_sequence + int(sample),
+            topology_revision=current.topology_revision + int(topology),
+            docking_revision=current.docking_revision + int(docking),
+            event_revision=current.event_revision + int(event),
+        )

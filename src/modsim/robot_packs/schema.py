@@ -172,6 +172,13 @@ class CapabilityKind(StrEnum):
     BEHAVIOR = "behavior"
 
 
+class ModelViewMode(StrEnum):
+    """Robot Pack contexts in which a model-view recipe is intended for use."""
+
+    AUTHORING = "authoring"
+    RUNTIME = "runtime"
+
+
 class PoseSpec(StrictModel):
     """A local pose expressed in SI units."""
 
@@ -475,6 +482,29 @@ class CapabilitySpec(StrictModel):
         return value
 
 
+class ModelViewSpec(StrictModel):
+    """Named recipe for generating a model view from available ModSim state."""
+
+    id: Identifier
+    name: NonEmptyString | None = None
+    builder: Identifier
+    modes: tuple[ModelViewMode, ...] = (ModelViewMode.RUNTIME,)
+    default: StrictBool = False
+    configuration: Metadata = Field(default_factory=dict, max_length=128)
+
+    @field_validator("modes")
+    @classmethod
+    def require_unique_nonempty_modes(
+        cls,
+        value: tuple[ModelViewMode, ...],
+    ) -> tuple[ModelViewMode, ...]:
+        if not value:
+            raise ValueError("model-view modes must not be empty")
+        if len(set(value)) != len(value):
+            raise ValueError("model-view modes must not contain duplicates")
+        return value
+
+
 class HardwareCatalog(StrictModel):
     """All hardware types defined by a Robot Pack."""
 
@@ -607,12 +637,17 @@ class RobotPackManifest(StrictModel):
     version: SemanticVersion
     description: str | None = None
     metadata: Metadata = Field(default_factory=dict, max_length=128)
+    model_views: tuple[ModelViewSpec, ...] = ()
     assets: AssetManifest
     specs: SpecFileManifest
     mappings: dict[Identifier, PackRelativePath] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def require_unique_referenced_documents(self) -> Self:
+        model_view_ids = [model_view.id for model_view in self.model_views]
+        if len(set(model_view_ids)) != len(model_view_ids):
+            raise ValueError("model-view IDs must be unique within a Robot Pack")
+
         spec_paths = {
             self.specs.modules,
             self.specs.connectors,

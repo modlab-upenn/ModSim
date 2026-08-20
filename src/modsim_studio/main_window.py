@@ -53,6 +53,8 @@ from modsim.robot_packs import (
     JointLimits,
     JointSpec,
     JointType,
+    ModelViewMode,
+    ModelViewSpec,
     OrientationMode,
     PhysicalConnectionSpec,
     PhysicalConstraintType,
@@ -305,9 +307,10 @@ class MainWindow(QMainWindow):
         self._select_tree_entity(("pack", project.pack.id, ""))
         self._update_title()
         self._logger.debug(
-            "Document ready: modules=%d, connector_types=%d, imported_assets=%d",
+            "Document ready: modules=%d, connector_types=%d, model_views=%d, imported_assets=%d",
             len(project.pack.hardware_catalog.module_types),
             len(project.pack.hardware_catalog.connector_types),
+            len(project.pack.manifest.model_views),
             len(project.imported_assets),
         )
 
@@ -327,6 +330,15 @@ class MainWindow(QMainWindow):
             assets_item.addChild(asset_item)
             for warning in asset.warnings:
                 asset_item.addChild(QTreeWidgetItem([warning, "Warning"]))
+
+        model_views_item = QTreeWidgetItem(["Model Views", "Catalog"])
+        self._set_item_data(model_views_item, "model_views", "", "")
+        root.addChild(model_views_item)
+        for model_view in self.project.pack.manifest.model_views:
+            label = model_view.name or model_view.id
+            item = QTreeWidgetItem([label, model_view.builder])
+            self._set_item_data(item, "model_view", model_view.id, "")
+            model_views_item.addChild(item)
 
         connector_types_item = QTreeWidgetItem(["Connector Types", "Catalog"])
         self._set_item_data(connector_types_item, "connector_types", "", "")
@@ -371,6 +383,7 @@ class MainWindow(QMainWindow):
             connectors_item.setExpanded(True)
         root.setExpanded(True)
         assets_item.setExpanded(True)
+        model_views_item.setExpanded(True)
         connector_types_item.setExpanded(True)
         modules_item.setExpanded(True)
         self.project_tree.resizeColumnToContents(0)
@@ -581,6 +594,10 @@ class MainWindow(QMainWindow):
             self._show_connector_type_properties(entity_id)
         elif kind == "connector_types":
             self._show_connector_types_properties()
+        elif kind == "model_view":
+            self._show_model_view_properties(entity_id)
+        elif kind == "model_views":
+            self._show_model_views_properties()
         elif kind == "module":
             self._show_module_properties(entity_id)
         else:
@@ -809,6 +826,133 @@ class MainWindow(QMainWindow):
         layout.addWidget(add_button)
         layout.addStretch(1)
         self._replace_properties(panel)
+
+    def _show_model_views_properties(self) -> None:
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        guidance = QLabel(
+            "Model-view recipes select and configure registered builders. The generated "
+            "view data comes from the Robot Pack or changing runtime state."
+        )
+        guidance.setWordWrap(True)
+        layout.addWidget(guidance)
+        add_button = QPushButton("Add model view…")
+        add_button.clicked.connect(self._add_model_view_dialog)
+        layout.addWidget(add_button)
+        layout.addStretch(1)
+        self._replace_properties(panel)
+
+    def _show_model_view_properties(self, model_view_id: str) -> None:
+        if self.project is None:
+            return
+        model_view = next(
+            item for item in self.project.pack.manifest.model_views if item.id == model_view_id
+        )
+        panel = QWidget()
+        form = QFormLayout(panel)
+        form.addRow("Model view ID", QLabel(model_view.id))
+        name = QLineEdit(model_view.name or "")
+        builder = QLineEdit(model_view.builder)
+        authoring_mode = QCheckBox()
+        authoring_mode.setChecked(ModelViewMode.AUTHORING in model_view.modes)
+        runtime_mode = QCheckBox()
+        runtime_mode.setChecked(ModelViewMode.RUNTIME in model_view.modes)
+        default_view = QCheckBox()
+        default_view.setChecked(model_view.default)
+        configuration = _MetadataEditor(model_view.configuration)
+        form.addRow("Name", name)
+        form.addRow("Builder", builder)
+        form.addRow("Available while authoring", authoring_mode)
+        form.addRow("Available at runtime", runtime_mode)
+        form.addRow("Default view", default_view)
+        form.addRow("Builder configuration", configuration)
+
+        apply_button = QPushButton("Apply model view")
+
+        def update(project: StudioProject) -> StudioProject:
+            updated = ModelViewSpec(
+                id=model_view.id,
+                name=name.text().strip() or None,
+                builder=validate_identifier(builder.text(), field_name="Builder ID"),
+                modes=_model_view_modes(authoring_mode, runtime_mode),
+                default=default_view.isChecked(),
+                configuration=configuration.value(),
+            )
+            return project.update_model_view(updated)
+
+        apply_button.clicked.connect(
+            lambda: self._apply_project_change(
+                update,
+                selection_after=("model_view", model_view_id, ""),
+            )
+        )
+        form.addRow(apply_button)
+        remove_button = QPushButton("Remove model view")
+        remove_button.clicked.connect(
+            lambda: self._apply_project_change(
+                lambda project: project.remove_model_view(model_view_id),
+                selection_after=("model_views", "", ""),
+            )
+        )
+        form.addRow(remove_button)
+        self._replace_properties(panel)
+
+    def _add_model_view_dialog(self) -> None:
+        if self.project is None:
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Add model view")
+        layout = QFormLayout(dialog)
+        model_view_id = QLineEdit()
+        model_view_id.setPlaceholderText("for example: smores_topology")
+        name = QLineEdit()
+        builder = QLineEdit("module_topology_graph")
+        authoring_mode = QCheckBox()
+        runtime_mode = QCheckBox()
+        runtime_mode.setChecked(True)
+        default_view = QCheckBox()
+        configuration = _MetadataEditor({})
+        layout.addRow("Model view ID", model_view_id)
+        id_help = QLabel("Lowercase YAML ID, such as topology or smores_topology.")
+        id_help.setWordWrap(True)
+        layout.addRow("", id_help)
+        layout.addRow("Name", name)
+        layout.addRow("Builder", builder)
+        layout.addRow("Available while authoring", authoring_mode)
+        layout.addRow("Available at runtime", runtime_mode)
+        layout.addRow("Default view", default_view)
+        layout.addRow("Builder configuration", configuration)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addRow(buttons)
+        model_view: ModelViewSpec | None = None
+        while dialog.exec() == int(QDialog.DialogCode.Accepted):
+            try:
+                validated_model_view_id = validate_identifier(
+                    model_view_id.text(),
+                    field_name="Model view ID",
+                )
+                model_view = ModelViewSpec(
+                    id=validated_model_view_id,
+                    name=name.text().strip() or None,
+                    builder=validate_identifier(builder.text(), field_name="Builder ID"),
+                    modes=_model_view_modes(authoring_mode, runtime_mode),
+                    default=default_view.isChecked(),
+                    configuration=configuration.value(),
+                )
+            except Exception as error:
+                self._show_error("Invalid model view", error)
+                continue
+            break
+        if model_view is None:
+            return
+        self._apply_project_change(
+            lambda project: project.add_model_view(model_view),
+            selection_after=("model_view", model_view.id, ""),
+        )
 
     def _show_connector_type_properties(self, type_id: str) -> None:
         if self.project is None:
@@ -1363,6 +1507,21 @@ def _enum_combo(enum_type: type[StrEnum], current: str) -> QComboBox:
     combo.addItems([item.value for item in enum_type])
     combo.setCurrentText(current)
     return combo
+
+
+def _model_view_modes(
+    authoring: QCheckBox,
+    runtime: QCheckBox,
+) -> tuple[ModelViewMode, ...]:
+    """Return the checked model-view modes for strict schema validation."""
+    return tuple(
+        mode
+        for mode, checkbox in (
+            (ModelViewMode.AUTHORING, authoring),
+            (ModelViewMode.RUNTIME, runtime),
+        )
+        if checkbox.isChecked()
+    )
 
 
 def _joint_limit_fields(joint_type: JointType) -> tuple[tuple[str, str], ...]:

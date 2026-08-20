@@ -12,6 +12,10 @@ from typer.testing import CliRunner
 from modsim import __version__
 from modsim.backends.registry import BACKEND_ENV_VAR
 from modsim.cli import app
+from modsim.core.scene import SceneSpec
+from modsim.core.state import WorldState
+from modsim.model_views import ModelViewContext, ModelViewFactory
+from modsim.robot_packs import RobotPackLoader
 
 runner = CliRunner()
 
@@ -72,6 +76,120 @@ def test_cli_inspect_reports_aggregate_counts(example_pack_dir: Path) -> None:
     assert result.exit_code == 0
     assert "Module types" in result.stdout
     assert "Connector types" in result.stdout
+    assert "Model views" in result.stdout
+
+
+def test_cli_views_lists_pack_recipes_and_registered_builders(example_pack_dir: Path) -> None:
+    result = runner.invoke(app, ["views", str(example_pack_dir), "--output", "json"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    assert payload["pack"] == "generic_cube@0.1.0"
+    assert [recipe["id"] for recipe in payload["recipes"]] == ["module_topology"]
+    assert {builder["builder"] for builder in payload["builders"]} == {"module_topology_graph"}
+
+
+def test_cli_views_generates_exact_json_for_three_isolated_modules(
+    example_pack_dir: Path,
+) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "views",
+            str(example_pack_dir),
+            "--view",
+            "module_topology",
+            "--output",
+            "json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    loaded = RobotPackLoader().load(example_pack_dir)
+    recipe = loaded.pack.manifest.model_views[0]
+    world = WorldState.from_scene(
+        loaded.pack,
+        SceneSpec.grid("generic_cube", 3, spacing_m=0.1),
+    )
+    expected = ModelViewFactory().build(
+        recipe,
+        ModelViewContext(pack=loaded.pack, world=world),
+    )
+    assert payload == expected.model_dump(mode="json")
+    assert [node["id"] for node in payload["nodes"]] == [
+        "generic_cube_0",
+        "generic_cube_1",
+        "generic_cube_2",
+    ]
+    assert payload["edges"] == []
+
+
+def test_cli_views_rejects_an_unknown_recipe(example_pack_dir: Path) -> None:
+    result = runner.invoke(
+        app,
+        ["views", str(example_pack_dir), "--view", "missing_view"],
+    )
+
+    assert result.exit_code == 2
+    assert "Unknown model-view recipe 'missing_view'" in result.output
+    assert "Available recipes: module_topology" in result.output
+
+
+def test_cli_views_reports_an_unregistered_builder(copied_pack: Path) -> None:
+    manifest = copied_pack / "robot_pack.yaml"
+    manifest.write_text(
+        manifest.read_text().replace(
+            "builder: module_topology_graph",
+            "builder: unavailable_builder",
+            1,
+        )
+    )
+
+    result = runner.invoke(
+        app,
+        ["views", str(copied_pack), "--view", "module_topology"],
+    )
+
+    assert result.exit_code == 2
+    assert "unavailable_builder" in result.output
+    assert "is not registered" in result.output
+    assert "available: module_topology_graph" in result.output
+
+
+def test_cli_views_rejects_a_recipe_not_enabled_for_runtime(copied_pack: Path) -> None:
+    manifest = copied_pack / "robot_pack.yaml"
+    manifest.write_text(manifest.read_text().replace("      - runtime\n", "      - authoring\n", 1))
+
+    result = runner.invoke(
+        app,
+        ["views", str(copied_pack), "--view", "module_topology"],
+    )
+
+    assert result.exit_code == 2
+    assert "not enabled for runtime generation" in result.output
+    assert "configured modes: authoring" in result.output
+
+
+@pytest.mark.parametrize("spacing", ("nan", "inf", "-inf"))
+def test_cli_views_rejects_non_finite_spacing(
+    example_pack_dir: Path,
+    spacing: str,
+) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "views",
+            str(example_pack_dir),
+            "--view",
+            "module_topology",
+            "--spacing",
+            spacing,
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert "--spacing must be a finite number" in result.output
 
 
 def test_cli_dock_runs_a_mock_session(example_pack_dir: Path) -> None:

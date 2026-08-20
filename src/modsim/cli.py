@@ -34,10 +34,19 @@ from modsim.core.events import (
 )
 from modsim.core.ids import ModuleInstanceId, connector_instance_id
 from modsim.core.scene import SceneError, SceneSpec
+from modsim.core.state import WorldState
 from modsim.core.transforms import Vec3, vec_scale
 from modsim.importers import DraftPackBuilder
+from modsim.model_views import (
+    ModelView,
+    ModelViewContext,
+    ModelViewError,
+    ModelViewFactory,
+    ModuleTopologyGraphView,
+)
 from modsim.robot_packs import (
     LoadedRobotPack,
+    ModelViewMode,
     RobotPack,
     RobotPackLoader,
     RobotPackLoadError,
@@ -62,6 +71,13 @@ def _require_positive_finite(value: float, option: str) -> None:
     """Reject unsafe time arguments before a command starts a session."""
     if not math.isfinite(value) or value <= 0.0:
         typer.echo(f"{option} must be a finite number greater than 0.", err=True)
+        raise typer.Exit(code=2)
+
+
+def _require_finite(value: float, option: str) -> None:
+    """Reject non-finite numeric arguments before they enter typed state."""
+    if not math.isfinite(value):
+        typer.echo(f"{option} must be a finite number.", err=True)
         raise typer.Exit(code=2)
 
 
@@ -225,6 +241,7 @@ def inspect_pack_command(
     table.add_row("Module types", str(len(pack.hardware_catalog.module_types)))
     table.add_row("Connector types", str(len(pack.hardware_catalog.connector_types)))
     table.add_row("Capabilities", str(len(pack.capability_catalog.capabilities)))
+    table.add_row("Model views", str(len(pack.manifest.model_views)))
     table.add_row("Backend mappings", str(len(pack.backend_mappings)))
     Console(width=120).print(table)
 
@@ -280,6 +297,108 @@ def initialize_pack_command(
     typer.echo(f"Created Robot Pack: {result.loaded.root}")
     for warning in result.warnings:
         typer.echo(f"Warning: {warning}")
+
+
+@app.command("views")
+def model_views_command(
+    pack_path: Annotated[
+        Path,
+        typer.Argument(
+            exists=False,
+            file_okay=True,
+            dir_okay=True,
+            readable=True,
+            resolve_path=False,
+            help="Robot Pack directory or robot_pack.yaml path.",
+        ),
+    ],
+    view_id: Annotated[
+        str | None,
+        typer.Option(
+            "--view",
+            help="Robot Pack model-view recipe ID to generate.",
+        ),
+    ] = None,
+    module_type: Annotated[
+        str | None,
+        typer.Option(
+            "--module-type",
+            "-m",
+            help="Module type to instantiate. Required when the pack defines more than one.",
+        ),
+    ] = None,
+    count: Annotated[
+        int,
+        typer.Option("--count", "-n", min=1, help="Number of module nodes to instantiate."),
+    ] = 3,
+    spacing_m: Annotated[
+        float,
+        typer.Option(
+            "--spacing",
+            "-s",
+            help="Distance in metres between initial module origins.",
+        ),
+    ] = 0.1,
+    output: Annotated[
+        OutputFormat,
+        typer.Option("--output", "-o", case_sensitive=False, help="Output format."),
+    ] = OutputFormat.TEXT,
+) -> None:
+    """List model-view recipes or generate one physics-free runtime snapshot."""
+    try:
+        loaded = RobotPackLoader().load(pack_path)
+    except RobotPackLoadError as error:
+        report = ValidationReport.from_issues(list(error.issues))
+        _render_report(
+            report,
+            profile=ValidationProfile.AUTHORING,
+            output=output,
+            pack_id=None,
+        )
+        raise typer.Exit(code=1) from error
+
+    pack = loaded.pack
+    factory = ModelViewFactory()
+    if view_id is None:
+        _render_model_view_catalog(pack, factory, output=output)
+        return
+
+    recipe = next(
+        (candidate for candidate in pack.manifest.model_views if candidate.id == view_id),
+        None,
+    )
+    if recipe is None:
+        available = ", ".join(item.id for item in pack.manifest.model_views) or "none"
+        typer.echo(
+            f"Unknown model-view recipe '{view_id}' for pack '{pack.id}'. "
+            f"Available recipes: {available}.",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    if ModelViewMode.RUNTIME not in recipe.modes:
+        modes = ", ".join(mode.value for mode in recipe.modes)
+        typer.echo(
+            f"Model-view recipe '{recipe.id}' is not enabled for runtime generation; "
+            f"configured modes: {modes}.",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    _require_finite(spacing_m, "--spacing")
+    resolved_type = _resolve_module_type(pack, module_type)
+    try:
+        scene = SceneSpec.grid(resolved_type, count, spacing_m=spacing_m)
+        world = WorldState.from_scene(pack, scene)
+    except SceneError as error:
+        typer.echo(f"Could not create the initial model-view scene: {error}", err=True)
+        raise typer.Exit(code=2) from error
+
+    try:
+        generated = factory.build(recipe, ModelViewContext(pack=pack, world=world))
+    except ModelViewError as error:
+        typer.echo(f"Could not build model-view recipe '{recipe.id}': {error}", err=True)
+        raise typer.Exit(code=2) from error
+    _render_generated_model_view(generated, output=output)
 
 
 @app.command("dock")
@@ -750,6 +869,118 @@ def _run_headless(
     while session.world.time_s < duration_s:
         collected.extend(step_once())
     return tuple(collected)
+
+
+def _render_model_view_catalog(
+    pack: RobotPack,
+    factory: ModelViewFactory,
+    *,
+    output: OutputFormat,
+) -> None:
+    """Show the recipes in one pack and builders installed in this process."""
+    recipes = pack.manifest.model_views
+    builders = factory.descriptors()
+    if output is OutputFormat.JSON:
+        typer.echo(
+            json.dumps(
+                {
+                    "pack": f"{pack.id}@{pack.version}",
+                    "recipes": [recipe.model_dump(mode="json") for recipe in recipes],
+                    "builders": [builder.model_dump(mode="json") for builder in builders],
+                },
+                indent=2,
+            )
+        )
+        return
+
+    console = Console(width=160)
+    recipes_table = Table(title=f"Model-view recipes for {pack.id}@{pack.version}")
+    recipes_table.add_column("Recipe", no_wrap=True)
+    recipes_table.add_column("Name")
+    recipes_table.add_column("Builder", no_wrap=True)
+    recipes_table.add_column("Modes", no_wrap=True)
+    recipes_table.add_column("Default", no_wrap=True)
+    if recipes:
+        for recipe in recipes:
+            recipes_table.add_row(
+                recipe.id,
+                recipe.name or "",
+                recipe.builder,
+                ", ".join(mode.value for mode in recipe.modes),
+                "yes" if recipe.default else "no",
+            )
+    else:
+        recipes_table.add_row("(none)", "", "", "", "")
+    console.print(recipes_table)
+
+    builders_table = Table(title="Registered model-view builders")
+    builders_table.add_column("Builder", no_wrap=True)
+    builders_table.add_column("Name")
+    builders_table.add_column("View type", no_wrap=True)
+    builders_table.add_column("Modes", no_wrap=True)
+    builders_table.add_column("Requires world", no_wrap=True)
+    if builders:
+        for builder in builders:
+            builders_table.add_row(
+                builder.builder,
+                builder.name,
+                builder.view_type,
+                ", ".join(mode.value for mode in builder.modes),
+                "yes" if builder.requires_world else "no",
+            )
+    else:  # pragma: no cover - the default factory always has a built-in
+        builders_table.add_row("(none)", "", "", "", "")
+    console.print(builders_table)
+
+
+def _render_generated_model_view(generated: ModelView, *, output: OutputFormat) -> None:
+    """Render a generated immutable model-view result."""
+    if output is OutputFormat.JSON:
+        typer.echo(json.dumps(generated.model_dump(mode="json"), indent=2))
+        return
+
+    console = Console(width=160)
+    console.print(
+        f"Generated [bold]{generated.id}[/bold] with "
+        f"[bold]{generated.builder}[/bold] from "
+        f"{generated.source.pack_id}@{generated.source.pack_version}."
+    )
+    if not isinstance(generated, ModuleTopologyGraphView):
+        console.print(json.dumps(generated.model_dump(mode="json"), indent=2))
+        return
+
+    nodes = Table(title=f"Module nodes ({len(generated.nodes)})")
+    nodes.add_column("Module", no_wrap=True)
+    nodes.add_column("Module type", no_wrap=True)
+    nodes.add_column("Assembly", no_wrap=True)
+    nodes.add_column("World position (m)", no_wrap=True)
+    for node in generated.nodes:
+        nodes.add_row(
+            node.id,
+            node.module_type_id,
+            node.assembly_id,
+            "(" + ", ".join(f"{value:.6g}" for value in node.world_position_m) + ")",
+        )
+    console.print(nodes)
+
+    if not generated.edges:
+        console.print("Committed connection edges (0): none")
+        return
+    edges = Table(title=f"Committed connection edges ({len(generated.edges)})")
+    edges.add_column("Connection", no_wrap=True)
+    edges.add_column("Source module", no_wrap=True)
+    edges.add_column("Target module", no_wrap=True)
+    edges.add_column("Connectors")
+    edges.add_column("Created (s)", justify="right", no_wrap=True)
+    for edge in generated.edges:
+        edges.add_row(
+            edge.connection_id,
+            edge.source,
+            edge.target,
+            f"{edge.connector_a} <-> {edge.connector_b}",
+            f"{edge.created_at_s:.6g}",
+        )
+    console.print(edges)
 
 
 @app.command("backends")

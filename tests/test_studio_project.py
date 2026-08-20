@@ -17,6 +17,8 @@ from modsim.robot_packs import (
     ConnectorSpec,
     ConnectorTypeSpec,
     DockingPolicySpec,
+    ModelViewMode,
+    ModelViewSpec,
     OrientationMode,
     PhysicalConnectionSpec,
     PhysicalConstraintType,
@@ -102,6 +104,46 @@ def test_studio_project_updates_metadata(copied_pack: Path) -> None:
     }
     root_yaml = (copied_pack / "robot_pack.yaml").read_text(encoding="utf-8")
     assert "hardware_revision: test" in root_yaml
+
+
+def test_studio_project_model_view_crud_persists_across_save(copied_pack: Path) -> None:
+    project = StudioProject.open(copied_pack)
+    original_model_views = project.pack.manifest.model_views
+    recipe = ModelViewSpec(
+        id="smores_topology",
+        name="SMORES Topology",
+        builder="module_topology_graph",
+    )
+
+    added = project.add_model_view(recipe)
+    assert project.pack.manifest.model_views == original_model_views
+    assert added.pack.manifest.model_views == (*original_model_views, recipe)
+    with pytest.raises(ValueError, match="already exists"):
+        added.add_model_view(recipe)
+
+    updated_recipe = ModelViewSpec(
+        id="smores_topology",
+        name="Live SMORES Topology",
+        builder="platform_graph",
+        modes=(ModelViewMode.AUTHORING, ModelViewMode.RUNTIME),
+        default=True,
+        configuration={"layout": {"algorithm": "spring", "seed": 7}},
+    )
+    saved = added.update_model_view(updated_recipe).save()
+    reopened = StudioProject.open(saved.loaded.root)
+
+    persisted_recipe = next(
+        item for item in reopened.pack.manifest.model_views if item.id == "smores_topology"
+    )
+    assert persisted_recipe == updated_recipe
+    assert persisted_recipe.configuration == {"layout": {"algorithm": "spring", "seed": 7}}
+    root_yaml = (copied_pack / "robot_pack.yaml").read_text(encoding="utf-8")
+    assert "model_views:" in root_yaml
+    assert "builder: platform_graph" in root_yaml
+
+    removed = reopened.remove_model_view("smores_topology").save()
+    assert removed.pack.manifest.model_views == original_model_views
+    assert StudioProject.open(copied_pack).pack.manifest.model_views == original_model_views
 
 
 def test_studio_project_requires_explicit_connector_type(example_pack_dir: Path) -> None:

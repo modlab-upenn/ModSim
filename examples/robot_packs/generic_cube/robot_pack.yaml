@@ -4,6 +4,15 @@ name: Generic Cube Module
 version: 0.1.0
 description: Simulator-neutral example pack for the ModSim schema and CLI.
 
+model_views:
+  - id: module_topology
+    name: Module Topology
+    builder: module_topology_graph
+    modes:
+      - runtime
+    default: true
+    configuration: {}
+
 assets:
   urdf:
     generic_cube: assets/urdf/generic_cube.urdf

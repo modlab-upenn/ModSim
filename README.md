@@ -23,14 +23,19 @@ native ModSim Studio vertical slice:
   kinematic mock backend, and a MuJoCo backend for real rigid-body physics;
 - a cross-backend conformance suite;
 - modular-robot runtime metrics;
+- named Robot Pack model-view recipes, a backend-neutral model-view factory,
+  and an immutable module-topology graph where modules are nodes and committed
+  docking connections are edges;
 - the `modsim` command-line interface;
 - a simulator-neutral generic Robot Pack and test suite.
 
 The current version does **not** provide an Isaac Sim adapter, contact exclusion
 between welded modules, or constraint-force reporting under MuJoCo — so
-break-force release and connector-load metrics stay dormant on that backend. The
-`simulation` validation profile is a stricter structural readiness check; it does
-not launch a simulator.
+break-force release and connector-load metrics stay dormant on that backend. It
+also does not yet provide the Studio Runtime Inspector or a live graph renderer;
+the new model-view layer produces immutable data for those clients to consume.
+The `simulation` validation profile is a stricter structural readiness check;
+it does not launch a simulator.
 
 For the exact implemented inventory, known defects, verification baseline, and
 recommended continuation order, see
@@ -96,6 +101,7 @@ modsim pack inspect examples/robot_packs/generic_cube
 modsim pack validate examples/robot_packs/generic_cube
 modsim pack validate examples/robot_packs/generic_cube --profile simulation
 modsim pack validate examples/robot_packs/generic_cube --output json
+modsim views examples/robot_packs/generic_cube
 modsim dock examples/robot_packs/generic_cube --count 3
 modsim studio examples/robot_packs/generic_cube
 ```
@@ -104,10 +110,12 @@ A Robot Pack is a self-contained directory. Its root `robot_pack.yaml` refers to
 typed specification and backend-mapping documents and keyed local assets. Paths
 are portable, relative to the pack, and cannot escape it.
 
-The implemented format is documented in `docs/robot_pack_spec.md`. Current
-implementation status and known bugs are tracked in
-`docs/IMPLEMENTATION_STATUS.md`. `docs/AGENTS.md` contains implementation rules,
-while `docs/HANDOFF.md` is the broader future architecture roadmap.
+The implemented format is documented in `docs/robot_pack_spec.md`, and the
+model-view architecture and recipe workflow are documented in
+[`docs/model_views.md`](docs/model_views.md). Current implementation status and
+known bugs are tracked in `docs/IMPLEMENTATION_STATUS.md`. `docs/AGENTS.md`
+contains implementation rules, while `docs/HANDOFF.md` is the broader future
+architecture roadmap.
 
 ## Create a Robot Pack from URDF
 
@@ -148,6 +156,7 @@ initial editor provides:
 - selection from the tree or 3D meshes;
 - explicit connector-type create/edit/remove workflows;
 - connector reassignment to existing types and imported URDF bodies/links;
+- named model-view recipe create/edit/remove workflows;
 - numeric connector placement, JSON-compatible custom connector fields, and
   joint metadata editing;
 - live authoring/simulation validation and a read-only canonical YAML preview;
@@ -203,6 +212,31 @@ exported = RobotPackWriter().write(
 # then atomically swaps the existing pack directory.
 saved = RobotPackWriter().update(loaded)
 ```
+
+## Generate a model view
+
+Robot Packs can select registered model-view builders through named recipes.
+The first built-in builder produces a generic module-topology graph: every
+module is a node, including isolated modules, and every committed active
+docking connection is an undirected edge. Multiple connections between the
+same two modules remain distinct.
+
+List a pack's recipes and the builders installed in the current environment:
+
+```bash
+modsim views examples/robot_packs/generic_cube
+modsim views examples/robot_packs/generic_cube \
+  --view module_topology \
+  --count 3 \
+  --output json
+```
+
+Generated views are immutable, JSON-safe snapshots. They are suitable for
+algorithms, Studio, a future browser client, or a native renderer without
+introducing GUI or physics dependencies into the core. Robot Pack YAML stores
+the recipe, not the generated graph or live runtime state. See
+[`docs/model_views.md`](docs/model_views.md) for the class boundaries, recipe
+fields, and runtime update semantics.
 
 ## Run a docking session
 
@@ -326,7 +360,7 @@ commands are recorded in `docs/smores_ep_mujoco.md`.
 
 - URDF and meshes are imported mechanical assets, not canonical ModSim state.
 - Robot Pack YAML is the modular-robot semantic layer.
-- Graphs and matrices will be generated views, not canonical state.
+- Graphs and matrices are generated views, not canonical state.
 - Disconnected modules remain first-class entities.
 - Docking and undocking are explicit lifecycle events, and the event log is the
   only path that mutates world state.

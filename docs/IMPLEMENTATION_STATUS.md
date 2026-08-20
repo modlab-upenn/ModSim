@@ -7,12 +7,13 @@ without relying on prior conversation history.
 
 ## Snapshot and document authority
 
-- Snapshot date: 2026-08-17
+- Snapshot date: 2026-08-20
 - Distribution: `modsim-robotics`
 - Package version: `0.1.0`
 - Robot Pack format: `0.1`
 - Supported Python: 3.11 and 3.12; repository default: 3.12
-- Integration branch: `integration/mujoco-smores-ep`
+- Active feature branch: `feature/model-view-factory`
+- Feature branch base: `integration/mujoco-smores-ep` at `837a31c`
 - Integration parents: `main` at `7d3a3ba7c08f` and
   `origin/docking-exec-aw` at `e2ec0b20a3ef`
 - Project status: pre-alpha
@@ -83,26 +84,31 @@ split Robot Pack YAML + copied local assets
         |
         v
 loader -> strict typed model -> validator
-                    |               |
-                    v               v
-             canonical writer   CLI reports
-                    |
-                    v
-             ModSim Studio editor + one-module 3D preview
-                    |
-                    v
-       SceneSpec -> RuntimeSession -> WorldState + EventLog
-                            |
-                            v
-             connector acceptance + docking guards
-                            |
-                            v
-                mock backend or MuJoCo backend
+          |                 |                  |
+          v                 v                  v
+   canonical writer     CLI reports     named ModelView recipes
+          |                                    |
+          v                                    v
+   ModSim Studio editor                  ModelViewFactory
+   + one-module preview                         |
+          |                                    v
+          |                         immutable generated views
+          v
+SceneSpec -> RuntimeSession -> WorldState + EventLog
+                              |               |
+                              v               v
+               connector acceptance      revision counters
+                 + docking guards
+                              |
+                              v
+                   mock or MuJoCo backend
 ```
 
 World state, a simulation clock, assemblies, connector acceptance, two-phase
 dock/undock commits, runtime metrics, a mock backend, and a MuJoCo weld-backed
-adapter are operational. Model views, the Studio Runtime Inspector, joint
+adapter are operational. Named Robot Pack model-view recipes, a backend-neutral
+model-view factory, and the first immutable module-topology graph are also
+operational. The Studio Runtime Inspector and graph rendering, joint
 command/control APIs, reconfiguration planning, and the Isaac adapter remain
 deferred. The validation profile named `simulation` still performs structural
 readiness checks; it does not launch a backend.
@@ -140,6 +146,8 @@ readiness checks; it does not launch a backend.
   alignment, redock cooldown, and optional break force;
 - bounded JSON-compatible custom metadata on the manifest, connector
   instances, and connector types;
+- named model-view recipes selecting a registered builder, authoring/runtime
+  modes, default-open intent, and bounded JSON-compatible configuration;
 - advertised capabilities;
 - backend mappings; and
 - the aggregate loaded Robot Pack.
@@ -229,9 +237,14 @@ modsim pack inspect PACK [--output text|json]
 modsim pack validate PACK [--profile authoring|simulation] [--output text|json]
 modsim studio [PACK]
 modsim backends
+modsim views PACK [--view RECIPE_ID]
 modsim dock PACK [--backend mock|mujoco]
 modsim run PACK [--backend mock|mujoco] [--view]
 ```
+
+`modsim views` lists the pack's recipes and installed builders or generates a
+selected immutable view snapshot. It does not launch physics or render a live
+graph.
 
 `modsim dock` checks authored docking semantics in a one-shot session.
 `modsim run` approaches, docks, optionally releases, and retracts modules under
@@ -248,6 +261,9 @@ assuming an X-axis layout.
 - multi-module `SceneSpec` placement and stable runtime identifiers;
 - canonical modules, connectors, logical connections, backend snapshots, and
   an append-only event log;
+- `WorldStateRevision` counters for backend samples, topology changes, docking
+  state changes, and appended events, so consumers can react only to state
+  categories they observe;
 - assemblies derived as connected components, including free one-module
   assemblies;
 - spatial candidate detection, mutual compatibility and gender rules,
@@ -272,6 +288,33 @@ MuJoCo currently supports only fixed connections. Compliant, hinge, ball, and
 custom constraints are refused explicitly. Joint command capability is not
 advertised until a real actuator/command API exists.
 
+### Model views
+
+`src/modsim/model_views` provides the first backend-neutral generated-view
+subsystem:
+
+- strict, immutable, JSON-safe `ModelView` result objects with a
+  `GraphModelView` specialization;
+- a `ModelViewBuilder` abstract interface for typed view generators;
+- `ModelViewFactory`, which registers builders explicitly, rejects duplicate
+  registrations, resolves Robot Pack recipes, and keeps only the latest cached
+  result rather than accumulating simulation history; and
+- the generic `module_topology_graph` builder.
+
+The module-topology graph creates one node for every module instance, including
+isolated modules, and one undirected edge for every committed active docking
+connection. Parallel connections between the same two modules remain distinct
+edges. Candidates, failed attempts, and planned connections are not edges.
+Stable runtime identifiers and deterministic ordering make snapshots suitable
+for algorithms, tests, Studio, or a future browser/native renderer.
+
+Robot Pack `model_views` entries are named recipes. They store a builder ID,
+supported authoring/runtime modes, default-open intent, and bounded
+JSON-compatible configuration; they do not store generated nodes/edges or
+executable plugin paths. Builders are registered through Python today, with
+external discovery deferred. See `model_views.md` for the contracts and update
+semantics.
+
 ### ModSim Studio
 
 `src/modsim_studio` is an optional standalone PySide6/PyVistaQt application.
@@ -286,6 +329,8 @@ It currently provides:
 - explicit connector-type creation and reference-safe deletion;
 - connector type reassignment and parent-body selection from imported URDF
   links;
+- model-view recipe creation, editing, and removal, including builder, mode,
+  default, and configuration fields;
 - authoring and simulation-readiness validation panels;
 - a read-only preview of all canonical YAML documents;
 - an embedded 3D view of one module type in the URDF zero-joint
@@ -332,14 +377,15 @@ problem per launch when collecting a clean debugging log.
 ### Examples and tests
 
 - `examples/robot_packs/generic_cube` is the only committed Robot Pack. It is
-  intentionally simulator-neutral and self-contained.
+  intentionally simulator-neutral and self-contained, and declares a default
+  runtime module-topology recipe.
 - Test modules also cover transforms, acceptance, assembly derivation, docking
   lifecycle, runtime scenarios, backend registration/conformance, MuJoCo scene
-  compilation, weld allocation, physical dock/undock, and articulated-connector
-  nominal snapping.
-- The complete integration verification passes 308 tests with native MuJoCo
-  enabled and reports 87% branch-aware core coverage. The focused native
-  MuJoCo/backend-conformance selection passes 62 tests.
+  compilation, weld allocation, physical dock/undock, articulated-connector
+  nominal snapping, world-state revision counters, model-view schemas/factory,
+  topology generation, recipe persistence, and Studio project mutations.
+- The complete feature-branch verification passes 340 tests with native
+  MuJoCo enabled and reports 86% branch-aware core coverage.
 - The CI Studio smoke opens the generic cube in a real Qt/PyVista window under
   Xvfb, selects a module tree item, and verifies session logging.
 
@@ -361,11 +407,13 @@ README.md                      user-facing installation and quick start
 docs/AGENTS.md                 architectural implementation rules
 docs/HANDOFF.md                future design roadmap, not current inventory
 docs/IMPLEMENTATION_STATUS.md  this canonical continuation snapshot
+docs/model_views.md            generated-view contracts and recipe workflow
 docs/robot_pack_spec.md        implemented format-0.1 contract
 docs/studio.md                 current desktop workflow and limitations
 examples/robot_packs/          committed generic example
 src/modsim/cli.py              Typer CLI
 src/modsim/core/               runtime identifiers, transforms, state, events, assemblies
+src/modsim/model_views/        immutable view DTOs, builders, factory, topology graph
 src/modsim/connectors/         compatibility, acceptance, guards, docking execution
 src/modsim/backends/           adapter contract, registry, mock backend
 src/modsim/runtime/            runtime session, metrics, scenario setup
@@ -512,8 +560,13 @@ These are either deliberate format-0.1 boundaries or work not yet implemented:
   complete dedicated Studio editors.
 - The viewport shows one module at zero joint configuration. It has no joint
   animation, multi-module assembly view, contacts, runtime state, or physics.
-- There is no Studio Runtime Inspector, ModelViewRegistry, cohort system,
-  docking controller, approach planner, or reconfiguration planner.
+- There is no Studio Runtime Inspector or model-view renderer. The first
+  module-topology view is generated data only; live graph layout, selection,
+  update throttling, and simulation-worker transport remain next work.
+- Model-view builders require explicit Python registration. Third-party entry
+  point or plugin discovery, additional graph/matrix/frame views, cohorts,
+  docking controllers, approach planners, and reconfiguration planners are not
+  implemented.
 - Canonical saves intentionally rewrite YAML formatting.
 - There is no migration framework for future Robot Pack format versions.
 - There is no project license, publication channel, public project URL, or
@@ -521,26 +574,24 @@ These are either deliberate format-0.1 boundaries or work not yet implemented:
 
 ## Recommended next implementation iteration
 
-Keep the next iteration focused on making the new MuJoCo slice trustworthy for
-real robot packs before adding model views or a runtime dashboard.
+Build the first read-only Studio Runtime Inspector over the completed generated
+view boundary. Keep rendering and Qt lifecycle concerns outside `modsim`.
 
-1. Honor backend mappings when selecting assets and resolving body, joint, and
-   connector-frame names. Add mechanical-source validation so identity-name
-   assumptions fail before backend compilation.
-2. Replace provisional SMORES connector poses, tolerances, orientation rules,
-   and load limits with values verified from CAD and hardware data. Keep the
-   `provisional_demo` metadata until that review is complete.
-3. Add a joint/actuator command contract and populate joint state/handle maps.
-   Then drive SMORES through wheel/pan/tilt commands rather than root free-joint
-   scenario controls.
-4. Add contact-exclusion reservation alongside the weld pool and report
-   equality-constraint forces. This unlocks recessed connectors, overload
-   release, and useful connector-load metrics.
-5. Add a checked-in synthetic articulated Robot Pack fixture for complete
-   cross-backend scenario regression without committing private SMORES assets.
-6. Continue the existing mechanical-validation and Studio GUI-regression work.
-   Model views, dashboard panels, and runtime visualization remain deliberately
-   deferred until this execution boundary is stable.
+1. Define a presentation/transport boundary that delivers complete immutable
+   `ModelView` snapshots from a runtime worker to Studio. The Qt thread must not
+   traverse or mutate a live `WorldState` while a backend is stepping.
+2. Add a graph renderer for `module_topology_graph` with stable module and
+   connection selection, explicit isolated nodes, and distinct parallel edges.
+   Treat layout as renderer state rather than canonical robot state.
+3. Use `sample_sequence`, `topology_revision`, `docking_revision`, and
+   `event_revision` to coalesce and throttle updates without losing committed
+   topology changes. Display the source stamp so stale frames are diagnosable.
+4. Add deterministic presenter tests plus focused native Qt coverage for
+   initial render, dock, undock, isolated modules, parallel edges, selection
+   preservation, and clean session shutdown.
+5. After that slice is stable, add metrics and event panels, then return to
+   backend mappings, mechanical-source validation, real joint commands,
+   MuJoCo contact exclusion/constraint forces, and richer model-view builders.
 
 ## SMORES-EP MuJoCo workflow
 
@@ -549,6 +600,7 @@ The current private development pack is:
 ```bash
 modsim pack inspect .modsim/robot_packs/smores_ep
 modsim pack validate .modsim/robot_packs/smores_ep --profile simulation
+modsim views .modsim/robot_packs/smores_ep --view smores_topology --count 4
 modsim studio .modsim/robot_packs/smores_ep
 ```
 
@@ -584,6 +636,7 @@ uv sync --locked --extra dev --extra studio --extra mujoco --python 3.12
 uv run --no-sync modsim --version
 uv run --no-sync modsim backends
 uv run --no-sync modsim pack validate examples/robot_packs/generic_cube
+uv run --no-sync modsim views examples/robot_packs/generic_cube
 uv run --no-sync modsim studio examples/robot_packs/generic_cube
 ```
 
@@ -660,9 +713,10 @@ A useful starting request for the next implementation session is:
 
 ```text
 Read docs/AGENTS.md, docs/IMPLEMENTATION_STATUS.md,
-docs/robot_pack_spec.md, docs/studio.md, docs/backends.md, and
-docs/docking_semantics.md. Make the MuJoCo adapter honor Robot Pack backend
-mappings for assets, links, joints, and connector frames. Preserve the optional
-backend dependency boundary and run core, Studio, MuJoCo, packaging, and
-cross-backend checks.
+docs/robot_pack_spec.md, docs/model_views.md, docs/studio.md, and
+docs/docking_semantics.md. Implement the first read-only Studio Runtime
+Inspector graph renderer over immutable module-topology ModelView snapshots.
+Use WorldState revision counters to throttle updates, preserve stable selection
+across topology changes, keep Qt out of the core package, and run core, Studio,
+MuJoCo, packaging, and cross-backend checks.
 ```

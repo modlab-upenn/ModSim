@@ -1,4 +1,4 @@
-# AGENTS.md — ModSim Implementation Instructions v0.3
+# AGENTS.md — ModSim Implementation Instructions v0.4
 
 ## Read before changing code
 
@@ -32,6 +32,10 @@ ModSim should let users:
 - Robot Pack YAML is the modular-robot semantic layer.
 - Canonical state is `HardwareCatalog + CapabilityCatalog + WorldState + EventLog`.
 - Graphs are generated views, not the foundation.
+- Robot Packs store named model-view recipes, never generated graph state or
+  executable Python import paths.
+- Keep model-view builders and result objects backend-neutral and GUI-free;
+  rendering belongs in clients such as Studio.
 - All modules remain first-class even when disconnected.
 - Assemblies are derived connected components.
 - Cohorts are logical groups that may contain disconnected modules.
@@ -127,11 +131,14 @@ pre-commit
 6. Connector, docking-interface, joint, and hardware constraint editors —
    partially implemented; connector lifecycle UX and capability/mapping
    editors remain incomplete.
-7. ModelViewRegistry and first view previews inside Studio — not started.
-8. Runtime core and mock backend — not started.
-9. Runtime Inspector mode in Studio with PyQtGraph metrics — not started.
-10. MuJoCo backend MVP — not started.
-11. Docking/undocking with backend bridge — not started.
+7. Model-view recipe schema, factory/registry, and first generic module-topology
+   graph — implemented; Studio runtime rendering is separate and not started.
+8. Runtime core and mock backend — implemented.
+9. Runtime Inspector mode in Studio with PyQtGraph metrics and model-view
+   rendering — next work.
+10. MuJoCo backend MVP — implemented for fixed docking constraints.
+11. Docking/undocking with backend bridge — implemented for the mock and
+    MuJoCo backends, with the limitations in `IMPLEMENTATION_STATUS.md`.
 
 ## ModSim Studio implementation rules
 
@@ -142,6 +149,9 @@ pre-commit
 - The main layout should start with: left project/URDF tree, center PyVistaQt viewport, right property editor, bottom validation/YAML/event panel.
 - PyVistaQt overlays should show link frames, joint axes, connector frames, docking approach directions, and acceptance regions.
 - Runtime Inspector should show ModSim semantics, not replace the simulator viewer: WorldState, assemblies, connections, docking lifecycle, ModelViews, metrics, and backend status.
+- Runtime Inspector renderers must consume immutable generated model-view
+  snapshots; they must not traverse or mutate a live `WorldState` while a
+  backend is stepping.
 - Use PyQtGraph for live metrics and simple matrix/model-view panels.
 - Keep Studio optional through packaging extras:
   `modsim-robotics[studio]` after publication or `.[studio]` from a source
@@ -177,8 +187,9 @@ Use this preferred Codex starting prompt for the next iteration:
 
 ```text
 Read docs/AGENTS.md, docs/IMPLEMENTATION_STATUS.md,
-docs/robot_pack_spec.md, and docs/studio.md. Add stable Qt regression coverage
-for connector and connector-type create/edit/remove, custom metadata,
-URDF-body reassociation, category/project selection, and Save/reopen. Preserve
-the core/Studio dependency boundary and run all repository checks.
+docs/robot_pack_spec.md, docs/model_views.md, and docs/studio.md. Implement the
+first read-only Studio Runtime Inspector graph renderer over immutable
+ModelView snapshots, with update throttling and stable selection across
+topology changes. Do not read live WorldState from the Qt thread. Preserve the
+core/Studio dependency boundary and run all repository checks.
 ```

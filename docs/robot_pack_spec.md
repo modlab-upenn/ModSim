@@ -122,6 +122,14 @@ description: Optional description.
 metadata:
   hardware.revision: prototype_a
 
+model_views:
+  - id: module_topology
+    name: Module Topology
+    builder: module_topology_graph
+    modes: [runtime]
+    default: true
+    configuration: {}
+
 assets:
   urdf:
     base_module: assets/urdf/base_module.urdf
@@ -151,6 +159,47 @@ multiple mechanical assets:
 Catalog keys are stable asset IDs. Paths must be unique across all catalogs.
 A `ModuleType.asset_ref` always names an entry in `assets.urdf`. A backend
 mapping declares which mechanical catalog its asset references use.
+
+## Model-view recipes
+
+The optional root-manifest `model_views` sequence declares named recipes for
+generating reusable model views. A recipe configures a registered builder; it
+does not store graph nodes, edges, poses, or other generated results in the
+Robot Pack. Builders derive those results from the Robot Pack and, for live
+views, the current runtime state.
+
+```yaml
+model_views:
+  - id: smores_topology
+    name: SMORES Topology
+    builder: module_topology_graph
+    modes: [runtime]
+    default: true
+    configuration: {}
+```
+
+- `id` is the stable lower-snake-case recipe ID and must be unique within the
+  Robot Pack.
+- `name` is optional display text.
+- `builder` is the stable ID of a model-view builder registered with the
+  factory. Schema validation checks the ID syntax but does not require the
+  corresponding optional plugin to be installed.
+- `modes` is a non-empty, duplicate-free sequence containing `authoring`,
+  `runtime`, or both. Omitting it selects `runtime`.
+- `default` is a presentation hint for clients choosing which compatible view
+  to open first. It defaults to `false`; format 0.1 permits multiple defaults.
+- `configuration` is a builder-specific, JSON-compatible mapping with the same
+  128-field bound and portable field-name rules as custom metadata. Unknown
+  configuration keys are preserved for the selected builder to interpret.
+
+`module_topology_graph` is the first generic builder. It represents every
+module instance as a node and every active docked connection as a distinct
+edge, including disconnected modules as isolated nodes. This invariant is not
+a configuration option, and the initial builder currently accepts an empty
+`configuration` mapping only. The result is generated dynamically, so docking
+and undocking change the view without rewriting the Robot Pack YAML. Additional
+generic or platform-specific builders can be registered without adding their
+output to the canonical hardware state.
 
 ## Module types
 

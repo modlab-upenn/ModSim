@@ -18,8 +18,12 @@ from modsim.robot_packs import (
     JointLimits,
     JointSpec,
     JointType,
+    ModelViewMode,
+    ModelViewSpec,
     ModuleType,
     PoseSpec,
+    RobotPack,
+    RobotPackManifest,
 )
 
 
@@ -150,6 +154,45 @@ def test_custom_metadata_rejects_bad_keys_and_non_json_values() -> None:
 
     with pytest.raises(ValidationError):
         ConnectorTypeSpec.model_validate({"id": "fixed_face", "metadata": {"path": object()}})
+
+
+def test_model_view_recipe_defaults_and_round_trip() -> None:
+    model_view = ModelViewSpec(
+        id="platform_topology",
+        name="Platform Topology",
+        builder="platform_graph",
+        configuration={"layout": {"algorithm": "spring", "seed": 7}},
+    )
+
+    assert model_view.modes == (ModelViewMode.RUNTIME,)
+    assert not model_view.default
+    restored = ModelViewSpec.model_validate(model_view.model_dump(mode="python"))
+    assert restored == model_view
+
+
+def test_model_view_recipe_rejects_empty_or_duplicate_modes() -> None:
+    with pytest.raises(ValidationError, match="modes must not be empty"):
+        ModelViewSpec(
+            id="topology",
+            builder="module_topology_graph",
+            modes=(),
+        )
+
+    with pytest.raises(ValidationError, match="modes must not contain duplicates"):
+        ModelViewSpec(
+            id="topology",
+            builder="module_topology_graph",
+            modes=(ModelViewMode.RUNTIME, ModelViewMode.RUNTIME),
+        )
+
+
+def test_manifest_rejects_duplicate_model_view_ids(example_pack: RobotPack) -> None:
+    data = example_pack.manifest.model_dump(mode="python")
+    duplicate = ModelViewSpec(id="topology", builder="module_topology_graph")
+    data["model_views"] = (duplicate, duplicate)
+
+    with pytest.raises(ValidationError, match="model-view IDs must be unique"):
+        RobotPackManifest.model_validate(data)
 
 
 def test_schema_rejects_duplicate_module_child_ids() -> None:

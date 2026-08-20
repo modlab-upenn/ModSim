@@ -39,6 +39,8 @@ The current Studio MVP provides:
 - connector-type fields for gender, compatibility, allowed orientations,
   acceptance tolerances, physical constraints, compliance, load limits, and
   undocking support, plus optional runtime docking policy;
+- a Model Views catalog for adding, editing, and removing named builder
+  recipes, supported modes, default selection hints, and JSON configuration;
 - a read-only preview of the canonical split-YAML documents;
 - authoring validation with `F6` and stricter structural
   simulation-readiness validation with `F7`;
@@ -122,9 +124,11 @@ session continues to use the working-directory log chosen at startup.
    or to remove it.
 10. Select joints to add control modes and unit-bearing limits.
 11. Select the Robot Pack to edit custom metadata in the Properties panel.
-12. Run authoring validation with `F6` and simulation-readiness validation with
+12. Select **Model Views** to add any model-view recipes that should be
+    available during authoring or at runtime.
+13. Run authoring validation with `F6` and simulation-readiness validation with
    `F7`.
-13. Use **Save** to update the open pack or **Export As** to create a new pack.
+14. Use **Save** to update the open pack or **Export As** to create a new pack.
 
 Save stages a complete copy, reloads it, compares its semantic model, and then
 atomically swaps the pack directory. It writes metadata and semantic edits to
@@ -181,6 +185,28 @@ field-name portability. Applying an editor changes the in-memory document;
 **Save** or **Export As** writes the values to the appropriate canonical YAML
 file.
 
+### Model-view recipes
+
+Select the **Model Views** catalog row and choose **Add model view**. Each
+recipe has a stable lower-snake-case ID, optional display name, registered
+builder ID, authoring/runtime mode checkboxes, a default-view hint, and a
+JSON-compatible builder-configuration table. The initial builder is
+`module_topology_graph`, which generates one node per module instance and one
+edge per active docked connection. It always includes disconnected modules as
+isolated nodes and currently accepts no configuration fields, so leave its
+configuration table empty.
+
+Select a concrete recipe to edit or remove it. As with other Studio edits, the
+change is in memory until **Save** or **Export As**. Removing a recipe removes
+only the presentation/generation configuration; it never removes modules,
+connectors, runtime connections, or other canonical robot state.
+
+Studio does not ask the user to enter graph nodes or edges. The model-view
+factory derives them from the Robot Pack and current runtime `WorldState`.
+Recipes say which views a robot platform recommends and how their builders are
+configured. Additional generic or platform-specific builders may be
+registered later while using the same recipe format.
+
 ## Editing boundaries
 
 URDF remains the source of link geometry, mesh references, and kinematics.
@@ -234,9 +260,11 @@ These are current-source limitations, not intended long-term behavior:
 - **Viewport coverage is intentionally limited.** Acceptance-region geometry
   is editable but not rendered. The viewport shows one module type rather than
   a multi-module assembly, has no joint animation, and does not display
-  contacts, physics, docking execution, or runtime state. A document edit
-  rebuilds the scene, resets the camera, and currently returns multi-module
-  documents to the first renderable module.
+  contacts, physics, docking execution, generated model-view previews, or
+  runtime state. The Model Views catalog edits recipes only; live rendering is
+  part of the separate Runtime Inspector milestone. A document edit rebuilds
+  the scene, resets the camera, and currently returns multi-module documents
+  to the first renderable module.
 - **Native GUI regression coverage is not established.** Document-model tests
   cover connector/type mutation, URDF-body association, metadata persistence,
   and selection-supporting state changes, but there are no automated
