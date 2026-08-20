@@ -26,14 +26,17 @@ native ModSim Studio vertical slice:
 - named Robot Pack model-view recipes, a backend-neutral model-view factory,
   and an immutable module-topology graph where modules are nodes and committed
   docking connections are edges;
+- a standalone Studio Runtime Inspector that runs a two-module scenario on a
+  worker thread and displays the live topology graph and canonical event log;
 - the `modsim` command-line interface;
 - a simulator-neutral generic Robot Pack and test suite.
 
 The current version does **not** provide an Isaac Sim adapter, contact exclusion
 between welded modules, or constraint-force reporting under MuJoCo — so
-break-force release and connector-load metrics stay dormant on that backend. It
-also does not yet provide the Studio Runtime Inspector or a live graph renderer;
-the new model-view layer produces immutable data for those clients to consume.
+break-force release and connector-load metrics stay dormant on that backend.
+The first Runtime Inspector is deliberately limited to one two-module docking
+scenario, one topology-graph renderer, and an event table; it is not a 3D
+physics viewer or a general scene dashboard.
 The `simulation` validation profile is a stricter structural readiness check;
 it does not launch a simulator.
 
@@ -81,6 +84,13 @@ uv run --no-sync pytest
 An installed package can launch the same application with either
 `modsim studio` or `modsim-studio`.
 
+Install both optional runtime surfaces to use the live MuJoCo inspector:
+
+```bash
+python -m pip install -e ".[studio,mujoco]"
+modsim runtime examples/robot_packs/generic_cube
+```
+
 Before a public package release, install a locally built wheel in a clean
 virtual environment:
 
@@ -104,6 +114,7 @@ modsim pack validate examples/robot_packs/generic_cube --output json
 modsim views examples/robot_packs/generic_cube
 modsim dock examples/robot_packs/generic_cube --count 3
 modsim studio examples/robot_packs/generic_cube
+modsim runtime examples/robot_packs/generic_cube
 ```
 
 A Robot Pack is a self-contained directory. Its root `robot_pack.yaml` refers to
@@ -112,10 +123,11 @@ are portable, relative to the pack, and cannot escape it.
 
 The implemented format is documented in `docs/robot_pack_spec.md`, and the
 model-view architecture and recipe workflow are documented in
-[`docs/model_views.md`](docs/model_views.md). Current implementation status and
-known bugs are tracked in `docs/IMPLEMENTATION_STATUS.md`. `docs/AGENTS.md`
-contains implementation rules, while `docs/HANDOFF.md` is the broader future
-architecture roadmap.
+[`docs/model_views.md`](docs/model_views.md), and the live graph/event workflow
+is in [`docs/runtime_inspector.md`](docs/runtime_inspector.md). Current
+implementation status and known bugs are tracked in
+`docs/IMPLEMENTATION_STATUS.md`. `docs/AGENTS.md` contains implementation rules,
+while `docs/HANDOFF.md` is the broader future architecture roadmap.
 
 ## Create a Robot Pack from URDF
 
@@ -237,6 +249,34 @@ introducing GUI or physics dependencies into the core. Robot Pack YAML stores
 the recipe, not the generated graph or live runtime state. See
 [`docs/model_views.md`](docs/model_views.md) for the class boundaries, recipe
 fields, and runtime update semantics.
+
+## Inspect a live runtime
+
+The standalone Runtime Inspector runs exactly two modules and shows the
+changing semantic graph and event log while the backend steps. MuJoCo is the
+default backend:
+
+```bash
+modsim runtime examples/robot_packs/generic_cube \
+  --fixed-connector front \
+  --moving-connector front \
+  --connector-gap 0.02 \
+  --approach 0.03 \
+  --duration 4
+```
+
+Before docking, the graph contains two isolated module nodes. A committed weld
+adds one edge; `--undock-at SECONDS` removes it again. The event table retains
+the ordered `DockCandidateDetected`, `DockCommitted`, `AssemblyMerged`, and
+optional release events. The Qt thread receives immutable frames from a worker
+that exclusively owns MuJoCo and `WorldState`.
+
+If connector options are omitted, ModSim selects the first self-compatible
+connector declared on the module. Explicit IDs are recommended for real robot
+packs. The selected model-view recipe must generate a
+`module_topology_graph`; `--model-view RECIPE_ID` overrides the default runtime
+recipe. See [`docs/runtime_inspector.md`](docs/runtime_inspector.md) for the
+complete workflow and current boundary.
 
 ## Run a docking session
 

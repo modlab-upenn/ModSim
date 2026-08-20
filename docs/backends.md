@@ -183,6 +183,12 @@ mjpython -m modsim run path/to/pack --backend mujoco --view
 The adapter translates MuJoCo's error into that instruction rather than letting
 a raw traceback through.
 
+`modsim runtime PACK` uses a different arrangement: Qt owns the main thread,
+and MuJoCo steps headlessly inside the Runtime Inspector worker. It therefore
+runs with ordinary Python on macOS, but intentionally shows ModSim's 2D logical
+graph and event log rather than embedding the passive 3D viewer. Use the two
+commands as complementary inspectors.
+
 #### Driving modules
 
 `MuJoCoBackendAdapter` implements `SupportsModuleKinematics`, so a scenario can

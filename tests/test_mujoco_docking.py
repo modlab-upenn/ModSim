@@ -31,7 +31,10 @@ from modsim.core.transforms import (
     vec_norm,
     vec_sub,
 )
+from modsim.model_views import ModelViewFactory
 from modsim.robot_packs import LoadedRobotPack, RobotPackLoader
+from modsim.runtime.inspection import build_runtime_inspector_frame
+from modsim.runtime.scenarios import DockingPairScenario, DockingPairScenarioConfig
 from modsim.runtime.session import RuntimeSession
 from modsim_backend_mujoco.adapter import MuJoCoBackendAdapter
 
@@ -148,6 +151,61 @@ def test_modules_coast_together_and_dock(latching_pack: LoadedRobotPack) -> None
     )
     assert session.world.assemblies.count == 1
     assert session.world.assemblies.largest_size == 2
+
+
+def test_runtime_inspector_frames_follow_a_real_mujoco_dock(
+    example_pack_dir: Path,
+) -> None:
+    """The graph/event transport observes the same session MuJoCo constrains."""
+    loaded = RobotPackLoader().load(example_pack_dir)
+    session = RuntimeSession.create(
+        loaded,
+        SceneSpec.grid(MODULE_TYPE, 2, spacing_m=1.0),
+        "mujoco",
+        gravity=(0.0, 0.0, 0.0),
+    )
+    scenario = DockingPairScenario.create(
+        session,
+        DockingPairScenarioConfig(
+            fixed_connector=FRONT_0,
+            moving_connector=ConnectorInstanceId("generic_cube_1/front"),
+            gap_m=0.02,
+            approach_speed_m_s=APPROACH_SPEED_M_S,
+            dt_s=STEP_S,
+        ),
+    )
+    factory = ModelViewFactory()
+    recipe = loaded.pack.manifest.model_views[0]
+    initial = build_runtime_inspector_frame(
+        session,
+        recipe,
+        factory,
+        scenario_status=scenario.status,
+    )
+
+    try:
+        while session.world.time_s < 2.0 and not session.world.connections:
+            scenario.step()
+        docked_frame = build_runtime_inspector_frame(
+            session,
+            recipe,
+            factory,
+            event_cursor=initial.next_event_sequence,
+            scenario_status=scenario.status,
+        )
+    finally:
+        session.shutdown()
+
+    assert initial.view.edges == ()
+    assert [event.kind for event in docked_frame.events] == [
+        "DockCandidateDetected",
+        "DockCommitted",
+        "AssemblyMerged",
+    ]
+    assert len(docked_frame.view.edges) == 1
+    edge = docked_frame.view.edges[0]
+    assert {edge.source, edge.target} == {"generic_cube_0", "generic_cube_1"}
+    assert docked_frame.metrics.connection_count_active == 1
 
 
 def test_the_weld_holds_the_requested_relative_pose(latching_pack: LoadedRobotPack) -> None:

@@ -1,8 +1,10 @@
 # ModSim Studio MVP
 
-ModSim Studio is the optional standalone Robot Pack Builder. It is implemented
-with PySide6/Qt and an embedded PyVistaQt/VTK viewport. Physics and simulator
-backends are not part of this milestone.
+ModSim Studio provides two optional native applications: the Robot Pack Builder
+with its PyVistaQt/VTK authoring viewport, and a lightweight Runtime Inspector
+with a PyQtGraph topology graph and event table. The applications share core
+Robot Pack and model-view contracts but remain separate windows in the current
+slice.
 
 ## Install and launch
 
@@ -19,6 +21,15 @@ Open a pack directly:
 
 ```bash
 .venv/bin/modsim studio /absolute/path/to/robot_pack
+```
+
+Install MuJoCo too, then launch the Runtime Inspector for a pack:
+
+```bash
+.venv/bin/python -m pip install -e ".[studio,mujoco,dev]"
+.venv/bin/modsim runtime /absolute/path/to/robot_pack \
+  --fixed-connector CONNECTOR_ID \
+  --moving-connector CONNECTOR_ID
 ```
 
 The standalone `modsim-studio` command and `python -m modsim_studio` are
@@ -41,6 +52,8 @@ The current Studio MVP provides:
   undocking support, plus optional runtime docking policy;
 - a Model Views catalog for adding, editing, and removing named builder
   recipes, supported modes, default selection hints, and JSON configuration;
+- a separate Runtime Inspector that auto-runs a two-module scenario, draws the
+  live module-topology graph, and retains the ordered canonical event log;
 - a read-only preview of the canonical split-YAML documents;
 - authoring validation with `F6` and stricter structural
   simulation-readiness validation with `F7`;
@@ -52,9 +65,10 @@ The current Studio MVP provides:
   and
 - a local per-launch session log mirrored in the **Session Log** tab.
 
-The viewport renders one module type at a time in the URDF zero-joint
+The authoring viewport renders one module type at a time in the URDF zero-joint
 configuration. Simulation readiness is a validation profile; it does not start
-a simulator or physics runtime.
+a runtime by itself. `modsim runtime` is the explicit launch path. See
+`runtime_inspector.md` for controls, threading, and current limitations.
 
 ## Session logging
 
@@ -261,16 +275,17 @@ These are current-source limitations, not intended long-term behavior:
   is editable but not rendered. The viewport shows one module type rather than
   a multi-module assembly, has no joint animation, and does not display
   contacts, physics, docking execution, generated model-view previews, or
-  runtime state. The Model Views catalog edits recipes only; live rendering is
-  part of the separate Runtime Inspector milestone. A document edit rebuilds
-  the scene, resets the camera, and currently returns multi-module documents
-  to the first renderable module.
-- **Native GUI regression coverage is not established.** Document-model tests
-  cover connector/type mutation, URDF-body association, metadata persistence,
-  and selection-supporting state changes, but there are no automated
-  MainWindow/viewport tests for the corresponding dialogs, tree-selection
-  lifecycle, or 3D interaction. Treat manual reproduction steps and the session
-  log as required evidence when reporting these GUI issues.
+  runtime state. The separate Runtime Inspector renders the generated logical
+  graph and events, not 3D physics. A document edit rebuilds the scene, resets
+  the camera, and currently returns multi-module documents to the first
+  renderable module.
+- **Native authoring regression coverage remains limited.** Runtime presenter,
+  graph/event widgets, and worker shutdown have focused automated coverage.
+  Document-model tests cover connector/type mutation, URDF-body association,
+  metadata persistence, and selection-supporting state changes, but there are
+  no automated MainWindow/viewport tests for the corresponding dialogs,
+  tree-selection lifecycle, or 3D interaction. Treat manual reproduction steps
+  and the session log as required evidence when reporting those authoring issues.
 
 ## Import support and limitations
 
@@ -303,8 +318,9 @@ OBJ or DAE.
 
 ## Package boundary
 
-`modsim` contains the backend-neutral schemas, importer, validation, and
-persistence APIs. It does not import Qt, PyVista, VTK, or PyQtGraph.
+`modsim` contains the backend-neutral schemas, importer, validation,
+persistence, runtime, immutable inspector transport, and model-view APIs. It
+does not import Qt, PyVista, VTK, or PyQtGraph.
 
 `modsim_studio` is an optional client of those APIs. A future web frontend or
 C++ visualization application can consume the same Robot Pack and importer

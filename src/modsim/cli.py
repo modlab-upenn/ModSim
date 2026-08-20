@@ -21,17 +21,7 @@ from modsim.backends.registry import (
     describe_backends,
     resolve_backend_name,
 )
-from modsim.core.events import (
-    AssemblyMerged,
-    AssemblySplit,
-    ConnectorOverloaded,
-    DockCandidateDetected,
-    DockCommitted,
-    DockFailed,
-    Event,
-    UndockCommitted,
-    UndockFailed,
-)
+from modsim.core.events import Event
 from modsim.core.ids import ModuleInstanceId, connector_instance_id
 from modsim.core.scene import SceneError, SceneSpec
 from modsim.core.state import WorldState
@@ -56,7 +46,12 @@ from modsim.robot_packs import (
     ValidationProfile,
     ValidationReport,
 )
-from modsim.runtime.scenarios import ScenarioSetupError, stage_docking_pair
+from modsim.runtime.inspection import format_event_detail
+from modsim.runtime.scenarios import (
+    DockingPairScenario,
+    DockingPairScenarioConfig,
+    ScenarioSetupError,
+)
 from modsim.runtime.session import RuntimeSession
 
 
@@ -141,6 +136,167 @@ def studio_command(
         )
         raise typer.Exit(code=2) from error
     raise typer.Exit(code=studio_main(pack_path))
+
+
+@app.command("runtime")
+def runtime_command(
+    pack_path: Annotated[
+        Path,
+        typer.Argument(
+            exists=False,
+            file_okay=True,
+            dir_okay=True,
+            readable=True,
+            resolve_path=False,
+            help="Robot Pack directory or robot_pack.yaml path.",
+        ),
+    ],
+    module_type: Annotated[
+        str | None,
+        typer.Option("--module-type", "-m", help="Module type to instantiate twice."),
+    ] = None,
+    fixed_connector: Annotated[
+        str | None,
+        typer.Option(
+            "--fixed-connector",
+            help="Module-local connector ID on the first module.",
+        ),
+    ] = None,
+    moving_connector: Annotated[
+        str | None,
+        typer.Option(
+            "--moving-connector",
+            help="Module-local connector ID on the second module.",
+        ),
+    ] = None,
+    connector_gap_m: Annotated[
+        float,
+        typer.Option(
+            "--connector-gap",
+            min=0.0,
+            help="Initial separation between the selected connector origins.",
+        ),
+    ] = 0.02,
+    orientation_rad: Annotated[
+        float,
+        typer.Option(
+            "--orientation",
+            help="Requested relative roll about the docking axis in radians.",
+        ),
+    ] = 0.0,
+    approach_m_s: Annotated[
+        float,
+        typer.Option("--approach", help="Speed of the moving module toward the fixed module."),
+    ] = 0.03,
+    retract_m_s: Annotated[
+        float | None,
+        typer.Option(
+            "--retract",
+            help="Speed away after release. Defaults to the approach speed.",
+        ),
+    ] = None,
+    duration_s: Annotated[
+        float,
+        typer.Option("--duration", help="Simulated seconds to display."),
+    ] = 4.0,
+    dt_s: Annotated[float, typer.Option("--dt", help="Physics step size in seconds.")] = 0.002,
+    undock_at_s: Annotated[
+        float | None,
+        typer.Option(
+            "--undock-at",
+            help="Optionally release the connection at this simulated time.",
+        ),
+    ] = None,
+    backend: Annotated[
+        str,
+        typer.Option("--backend", "-b", help="Physics backend used by the worker."),
+    ] = "mujoco",
+    gravity: Annotated[
+        bool,
+        typer.Option(
+            "--gravity/--no-gravity",
+            help="Gravity is off by default to isolate the docking demonstration.",
+        ),
+    ] = False,
+    ground: Annotated[
+        bool,
+        typer.Option("--ground", help="Add a backend ground plane at z = 0."),
+    ] = False,
+    height_m: Annotated[
+        float,
+        typer.Option("--height", help="Lift both modules above the scene origin."),
+    ] = 0.0,
+    view_id: Annotated[
+        str | None,
+        typer.Option(
+            "--model-view",
+            help="Runtime model-view recipe ID. Defaults to the pack's default recipe.",
+        ),
+    ] = None,
+    publish_hz: Annotated[
+        float,
+        typer.Option("--publish-hz", help="Maximum inspector refresh frequency."),
+    ] = 20.0,
+) -> None:
+    """Open a live graph and event log for a two-module docking run."""
+    _require_positive_finite(duration_s, "--duration")
+    _require_positive_finite(dt_s, "--dt")
+    _require_positive_finite(approach_m_s, "--approach")
+    _require_positive_finite(publish_hz, "--publish-hz")
+    _require_finite(connector_gap_m, "--connector-gap")
+    _require_finite(orientation_rad, "--orientation")
+    _require_finite(height_m, "--height")
+    if connector_gap_m < 0.0:
+        typer.echo("--connector-gap must not be negative.", err=True)
+        raise typer.Exit(code=2)
+    if retract_m_s is not None:
+        _require_finite(retract_m_s, "--retract")
+        if retract_m_s < 0.0:
+            typer.echo("--retract must not be negative.", err=True)
+            raise typer.Exit(code=2)
+    if undock_at_s is not None:
+        _require_finite(undock_at_s, "--undock-at")
+        if undock_at_s < 0.0:
+            typer.echo("--undock-at must not be negative.", err=True)
+            raise typer.Exit(code=2)
+    if (fixed_connector is None) != (moving_connector is None):
+        typer.echo(
+            "--fixed-connector and --moving-connector must be supplied together",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    try:
+        from modsim_studio.runtime_app import main as runtime_main
+        from modsim_studio.runtime_worker import RuntimeInspectorConfig
+    except ImportError as error:
+        typer.echo(
+            "Runtime Inspector dependencies are not installed. Install with: "
+            "pip install 'modsim-robotics[studio,mujoco]'",
+            err=True,
+        )
+        raise typer.Exit(code=2) from error
+
+    config = RuntimeInspectorConfig(
+        pack_path=pack_path,
+        module_type=module_type,
+        backend=backend,
+        fixed_connector=fixed_connector,
+        moving_connector=moving_connector,
+        connector_gap_m=connector_gap_m,
+        orientation_rad=orientation_rad,
+        approach_m_s=approach_m_s,
+        retract_m_s=retract_m_s,
+        duration_s=duration_s,
+        dt_s=dt_s,
+        undock_at_s=undock_at_s,
+        gravity=gravity,
+        ground=ground,
+        height_m=height_m,
+        view_id=view_id,
+        publish_hz=publish_hz,
+    )
+    raise typer.Exit(code=runtime_main(config))
 
 
 @pack_app.command("validate")
@@ -678,6 +834,27 @@ def run_command(
     """
     _require_positive_finite(duration_s, "--duration")
     _require_positive_finite(dt_s, "--dt")
+    _require_finite(spacing_m, "--spacing")
+    _require_finite(connector_gap_m, "--connector-gap")
+    _require_finite(orientation_rad, "--orientation")
+    _require_finite(approach_m_s, "--approach")
+    _require_finite(height_m, "--height")
+    if connector_gap_m < 0.0:
+        typer.echo("--connector-gap must not be negative.", err=True)
+        raise typer.Exit(code=2)
+    if approach_m_s < 0.0:
+        typer.echo("--approach must not be negative.", err=True)
+        raise typer.Exit(code=2)
+    if retract_m_s is not None:
+        _require_finite(retract_m_s, "--retract")
+        if retract_m_s < 0.0:
+            typer.echo("--retract must not be negative.", err=True)
+            raise typer.Exit(code=2)
+    if undock_at_s is not None:
+        _require_finite(undock_at_s, "--undock-at")
+        if undock_at_s < 0.0:
+            typer.echo("--undock-at must not be negative.", err=True)
+            raise typer.Exit(code=2)
 
     try:
         loaded = RobotPackLoader().load(pack_path)
@@ -710,45 +887,52 @@ def run_command(
         typer.echo(f"Could not start the scenario: {error}", err=True)
         raise typer.Exit(code=2) from error
 
-    driver = scene.instance_ids[-1]
-    approach_direction: Vec3 = (-1.0, 0.0, 0.0)
+    retract = approach_m_s if retract_m_s is None else retract_m_s
+    stepper: Callable[[], tuple[Event, ...]]
     if fixed_connector is not None and moving_connector is not None:
         try:
-            setup = stage_docking_pair(
+            scenario = DockingPairScenario.create(
                 session,
-                connector_instance_id(scene.instance_ids[0], fixed_connector),
-                connector_instance_id(scene.instance_ids[-1], moving_connector),
-                gap_m=connector_gap_m,
-                orientation_rad=orientation_rad,
+                DockingPairScenarioConfig(
+                    fixed_connector=connector_instance_id(scene.instance_ids[0], fixed_connector),
+                    moving_connector=connector_instance_id(
+                        scene.instance_ids[-1], moving_connector
+                    ),
+                    gap_m=connector_gap_m,
+                    orientation_rad=orientation_rad,
+                    approach_speed_m_s=approach_m_s,
+                    dt_s=dt_s,
+                    release_after_s=undock_at_s,
+                    retract_speed_m_s=retract,
+                ),
             )
         except ScenarioSetupError as error:
             session.shutdown()
             typer.echo(f"Could not arrange the connector pair: {error}", err=True)
             raise typer.Exit(code=2) from error
-        driver = setup.moving_module
-        approach_direction = setup.approach_direction
-
-    adapter = session.adapter
-    if isinstance(adapter, SupportsModuleKinematics):
-        adapter.set_module_twist(
-            driver,
-            linear_m_s=vec_scale(approach_direction, approach_m_s),
-        )
+        stepper = scenario.step
     else:
-        typer.echo(
-            f"The '{backend_name}' backend cannot drive modules, so nothing will approach.",
-            err=True,
+        driver = scene.instance_ids[-1]
+        approach_direction: Vec3 = (-1.0, 0.0, 0.0)
+        adapter = session.adapter
+        if isinstance(adapter, SupportsModuleKinematics):
+            adapter.set_module_twist(
+                driver,
+                linear_m_s=vec_scale(approach_direction, approach_m_s),
+            )
+        else:
+            typer.echo(
+                f"The '{backend_name}' backend cannot drive modules, so nothing will approach.",
+                err=True,
+            )
+        stepper = _make_stepper(
+            session,
+            dt_s,
+            undock_at_s,
+            driver,
+            retract,
+            retract_direction=vec_scale(approach_direction, -1.0),
         )
-
-    retract = approach_m_s if retract_m_s is None else retract_m_s
-    stepper = _make_stepper(
-        session,
-        dt_s,
-        undock_at_s,
-        driver,
-        retract,
-        retract_direction=vec_scale(approach_direction, -1.0),
-    )
     if view:
         try:
             from modsim_backend_mujoco.viewer import run_with_viewer
@@ -1077,7 +1261,7 @@ def _render_docking_session(
                 str(event.sequence),
                 f"{event.time_s:.4g}",
                 event.kind,
-                _event_detail(event),
+                format_event_detail(event),
             )
         console.print(table)
 
@@ -1123,29 +1307,6 @@ def _render_docking_session(
             "[yellow]No docks were attempted. Pass --latch, or give the connector type a "
             "docking_policy with auto_latch: true.[/yellow]"
         )
-
-
-def _event_detail(event: Event) -> str:
-    if isinstance(event, DockCommitted):
-        orientation = (
-            "continuous" if event.orientation_index is None else f"index {event.orientation_index}"
-        )
-        return f"{event.connector_a} <-> {event.connector_b} ({orientation})"
-    if isinstance(event, DockCandidateDetected | UndockCommitted):
-        return f"{event.connector_a} <-> {event.connector_b}"
-    if isinstance(event, DockFailed):
-        return f"{event.connector_a} <-> {event.connector_b}: {event.detail}"
-    if isinstance(event, UndockFailed):
-        return f"{event.connection_id}: {event.detail}"
-    if isinstance(event, AssemblyMerged):
-        return f"{' + '.join(event.merged_from)} -> {event.assembly_id}"
-    if isinstance(event, AssemblySplit):
-        return f"{event.source_assembly_id} -> {' + '.join(event.resulting)}"
-    if isinstance(event, ConnectorOverloaded):
-        return (
-            f"{event.connection_id}: {event.measured_force_n:.4g} N exceeded {event.limit_n:.4g} N"
-        )
-    return ""
 
 
 def _render_report(

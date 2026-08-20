@@ -94,6 +94,32 @@ AssemblySplit
 Use `bottom`, `left`, or `right` for both connector options to exercise the
 other same-face pairs. All four were verified headlessly with zero gravity.
 
+## Live Runtime Inspector
+
+Launch the same real MuJoCo scenario with a live semantic graph and event log:
+
+```bash
+uv run --no-sync modsim runtime .modsim/robot_packs/smores_ep \
+  --backend mujoco \
+  --fixed-connector pan \
+  --moving-connector pan \
+  --connector-gap 0.02 \
+  --approach 0.03 \
+  --duration 2.0 \
+  --dt 0.002
+```
+
+The graph starts with `smores_ep_0` and `smores_ep_1` as isolated nodes. The
+edge `smores_ep_0/pan<->smores_ep_1/pan` appears after MuJoCo accepts the weld,
+and the table shows `DockCandidateDetected`, `DockCommitted`, and
+`AssemblyMerged`. Add `--undock-at 1.0 --retract 0.03` to watch the edge be
+removed and the assembly split. The local pack's default `smores_topology`
+recipe supplies the graph model.
+
+This window is a ModSim semantic inspector, not a 3D mesh viewer. Use the native
+MuJoCo viewer below when visual geometry, contacts, or collision proxies are
+the thing being inspected.
+
 ## Viewer on macOS
 
 The passive MuJoCo viewer must own the main thread on macOS:

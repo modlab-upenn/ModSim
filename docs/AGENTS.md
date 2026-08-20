@@ -4,14 +4,17 @@
 
 Read `IMPLEMENTATION_STATUS.md` first for the current inventory, known bugs,
 verification baseline, and recommended next iteration. Read
-`robot_pack_spec.md` for the implemented format-0.1 contract and `studio.md` for
-the current desktop workflow. `HANDOFF.md` is the future architecture roadmap;
-do not infer that its proposed packages, APIs, CLI commands, or milestones are
-implemented.
+`robot_pack_spec.md` for the implemented format-0.1 contract, `model_views.md`
+for derived-view contracts, `runtime_inspector.md` for the worker/UI boundary,
+and `studio.md` for the current desktop workflow. `HANDOFF.md` is the future
+architecture roadmap; do not infer that its proposed packages, APIs, CLI
+commands, or milestones are implemented.
 
 ## Project goal
 
-Implement ModSim, a Python-first backend-agnostic framework for modular robotics, with ModSim Studio as a standalone desktop PySide6/PyVistaQt application.
+Implement ModSim, a Python-first backend-agnostic framework for modular
+robotics, with native PySide6 Studio applications for Robot Pack authoring and
+runtime inspection.
 
 ModSim should let users:
 
@@ -132,10 +135,11 @@ pre-commit
    partially implemented; connector lifecycle UX and capability/mapping
    editors remain incomplete.
 7. Model-view recipe schema, factory/registry, and first generic module-topology
-   graph — implemented; Studio runtime rendering is separate and not started.
+   graph — implemented and consumed by the first Runtime Inspector renderer.
 8. Runtime core and mock backend — implemented.
 9. Runtime Inspector mode in Studio with PyQtGraph metrics and model-view
-   rendering — next work.
+   rendering — first standalone two-module graph/event slice implemented;
+   general scenes, metric plots, and richer controls remain.
 10. MuJoCo backend MVP — implemented for fixed docking constraints.
 11. Docking/undocking with backend bridge — implemented for the mock and
     MuJoCo backends, with the limitations in `IMPLEMENTATION_STATUS.md`.
@@ -187,9 +191,10 @@ Use this preferred Codex starting prompt for the next iteration:
 
 ```text
 Read docs/AGENTS.md, docs/IMPLEMENTATION_STATUS.md,
-docs/robot_pack_spec.md, docs/model_views.md, and docs/studio.md. Implement the
-first read-only Studio Runtime Inspector graph renderer over immutable
-ModelView snapshots, with update throttling and stable selection across
-topology changes. Do not read live WorldState from the Qt thread. Preserve the
-core/Studio dependency boundary and run all repository checks.
+docs/robot_pack_spec.md, docs/model_views.md, docs/runtime_inspector.md, and
+docs/studio.md. Extend the standalone Runtime Inspector with pause/restart
+controls and bounded live metric plots while preserving immutable worker
+frames, lossless event delivery, and stable graph selection. Do not read live
+WorldState from the Qt thread. Preserve the core/Studio dependency boundary and
+run all repository checks.
 ```

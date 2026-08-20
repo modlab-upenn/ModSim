@@ -119,6 +119,22 @@ and topology revisions because docking or undocking can add or remove edges.
 Only `DockCommitted` and `UndockCommitted` change graph topology; candidates,
 failed attempts, and planned connections do not become graph edges.
 
+## Runtime Inspector consumer
+
+`modsim runtime PACK` is the first live consumer of generated model views. A
+dedicated worker thread owns `RuntimeSession`, the backend, and
+`ModelViewFactory`; after stepping it copies a topology graph, metrics, event
+delta, and scenario status into an immutable `RuntimeInspectorFrame`. The Qt
+thread sees only those values.
+
+The Qt-free presenter keeps graph layout and selection as client state. Module
+nodes therefore stay in place across physical pose samples, docking adds an
+edge without relaying out the graph, parallel connections use separate curved
+paths, and an undock clears selection only when the selected edge disappears.
+Event deltas are contiguous and deduplicated, so throttling graph publication
+does not lose canonical events. See `runtime_inspector.md` for the executable
+workflow.
+
 ## Current scope
 
 This increment provides the general factory and the module-topology graph used
@@ -128,9 +144,7 @@ interface:
 - frame, port, matrix, and hybrid docking views;
 - platform-specific lattice or configuration-coordinate views;
 - third-party builder discovery;
-- Studio's live Runtime Inspector and graph layout/rendering; and
 - incremental graph patches or event streaming.
 
-Runtime visualization should receive complete immutable view snapshots from a
-simulation worker. The Qt UI must not traverse or mutate a live `WorldState`
-while a backend is stepping.
+The implemented Runtime Inspector receives complete immutable view snapshots;
+incremental graph patches are not required for its first two-module slice.

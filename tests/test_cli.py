@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
+from types import ModuleType
 from typing import cast
 
 import pytest
@@ -25,6 +27,7 @@ def test_cli_help_succeeds() -> None:
     assert result.exit_code == 0
     assert "Robot Packs" in result.stdout
     assert "studio" in result.stdout
+    assert "runtime" in result.stdout
 
 
 def test_cli_version_succeeds() -> None:
@@ -307,6 +310,10 @@ def test_cli_dock_rejects_an_unknown_backend(example_pack_dir: Path) -> None:
         ("run", "--dt", "0"),
         ("run", "--duration", "0"),
         ("run", "--duration", "nan"),
+        ("runtime", "--dt", "0"),
+        ("runtime", "--duration", "0"),
+        ("runtime", "--approach", "nan"),
+        ("runtime", "--publish-hz", "0"),
     ),
 )
 def test_cli_rejects_unsafe_time_arguments(
@@ -319,6 +326,58 @@ def test_cli_rejects_unsafe_time_arguments(
 
     assert result.exit_code == 2
     assert f"{option} must be a finite number greater than 0" in result.output
+
+
+def test_cli_runtime_requires_both_selected_connectors(example_pack_dir: Path) -> None:
+    result = runner.invoke(
+        app,
+        ["runtime", str(example_pack_dir), "--fixed-connector", "front"],
+    )
+
+    assert result.exit_code == 2
+    assert "must be supplied together" in result.output
+
+
+def test_cli_runtime_launches_the_optional_inspector(
+    example_pack_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeConfig:
+        def __init__(self, **values: object) -> None:
+            captured.update(values)
+
+    runtime_app = ModuleType("modsim_studio.runtime_app")
+    runtime_app.main = lambda config: captured.setdefault("config", config) and 0  # type: ignore[attr-defined]
+    runtime_worker = ModuleType("modsim_studio.runtime_worker")
+    runtime_worker.RuntimeInspectorConfig = FakeConfig  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "modsim_studio.runtime_app", runtime_app)
+    monkeypatch.setitem(sys.modules, "modsim_studio.runtime_worker", runtime_worker)
+
+    result = runner.invoke(
+        app,
+        [
+            "runtime",
+            str(example_pack_dir),
+            "--backend",
+            "mock",
+            "--fixed-connector",
+            "front",
+            "--moving-connector",
+            "front",
+            "--duration",
+            "0.1",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["pack_path"] == example_pack_dir
+    assert captured["backend"] == "mock"
+    assert captured["fixed_connector"] == "front"
+    assert captured["moving_connector"] == "front"
+    assert captured["duration_s"] == 0.1
+    assert isinstance(captured["config"], FakeConfig)
 
 
 def test_cli_no_gravity_notes_that_the_mock_has_none(example_pack_dir: Path) -> None:

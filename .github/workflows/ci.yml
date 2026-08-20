@@ -93,6 +93,12 @@ jobs:
       - name: Type check Studio
         run: uv run --no-sync pyright --project pyright-studio.json
 
+      - name: Test Runtime Inspector widgets and worker
+        run: >-
+          xvfb-run -a uv run --no-sync pytest
+          tests/test_runtime_widgets.py
+          tests/test_runtime_worker.py
+
       - name: Launch Studio smoke test
         run: |
           xvfb-run -a uv run --no-sync python - <<'PY'
