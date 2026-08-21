@@ -121,11 +121,12 @@ failed attempts, and planned connections do not become graph edges.
 
 ## Runtime Inspector consumer
 
-`modsim runtime PACK` is the first live consumer of generated model views. A
-dedicated worker thread owns `RuntimeSession`, the backend, and
-`ModelViewFactory`; after stepping it copies a topology graph, metrics, event
-delta, and scenario status into an immutable `RuntimeInspectorFrame`. The Qt
-thread sees only those values.
+`modsim runtime PACK` is the first live consumer of generated model views. In
+semantic-only mode a dedicated worker thread owns `RuntimeSession`, the
+backend, and `ModelViewFactory`; with the native MuJoCo viewer enabled, one
+companion process owns the same responsibilities. After stepping, either owner
+copies a topology graph, metrics, event delta, and scenario status into an
+immutable `RuntimeInspectorFrame`. The Qt thread sees only those values.
 
 The Qt-free presenter keeps graph layout and selection as client state. Module
 nodes therefore stay in place across physical pose samples, docking adds an
@@ -147,4 +148,5 @@ interface:
 - incremental graph patches or event streaming.
 
 The implemented Runtime Inspector receives complete immutable view snapshots;
-incremental graph patches are not required for its first two-module slice.
+incremental graph patches are not required for the current two-module and
+seven-module named demonstrations.

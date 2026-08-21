@@ -194,8 +194,11 @@ class MockBackendAdapter:
     # ------------------------------------------------------------------
 
     def set_module_pose(self, module_id: ModuleInstanceId, pose: Transform) -> None:
-        """Teleport one module."""
-        self._body(module_id).pose = pose
+        """Teleport one module and clear its motion."""
+        body = self._body(module_id)
+        body.pose = pose
+        body.linear_velocity_m_s = ZERO_VEC3
+        body.angular_velocity_rad_s = ZERO_VEC3
 
     def set_module_twist(
         self,

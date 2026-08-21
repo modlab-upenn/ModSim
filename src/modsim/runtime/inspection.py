@@ -24,8 +24,11 @@ from modsim.core.events import (
 from modsim.model_views import ModelViewContext, ModelViewFactory, ModuleTopologyGraphView
 from modsim.robot_packs.schema import ModelViewSpec
 from modsim.runtime.metrics import DockingMetrics
+from modsim.runtime.reconfiguration import ReconfigurationStatus
 from modsim.runtime.scenarios import DockingPairScenarioStatus
 from modsim.runtime.session import RuntimeSession
+
+RuntimeScenarioStatus = DockingPairScenarioStatus | ReconfigurationStatus
 
 
 class RuntimeInspectionError(RuntimeError):
@@ -69,7 +72,7 @@ class RuntimeInspectorFrame(_RuntimeInspectionDTO):
     events: tuple[RuntimeEventRow, ...] = ()
     event_start_sequence: int = Field(ge=0)
     next_event_sequence: int = Field(ge=0)
-    scenario: DockingPairScenarioStatus | None = None
+    scenario: RuntimeScenarioStatus | None = None
 
     @model_validator(mode="after")
     def require_contiguous_event_delta(self) -> RuntimeInspectorFrame:
@@ -102,7 +105,7 @@ def build_runtime_inspector_frame(
     factory: ModelViewFactory,
     *,
     event_cursor: int = 0,
-    scenario_status: DockingPairScenarioStatus | None = None,
+    scenario_status: RuntimeScenarioStatus | None = None,
 ) -> RuntimeInspectorFrame:
     """Copy a coherent graph, metrics, and event delta from ``session``.
 
@@ -165,6 +168,7 @@ __all__ = [
     "RuntimeEventRow",
     "RuntimeInspectionError",
     "RuntimeInspectorFrame",
+    "RuntimeScenarioStatus",
     "build_runtime_inspector_frame",
     "event_row",
     "format_event_detail",

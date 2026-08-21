@@ -4,7 +4,9 @@ ModSim Studio provides two optional native applications: the Robot Pack Builder
 with its PyVistaQt/VTK authoring viewport, and a lightweight Runtime Inspector
 with a PyQtGraph topology graph and event table. The applications share core
 Robot Pack and model-view contracts but remain separate windows in the current
-slice.
+slice. A MuJoCo Runtime Inspector launch also opens the backend's native 3D
+viewer as a separate companion window by default; it is not embedded in either
+Studio application.
 
 ## Install and launch
 
@@ -32,6 +34,13 @@ Install MuJoCo too, then launch the Runtime Inspector for a pack:
   --moving-connector CONNECTOR_ID
 ```
 
+That one command opens both the Runtime Inspector and MuJoCo viewer. ModSim
+automatically uses the active environment's `mjpython` for the viewer child on
+macOS. Add `--no-viewer` for the semantic graph/event window alone, including
+when the backend should run without a native 3D window. The Qt window still
+requires a desktop display or Xvfb. `--backend mock` also opens only the
+semantic window; explicit `--viewer` with that backend is rejected.
+
 The standalone `modsim-studio` command and `python -m modsim_studio` are
 equivalent. Running through `.venv/bin/python -m modsim_studio` is useful while
 developing because the editable install uses the current source tree.
@@ -52,8 +61,10 @@ The current Studio MVP provides:
   undocking support, plus optional runtime docking policy;
 - a Model Views catalog for adding, editing, and removing named builder
   recipes, supported modes, default selection hints, and JSON configuration;
-- a separate Runtime Inspector that auto-runs a two-module scenario, draws the
-  live module-topology graph, and retains the ordered canonical event log;
+- a separate Runtime Inspector that runs named two-module or seven-module
+  scenarios, draws the live module-topology graph, retains the ordered
+  canonical event log, and can supervise a native MuJoCo companion window
+  showing that same runtime;
 - a read-only preview of the canonical split-YAML documents;
 - authoring validation with `F6` and stricter structural
   simulation-readiness validation with `F7`;
@@ -68,7 +79,8 @@ The current Studio MVP provides:
 The authoring viewport renders one module type at a time in the URDF zero-joint
 configuration. Simulation readiness is a validation profile; it does not start
 a runtime by itself. `modsim runtime` is the explicit launch path. See
-`runtime_inspector.md` for controls, threading, and current limitations.
+`runtime_inspector.md` for controls, process/thread ownership, and current
+limitations.
 
 ## Session logging
 
@@ -101,6 +113,13 @@ The `.modsim`
 directory is local runtime state and is ignored by Git. Keeping the active log
 beside, rather than inside, the Robot Pack ensures that atomic Save operations
 cannot replace it.
+
+For a dual-window runtime, the Qt process remains the sole session-log writer.
+It captures diagnostics from the native-viewer child and mirrors them into the
+same file instead of allowing the child to truncate or concurrently write the
+log. Closing the native viewer is recorded as an ordinary runtime stop; an
+unexpected child failure retains its detailed diagnostic in the log while the
+Runtime Inspector shows a concise error.
 
 For a repeatable current-source debugging session, launch from the repository
 root and keep the log in the ignored repository-local `.modsim` directory:
@@ -276,9 +295,10 @@ These are current-source limitations, not intended long-term behavior:
   a multi-module assembly, has no joint animation, and does not display
   contacts, physics, docking execution, generated model-view previews, or
   runtime state. The separate Runtime Inspector renders the generated logical
-  graph and events, not 3D physics. A document edit rebuilds the scene, resets
-  the camera, and currently returns multi-module documents to the first
-  renderable module.
+  graph and events; its optional MuJoCo companion window renders 3D physics
+  without embedding the backend viewer in Studio. A document edit rebuilds
+  the scene, resets the camera, and currently returns multi-module documents
+  to the first renderable module.
 - **Native authoring regression coverage remains limited.** Runtime presenter,
   graph/event widgets, and worker shutdown have focused automated coverage.
   Document-model tests cover connector/type mutation, URDF-body association,

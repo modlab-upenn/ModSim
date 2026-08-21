@@ -18,6 +18,7 @@ from modsim.core.scene import SceneSpec
 from modsim.core.state import WorldState
 from modsim.model_views import ModelViewContext, ModelViewFactory
 from modsim.robot_packs import RobotPackLoader
+from modsim.runtime import RuntimeDemo, RuntimeInspectorConfig
 
 runner = CliRunner()
 
@@ -338,22 +339,82 @@ def test_cli_runtime_requires_both_selected_connectors(example_pack_dir: Path) -
     assert "must be supplied together" in result.output
 
 
-def test_cli_runtime_launches_the_optional_inspector(
+@pytest.mark.parametrize(
+    ("backend", "viewer_arguments", "expected_viewer_enabled"),
+    (
+        ("mock", (), False),
+        (None, (), True),
+        ("mujoco", ("--viewer",), True),
+        ("mujoco", ("--no-viewer",), False),
+    ),
+)
+def test_cli_runtime_launches_the_optional_inspector_with_resolved_viewer_mode(
     example_pack_dir: Path,
     monkeypatch: pytest.MonkeyPatch,
+    backend: str | None,
+    viewer_arguments: tuple[str, ...],
+    expected_viewer_enabled: bool,
 ) -> None:
     captured: dict[str, object] = {}
 
-    class FakeConfig:
-        def __init__(self, **values: object) -> None:
-            captured.update(values)
-
     runtime_app = ModuleType("modsim_studio.runtime_app")
-    runtime_app.main = lambda config: captured.setdefault("config", config) and 0  # type: ignore[attr-defined]
-    runtime_worker = ModuleType("modsim_studio.runtime_worker")
-    runtime_worker.RuntimeInspectorConfig = FakeConfig  # type: ignore[attr-defined]
+
+    def fake_main(config: object) -> int:
+        captured["config"] = config
+        return 0
+
+    runtime_app.main = fake_main  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "modsim_studio.runtime_app", runtime_app)
-    monkeypatch.setitem(sys.modules, "modsim_studio.runtime_worker", runtime_worker)
+
+    arguments = [
+        "runtime",
+        str(example_pack_dir),
+        "--fixed-connector",
+        "front",
+        "--moving-connector",
+        "front",
+        "--duration",
+        "0.1",
+        *viewer_arguments,
+    ]
+    if backend is not None:
+        arguments.extend(("--backend", backend))
+    result = runner.invoke(app, arguments)
+
+    assert result.exit_code == 0, result.output
+    config = captured["config"]
+    assert isinstance(config, RuntimeInspectorConfig)
+    assert config.pack_path == example_pack_dir
+    assert config.backend == ("mujoco" if backend is None else backend)
+    assert config.fixed_connector == "front"
+    assert config.moving_connector == "front"
+    assert config.duration_s == 0.1
+    assert config.viewer_enabled is expected_viewer_enabled
+
+
+@pytest.mark.parametrize(
+    ("demo", "expected_duration_s"),
+    (
+        (RuntimeDemo.DOCK, 4.0),
+        (RuntimeDemo.DOCK_UNDOCK, 6.0),
+        (RuntimeDemo.SMORES_DRIVER_TO_SNAKE, 14.0),
+    ),
+)
+def test_cli_runtime_demo_selects_a_reproducible_default_duration(
+    example_pack_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    demo: RuntimeDemo,
+    expected_duration_s: float,
+) -> None:
+    captured: dict[str, object] = {}
+    runtime_app = ModuleType("modsim_studio.runtime_app")
+
+    def fake_main(config: object) -> int:
+        captured["config"] = config
+        return 0
+
+    runtime_app.main = fake_main  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "modsim_studio.runtime_app", runtime_app)
 
     result = runner.invoke(
         app,
@@ -362,22 +423,52 @@ def test_cli_runtime_launches_the_optional_inspector(
             str(example_pack_dir),
             "--backend",
             "mock",
-            "--fixed-connector",
-            "front",
-            "--moving-connector",
-            "front",
-            "--duration",
-            "0.1",
+            "--demo",
+            demo.value,
         ],
     )
 
     assert result.exit_code == 0, result.output
-    assert captured["pack_path"] == example_pack_dir
-    assert captured["backend"] == "mock"
-    assert captured["fixed_connector"] == "front"
-    assert captured["moving_connector"] == "front"
-    assert captured["duration_s"] == 0.1
-    assert isinstance(captured["config"], FakeConfig)
+    config = captured["config"]
+    assert isinstance(config, RuntimeInspectorConfig)
+    assert config.demo is demo
+    assert config.duration_s == expected_duration_s
+
+
+def test_cli_runtime_rejects_pair_controls_for_the_smores_reconfiguration(
+    example_pack_dir: Path,
+) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "runtime",
+            str(example_pack_dir),
+            "--backend",
+            "mock",
+            "--demo",
+            RuntimeDemo.SMORES_DRIVER_TO_SNAKE.value,
+            "--fixed-connector",
+            "front",
+            "--moving-connector",
+            "front",
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert "defines its connector actions" in result.output
+
+
+def test_cli_runtime_rejects_native_viewer_for_non_mujoco_backend(
+    example_pack_dir: Path,
+) -> None:
+    result = runner.invoke(
+        app,
+        ["runtime", str(example_pack_dir), "--backend", "mock", "--viewer"],
+    )
+
+    assert result.exit_code == 2
+    assert "--viewer requires --backend mujoco" in result.output
+    assert "--no-viewer" in result.output
 
 
 def test_cli_no_gravity_notes_that_the_mock_has_none(example_pack_dir: Path) -> None:

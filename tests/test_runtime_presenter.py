@@ -10,8 +10,18 @@ from modsim.model_views import (
     ModuleGraphNode,
     ModuleTopologyGraphView,
 )
-from modsim.runtime.inspection import RuntimeEventRow, RuntimeInspectorFrame
+from modsim.runtime.inspection import (
+    RuntimeEventRow,
+    RuntimeInspectorFrame,
+    RuntimeScenarioStatus,
+)
+from modsim.runtime.inspection_protocol import (
+    RuntimeFrame,
+    decode_runtime_message,
+    encode_runtime_message,
+)
 from modsim.runtime.metrics import DockingMetrics
+from modsim.runtime.reconfiguration import ReconfigurationPhase, ReconfigurationStatus
 from modsim_studio.runtime_presenter import (
     RuntimeEventSequenceError,
     RuntimeInspectorPresenter,
@@ -105,6 +115,7 @@ def frame(
     events: tuple[RuntimeEventRow, ...] = (),
     start: int = 0,
     stop: int = 0,
+    scenario: RuntimeScenarioStatus | None = None,
 ) -> RuntimeInspectorFrame:
     return RuntimeInspectorFrame(
         backend_name="mock",
@@ -113,6 +124,7 @@ def frame(
         events=events,
         event_start_sequence=start,
         next_event_sequence=stop,
+        scenario=scenario,
     )
 
 
@@ -125,6 +137,10 @@ def test_initial_layout_is_deterministic_and_ignores_physical_pose_samples() -> 
         "beta": (1.0, 0.0),
     }
     assert "mock | running" in initial.status_text
+    assert initial.status_text == (
+        "mock | running | modules=2 | assemblies=2 | connections=0 | largest=1 | "
+        "docks=0/0 (failed=0) | undocks=0 (failed=0) | events=0"
+    )
     assert initial.source_text == (
         "generic_cube@0.1.0 | t=0.000 s | sample=0 | topology=0 | docking=0 | events=0"
     )
@@ -134,6 +150,34 @@ def test_initial_layout_is_deterministic_and_ignores_physical_pose_samples() -> 
         "alpha": (-1.0, 0.0),
         "beta": (1.0, 0.0),
     }
+
+
+def test_reconfiguration_status_shows_plan_action_and_metrics() -> None:
+    presenter = RuntimeInspectorPresenter()
+    scenario = ReconfigurationStatus(
+        phase=ReconfigurationPhase.APPROACHING,
+        time_s=2.0,
+        plan_id="smores_driver_to_snake",
+        plan_name="SMORES-EP Driver to Snake",
+        action_index=1,
+        action_count=4,
+        detail="Moving module 7 toward module_6/pan",
+    )
+
+    transported = decode_runtime_message(
+        encode_runtime_message(RuntimeFrame(frame=frame(view(), scenario=scenario)))
+    )
+    assert isinstance(transported, RuntimeFrame)
+    assert isinstance(transported.frame.scenario, ReconfigurationStatus)
+
+    presented = presenter.apply_frame(transported.frame)
+
+    assert presented.status_text == (
+        "mock | SMORES-EP Driver to Snake | approaching | action=2/4 | "
+        "Moving module 7 toward module_6/pan | modules=2 | assemblies=2 | "
+        "connections=0 | largest=1 | docks=0/0 (failed=0) | "
+        "undocks=0 (failed=0) | events=0"
+    )
 
 
 def test_dock_and_undock_preserve_node_layout_and_valid_selection() -> None:

@@ -293,10 +293,10 @@ class MuJoCoBackendAdapter:
         injects energy that the solver then has to absorb.
         """
         model, data = self._require_loaded()
-        _, qpos_address, dof_address = self._free_joint(module_id)
+        _, qpos_address, _ = self._free_joint(module_id)
         data.qpos[qpos_address : qpos_address + 3] = pose.translation
         data.qpos[qpos_address + 3 : qpos_address + 7] = pose.rotation
-        data.qvel[dof_address : dof_address + 6] = 0.0
+        self._clear_module_velocities(module_id, model, data)
         mujoco.mj_forward(model, data)
 
     def set_module_twist(
@@ -420,6 +420,31 @@ class MuJoCoBackendAdapter:
                 int(model.jnt_dofadr[joint_address]),
             )
         raise BackendError(f"module '{module_id}' has no free joint to drive")
+
+    def _clear_module_velocities(
+        self,
+        module_id: ModuleInstanceId,
+        model: mujoco.MjModel,
+        data: mujoco.MjData,
+    ) -> None:
+        """Zero root and articulated-joint velocities for one module instance."""
+        compiled = self._require_compiled()
+        dof_counts = {
+            mujoco.mjtJoint.mjJNT_FREE: 6,
+            mujoco.mjtJoint.mjJNT_BALL: 3,
+            mujoco.mjtJoint.mjJNT_SLIDE: 1,
+            mujoco.mjtJoint.mjJNT_HINGE: 1,
+        }
+        for (candidate, _), body_id in compiled.body_ids.items():
+            if candidate != module_id:
+                continue
+            joint_start = int(model.body_jntadr[body_id])
+            joint_count = int(model.body_jntnum[body_id])
+            for joint_id in range(joint_start, joint_start + joint_count):
+                joint_type = mujoco.mjtJoint(model.jnt_type[joint_id])
+                dof_start = int(model.jnt_dofadr[joint_id])
+                dof_count = dof_counts[joint_type]
+                data.qvel[dof_start : dof_start + dof_count] = 0.0
 
 
 def _vec3(values: object) -> Vec3:

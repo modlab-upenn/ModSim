@@ -89,9 +89,11 @@ exclude = [
   "src/modsim_studio/runtime_app.py",
   "src/modsim_studio/runtime_events.py",
   "src/modsim_studio/runtime_graph.py",
+  "src/modsim_studio/runtime_process.py",
   "src/modsim_studio/runtime_window.py",
   "src/modsim_studio/runtime_worker.py",
   "src/modsim_studio/viewport.py",
+  "tests/test_runtime_process.py",
   "tests/test_runtime_widgets.py",
   "tests/test_runtime_worker.py",
   # MuJoCo ships no type stubs, so strict mode reports every engine call as
@@ -100,6 +102,8 @@ exclude = [
   "src/modsim_backend_mujoco",
   "tests/test_mujoco_backend.py",
   "tests/test_mujoco_docking.py",
+  "tests/test_mujoco_runtime_inspector_process.py",
+  "tests/test_mujoco_viewer.py",
   "tests/test_mujoco_welds.py",
 ]
 pythonVersion = "3.11"

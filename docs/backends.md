@@ -183,11 +183,30 @@ mjpython -m modsim run path/to/pack --backend mujoco --view
 The adapter translates MuJoCo's error into that instruction rather than letting
 a raw traceback through.
 
-`modsim runtime PACK` uses a different arrangement: Qt owns the main thread,
-and MuJoCo steps headlessly inside the Runtime Inspector worker. It therefore
-runs with ordinary Python on macOS, but intentionally shows ModSim's 2D logical
-graph and event log rather than embedding the passive 3D viewer. Use the two
-commands as complementary inspectors.
+`modsim runtime PACK` launches the complementary views together. Qt owns the
+main process and renders ModSim's 2D logical graph and event log. A companion
+process owns the one authoritative MuJoCo session, native viewer, physics
+stepping, and model-view generation. Immutable inspector frames cross the
+process boundary, so the 3D model, graph, and events always describe the same
+simulation rather than two approximately synchronized runs.
+
+The public command is identical on macOS and Linux. On macOS ModSim
+automatically locates the `mjpython` installed beside the active environment's
+Python and uses it only for the viewer child. The native viewer is enabled by
+default for MuJoCo; use `--no-viewer` to keep the existing headless-worker
+arrangement when the native 3D window is not wanted:
+
+```bash
+modsim runtime path/to/pack --backend mujoco
+modsim runtime path/to/pack --backend mujoco --no-viewer
+```
+
+The first command opens separate MuJoCo and Runtime Inspector windows. It does
+not embed MuJoCo in Qt. Closing the Runtime Inspector shuts down its companion;
+closing the native viewer first stops the runtime while leaving the final graph
+and events available for inspection. The `--no-viewer` path still opens the Qt
+semantic window and therefore requires a display or Xvfb; use `modsim run`
+without `--view` for a completely non-GUI process.
 
 #### Driving modules
 
@@ -206,6 +225,46 @@ joint command contract and the adapter maps it to real MuJoCo actuators.
 and connector frames to arrange exactly two modules, then drives along the
 fixed connector's docking axis. This is preferred over the legacy row layout
 for robot packs whose connectors are not aligned with world X.
+
+#### Named Runtime Inspector demonstrations
+
+The Runtime Inspector exposes the two-module dock/release lifecycle as a named
+preset:
+
+```bash
+modsim runtime .modsim/robot_packs/smores_ep \
+  --backend mujoco \
+  --demo dock_undock \
+  --fixed-connector pan \
+  --moving-connector pan \
+  --duration 6.0 \
+  --no-gravity
+```
+
+The SMORES-EP pack also supports a seven-module topology demonstration:
+
+```bash
+modsim runtime .modsim/robot_packs/smores_ep \
+  --backend mujoco \
+  --demo smores_driver_to_snake \
+  --duration 14.0 \
+  --no-gravity
+```
+
+The second run keeps the ground plane disabled, starts with seven nodes and six
+connections, performs four `6 → 5 → 6` connection-count transitions,
+and finishes as the chain `1–3–2–4–5–6–7`. Its topology and four connector
+replacement pairs are based on Figure 16 and Table III of Liu, Whitzer, and
+Yim's 2019
+[*A Distributed Reconfiguration Planning Algorithm for Modular Robots*](https://www.modlabupenn.org/wp-content/uploads/2019/08/chao_smores_reconfiguration_2019.pdf)
+([DOI `10.1109/LRA.2019.2930432`](https://doi.org/10.1109/LRA.2019.2930432)).
+
+This is sequential kinematic staging through the ordinary backend connection
+API, not autonomous planning, actuator control, collision-free locomotion, or
+a reproduction of hardware dynamics. Gravity and ground are deliberately off
+because the scenario currently has no supported SMORES locomotion controller.
+The MuJoCo adapter remains the authoritative runtime owner, so the 3D viewer,
+graph, event log, and metrics still describe one session.
 
 ## Cross-backend conformance
 

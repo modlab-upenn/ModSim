@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import Qt, QThread, QTimer, Slot
+from PySide6.QtCore import Qt, QTimer, Slot
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -18,17 +18,20 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from modsim.runtime import RuntimeInspectorFrame
+from modsim.runtime import RuntimeInspectorConfig, RuntimeInspectorFrame
 from modsim_studio.runtime_events import RuntimeEventLogWidget
 from modsim_studio.runtime_graph import TopologyGraphWidget
 from modsim_studio.runtime_presenter import RuntimeInspectorPresenter, RuntimePresentation
-from modsim_studio.runtime_worker import RuntimeInspectorConfig, RuntimeInspectorWorker
+from modsim_studio.runtime_process import (
+    RuntimeInspectorProcessController,
+    RuntimeInspectorThreadController,
+)
 
 _LOGGER = logging.getLogger("modsim.runtime_inspector")
 
 
 class RuntimeInspectorWindow(QMainWindow):
-    """Display one automatically started two-module runtime scenario."""
+    """Display one automatically started Runtime Inspector demonstration."""
 
     def __init__(self, config: RuntimeInspectorConfig) -> None:
         super().__init__()
@@ -76,17 +79,15 @@ class RuntimeInspectorWindow(QMainWindow):
         self.setCentralWidget(central)
         self.statusBar().showMessage("Runtime has not started")
 
-        self._thread = QThread(self)
-        self._thread.setObjectName("ModSimRuntimeInspector")
-        self._worker = RuntimeInspectorWorker(config)
-        self._worker.moveToThread(self._thread)
-        self._thread.started.connect(self._worker.run)
-        self._worker.frame_ready.connect(self._receive_frame)
-        self._worker.status_changed.connect(self._receive_status)
-        self._worker.failed.connect(self._runtime_failed)
-        self._worker.finished.connect(self._worker.deleteLater)
-        self._worker.finished.connect(self._thread.quit)
-        self._thread.finished.connect(self._runtime_finished)
+        self._controller = (
+            RuntimeInspectorProcessController(config, self)
+            if config.viewer_enabled
+            else RuntimeInspectorThreadController(config, self)
+        )
+        self._controller.frame_ready.connect(self._receive_frame)
+        self._controller.status_changed.connect(self._receive_status)
+        self._controller.failed.connect(self._runtime_failed)
+        self._controller.finished.connect(self._runtime_finished)
         self.graph.entity_selected.connect(self._select_entity)
 
         QTimer.singleShot(0, self.start)
@@ -109,27 +110,21 @@ class RuntimeInspectorWindow(QMainWindow):
         self._started = True
         self.stop_button.setEnabled(True)
         self.statusBar().showMessage("Starting runtime…")
-        self._thread.start()
+        self._controller.start()
 
     @Slot()
     def request_stop(self) -> None:
         """Request cooperative interruption without blocking the GUI thread."""
-        if not self._thread.isRunning():
+        if not self._controller.is_running():
             return
         self.stop_button.setEnabled(False)
         self.status_label.setText("Stopping runtime…")
         self.statusBar().showMessage("Stopping runtime…")
-        self._worker.request_interruption()
-        self._thread.requestInterruption()
+        self._controller.request_interruption()
 
     def stop_and_wait(self, timeout_ms: int = 10_000) -> bool:
         """Stop the worker and wait for backend shutdown during app teardown."""
-        if not self._thread.isRunning():
-            return True
-        self._worker.request_interruption()
-        self._thread.requestInterruption()
-        self._thread.quit()
-        return self._thread.wait(timeout_ms)
+        return self._controller.stop_and_wait(timeout_ms)
 
     @Slot(object)
     def _receive_frame(self, value: object) -> None:
@@ -203,7 +198,7 @@ class RuntimeInspectorWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         """Keep Qt objects alive until the worker has shut its backend down."""
-        if self._thread.isRunning():
+        if self._controller.is_running():
             self._close_pending = True
             self.request_stop()
             event.ignore()

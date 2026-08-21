@@ -46,7 +46,9 @@ from modsim.robot_packs import (
     ValidationProfile,
     ValidationReport,
 )
+from modsim.runtime import RuntimeInspectorConfig
 from modsim.runtime.inspection import format_event_detail
+from modsim.runtime.presets import RuntimeDemo
 from modsim.runtime.scenarios import (
     DockingPairScenario,
     DockingPairScenarioConfig,
@@ -151,22 +153,33 @@ def runtime_command(
             help="Robot Pack directory or robot_pack.yaml path.",
         ),
     ],
+    demo: Annotated[
+        RuntimeDemo,
+        typer.Option(
+            "--demo",
+            case_sensitive=False,
+            help=(
+                "Named scenario: dock, dock_undock, or the seven-module "
+                "smores_driver_to_snake reconfiguration."
+            ),
+        ),
+    ] = RuntimeDemo.DOCK,
     module_type: Annotated[
         str | None,
-        typer.Option("--module-type", "-m", help="Module type to instantiate twice."),
+        typer.Option("--module-type", "-m", help="Module type used by the selected demo."),
     ] = None,
     fixed_connector: Annotated[
         str | None,
         typer.Option(
             "--fixed-connector",
-            help="Module-local connector ID on the first module.",
+            help="Pair demos: module-local connector ID on the fixed module.",
         ),
     ] = None,
     moving_connector: Annotated[
         str | None,
         typer.Option(
             "--moving-connector",
-            help="Module-local connector ID on the second module.",
+            help="Pair demos: module-local connector ID on the moving module.",
         ),
     ] = None,
     connector_gap_m: Annotated[
@@ -174,7 +187,7 @@ def runtime_command(
         typer.Option(
             "--connector-gap",
             min=0.0,
-            help="Initial separation between the selected connector origins.",
+            help="Staged separation between connector origins before approach.",
         ),
     ] = 0.02,
     orientation_rad: Annotated[
@@ -186,7 +199,7 @@ def runtime_command(
     ] = 0.0,
     approach_m_s: Annotated[
         float,
-        typer.Option("--approach", help="Speed of the moving module toward the fixed module."),
+        typer.Option("--approach", help="Staged approach speed toward each docking target."),
     ] = 0.03,
     retract_m_s: Annotated[
         float | None,
@@ -196,9 +209,12 @@ def runtime_command(
         ),
     ] = None,
     duration_s: Annotated[
-        float,
-        typer.Option("--duration", help="Simulated seconds to display."),
-    ] = 4.0,
+        float | None,
+        typer.Option(
+            "--duration",
+            help="Simulated seconds to display. The selected demo supplies a default.",
+        ),
+    ] = None,
     dt_s: Annotated[float, typer.Option("--dt", help="Physics step size in seconds.")] = 0.002,
     undock_at_s: Annotated[
         float | None,
@@ -209,7 +225,7 @@ def runtime_command(
     ] = None,
     backend: Annotated[
         str,
-        typer.Option("--backend", "-b", help="Physics backend used by the worker."),
+        typer.Option("--backend", "-b", help="Physics backend used by the runtime owner."),
     ] = "mujoco",
     gravity: Annotated[
         bool,
@@ -224,7 +240,7 @@ def runtime_command(
     ] = False,
     height_m: Annotated[
         float,
-        typer.Option("--height", help="Lift both modules above the scene origin."),
+        typer.Option("--height", help="Lift demo modules above the scene origin."),
     ] = 0.0,
     view_id: Annotated[
         str | None,
@@ -237,9 +253,28 @@ def runtime_command(
         float,
         typer.Option("--publish-hz", help="Maximum inspector refresh frequency."),
     ] = 20.0,
+    viewer: Annotated[
+        bool | None,
+        typer.Option(
+            "--viewer/--no-viewer",
+            help=(
+                "Open the backend's native 3D viewer beside the Runtime Inspector. "
+                "Defaults to on for MuJoCo and off for other backends."
+            ),
+        ),
+    ] = None,
 ) -> None:
-    """Open a live graph and event log for a two-module docking run."""
-    _require_positive_finite(duration_s, "--duration")
+    """Open live semantic and optional native 3D views of a runtime demo."""
+    resolved_duration_s = (
+        duration_s
+        if duration_s is not None
+        else {
+            RuntimeDemo.DOCK: 4.0,
+            RuntimeDemo.DOCK_UNDOCK: 6.0,
+            RuntimeDemo.SMORES_DRIVER_TO_SNAKE: 14.0,
+        }[demo]
+    )
+    _require_positive_finite(resolved_duration_s, "--duration")
     _require_positive_finite(dt_s, "--dt")
     _require_positive_finite(approach_m_s, "--approach")
     _require_positive_finite(publish_hz, "--publish-hz")
@@ -265,10 +300,47 @@ def runtime_command(
             err=True,
         )
         raise typer.Exit(code=2)
+    if demo is RuntimeDemo.SMORES_DRIVER_TO_SNAKE:
+        if fixed_connector is not None or moving_connector is not None:
+            typer.echo(
+                "--demo smores_driver_to_snake defines its connector actions; "
+                "do not supply --fixed-connector or --moving-connector.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if undock_at_s is not None:
+            typer.echo(
+                "--demo smores_driver_to_snake defines its own releases; "
+                "do not supply --undock-at.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if orientation_rad != 0.0:
+            typer.echo(
+                "--demo smores_driver_to_snake uses the paper's nominal orientations; "
+                "do not supply --orientation.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if gravity or ground:
+            typer.echo(
+                "--demo smores_driver_to_snake currently requires --no-gravity and no "
+                "ground plane; supported locomotion is not implemented yet.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+
+    viewer_enabled = backend == "mujoco" if viewer is None else viewer
+    if viewer_enabled and backend != "mujoco":
+        typer.echo(
+            "--viewer requires --backend mujoco; use --no-viewer for the semantic "
+            "Runtime Inspector only.",
+            err=True,
+        )
+        raise typer.Exit(code=2)
 
     try:
         from modsim_studio.runtime_app import main as runtime_main
-        from modsim_studio.runtime_worker import RuntimeInspectorConfig
     except ImportError as error:
         typer.echo(
             "Runtime Inspector dependencies are not installed. Install with: "
@@ -279,6 +351,7 @@ def runtime_command(
 
     config = RuntimeInspectorConfig(
         pack_path=pack_path,
+        demo=demo,
         module_type=module_type,
         backend=backend,
         fixed_connector=fixed_connector,
@@ -287,7 +360,7 @@ def runtime_command(
         orientation_rad=orientation_rad,
         approach_m_s=approach_m_s,
         retract_m_s=retract_m_s,
-        duration_s=duration_s,
+        duration_s=resolved_duration_s,
         dt_s=dt_s,
         undock_at_s=undock_at_s,
         gravity=gravity,
@@ -295,6 +368,7 @@ def runtime_command(
         height_m=height_m,
         view_id=view_id,
         publish_hz=publish_hz,
+        viewer_enabled=viewer_enabled,
     )
     raise typer.Exit(code=runtime_main(config))
 

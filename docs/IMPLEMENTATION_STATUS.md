@@ -7,7 +7,7 @@ without relying on prior conversation history.
 
 ## Snapshot and document authority
 
-- Snapshot date: 2026-08-20
+- Snapshot date: 2026-08-21
 - Distribution: `modsim-robotics`
 - Package version: `0.1.0`
 - Robot Pack format: `0.1`
@@ -92,19 +92,26 @@ loader -> strict typed model -> validator
    ModSim Studio editor                  ModelViewFactory
    + one-module preview                         |
                                                v
-SceneSpec -> RuntimeSession -> WorldState + EventLog
-                              |               |
-                              v               v
-               connector acceptance      revision counters
-                 + docking guards              |
-                              |                 v
-                              |       immutable inspector frames
-                              |                 |
-                              v                 v
-                   mock or MuJoCo backend   Qt worker boundary
-                                                |
-                                                v
-                                    live graph + event table
+SceneSpec -> RuntimeSession <-> mock or MuJoCo backend
+                    |
+                    v
+           WorldState + EventLog
+              |              |
+              v              v
+ connector acceptance   revision counters
+   + docking guards           |
+                              v
+                       ModelViewFactory
+                              |
+                              v
+                  immutable inspector frames
+                       |             |
+                Qt worker signal   local IPC
+                       \             /
+                        v           v
+                    live graph + event table
+
+MuJoCo runtime owner ------------> native 3D companion window
 ```
 
 World state, a simulation clock, assemblies, connector acceptance, two-phase
@@ -112,9 +119,11 @@ dock/undock commits, runtime metrics, a mock backend, and a MuJoCo weld-backed
 adapter are operational. Named Robot Pack model-view recipes, a backend-neutral
 model-view factory, the first immutable module-topology graph, and a standalone
 Studio Runtime Inspector that renders that graph plus the event log are also
-operational. Joint command/control APIs, reconfiguration planning, and the
-Isaac adapter remain deferred. The validation profile named `simulation` still
-performs structural readiness checks; it does not launch a backend by itself.
+operational. A MuJoCo launch supervises a separate native 3D viewer of that
+same authoritative runtime by default. Joint command/control APIs,
+reconfiguration planning, and the Isaac adapter remain deferred. The
+validation profile named `simulation` still performs structural readiness
+checks; it does not launch a backend by itself.
 
 ## What is implemented
 
@@ -239,7 +248,8 @@ modsim pack init --from-urdf SOURCE --out DESTINATION [--asset-root PATH]
 modsim pack inspect PACK [--output text|json]
 modsim pack validate PACK [--profile authoring|simulation] [--output text|json]
 modsim studio [PACK]
-modsim runtime PACK [--backend mock|mujoco]
+modsim runtime PACK [--demo dock|dock_undock|smores_driver_to_snake]
+  [--backend mock|mujoco] [--viewer|--no-viewer]
 modsim backends
 modsim views PACK [--view RECIPE_ID]
 modsim dock PACK [--backend mock|mujoco]
@@ -257,10 +267,17 @@ measures those connector frames after backend load, arranges them in a valid
 mating orientation, and drives along the actual docking axis instead of
 assuming an X-axis layout.
 
-`modsim runtime` opens the standalone Qt Runtime Inspector. It creates exactly
-two modules, stages a selected connector pair, runs the backend in a worker,
-and displays the generated topology graph and canonical event log. MuJoCo is
-the default; `--backend mock` remains useful for a kinematic UI smoke test.
+`modsim runtime` opens the standalone Qt Runtime Inspector around a named
+demonstration. `dock` and `dock_undock` create exactly two modules and stage a
+selected connector pair; `smores_driver_to_snake` creates seven modules and
+executes four scripted connection replacements. All variants run through one
+runtime owner and display the generated topology graph, canonical event log,
+scenario progress, and current metrics. MuJoCo is the default and also opens
+its separate native 3D viewer unless `--no-viewer` is supplied. In that coupled
+mode the viewer child, rather than the Qt worker, owns the one authoritative
+session and sends immutable inspector frames to Qt. Omitting the viewer option
+with `--backend mock` keeps it off; explicit `--viewer` with a non-MuJoCo
+backend is rejected.
 
 ### Runtime, docking, and backends
 
@@ -297,8 +314,27 @@ measured root-to-parent-body transform before activating a weld.
 orchestration. Its immutable phase/status is presentation data rather than a
 canonical world event. `RuntimeInspectorFrame` copies a generated topology
 view, docking metrics, scenario status, and a contiguous event delta from the
-worker-owned session. The public event-detail formatter is shared by CLI text
+runtime-owner session. The public event-detail formatter is shared by CLI text
 reports and the GUI table.
+
+`ScriptedReconfigurationScenario` executes a backend-neutral
+`ReconfigurationPlan`: it validates the complete tree/action sequence before
+mutation, creates the initial tree through ordinary docking commits, replaces
+one edge at a time, and rigidly stages every root in a moving assembly. The
+built-in seven-module SMORES Driver-to-Snake plan is declarative data over that
+generic controller. `RuntimeSession.process_docking()` permits an exact staged
+pair to commit without advancing physics time, avoiding an unconstrained
+contact step between alignment and weld activation. Both the mock and MuJoCo
+pose controls clear stale motion when a component is staged; MuJoCo clears
+root and articulated-joint velocities.
+
+The inspector has two execution transports. `--no-viewer` uses the original Qt
+worker thread. The default MuJoCo path starts a companion process that owns the
+session, physics stepping, native viewer, and model-view factory, then streams
+versioned immutable frames to Qt. On macOS the launcher resolves the
+environment-local `mjpython` automatically. There is never a duplicate
+simulation for the graph, and only the Qt process initializes the truncated
+Studio session log; child diagnostics are captured into it.
 
 MuJoCo currently supports only fixed connections. Compliant, hinge, ball, and
 custom constraints are refused explicitly. Joint command capability is not
@@ -370,15 +406,25 @@ authoring application currently provides:
 
 The Runtime Inspector currently provides:
 
-- a real-time-paced worker that exclusively owns pack loading, validation,
-  backend/session creation, stepping, view generation, and shutdown;
+- real-time-paced execution whose sole runtime owner performs pack loading,
+  validation, backend/session creation, stepping, view generation, and
+  shutdown;
+- named `dock` and `dock_undock` two-module presets plus a paper-grounded
+  seven-module `smores_driver_to_snake` scripted topology preset;
+- a default MuJoCo companion process/window that renders the same session in
+  3D and streams immutable frames to Qt, plus a `--no-viewer` worker-thread
+  mode;
+- automatic environment-local `mjpython` launch for the native child on
+  macOS;
 - auto-selection of the first self-compatible connector or explicit local
   connector IDs;
 - a stable selectable module-topology graph with isolated nodes and distinct
   parallel connections;
 - an append-only event table with sequence, simulation time, kind, and detail;
-- backend/scenario/metric status and exact model-view revision counters;
-- an explicit Stop control and a final state that remains visible; and
+- backend, plan/phase/action, module/assembly/connection, dock/undock/event
+  metrics, and exact model-view revision counters;
+- an explicit Stop control, coordinated child shutdown, and a final state that
+  remains visible after the scenario or an early native-viewer close; and
 - concise dialogs plus full local tracebacks when setup or execution fails.
 
 Connector instances and types can be added and removed today. The actions are
@@ -408,9 +454,11 @@ Every Studio launch truncates and rewrites one local session log:
 
 Logs contain startup, open/import/save/export/validation operations and full
 exception tracebacks. Runtime Inspector launches use the same path and add
-backend, worker, presentation, and shutdown diagnostics. The `.modsim/`
-directory is ignored by Git. Reproduce one problem per launch when collecting
-a clean debugging log.
+backend, worker or child-process, presentation, and shutdown diagnostics. In a
+dual-window run the Qt process is the sole log writer and captures the viewer
+child's diagnostics, so the child cannot race to truncate the same file. The
+`.modsim/` directory is ignored by Git. Reproduce one problem per launch when
+collecting a clean debugging log.
 
 ### Examples and tests
 
@@ -418,26 +466,37 @@ a clean debugging log.
   intentionally simulator-neutral and self-contained, and declares a default
   runtime module-topology recipe.
 - Test modules also cover transforms, acceptance, assembly derivation, docking
-  lifecycle, runtime scenarios, backend registration/conformance, MuJoCo scene
-  compilation, weld allocation, physical dock/undock, articulated-connector
+  lifecycle, pair and seven-module reconfiguration scenarios, backend
+  registration/conformance, MuJoCo scene compilation, weld allocation,
+  physical dock/undock, articulated-connector
   nominal snapping, world-state revision counters, model-view schemas/factory,
   topology generation, recipe persistence, immutable inspector transport,
-  stable graph presentation, native graph/event widgets, worker shutdown, a
-  real MuJoCo graph/event dock, and Studio project mutations.
-- The complete feature-branch verification passes 372 tests with native
-  MuJoCo enabled and reports 86% branch-aware core coverage.
+  stable graph presentation, native graph/event widgets, reusable inspector
+  execution, versioned process-protocol framing, process-controller launch and
+  failure handling, viewer-host control and cleanup, worker shutdown, a real
+  MuJoCo graph/event dock, a real seven-module/six-weld/four-action
+  reconfiguration using public synthetic assets, and Studio project mutations.
+- The complete feature-branch verification passes 419 tests with native
+  MuJoCo enabled and reports 85% branch-aware core coverage.
 - The CI Studio smoke opens the generic cube in a real Qt/PyVista window under
   Xvfb, selects a module tree item, and verifies session logging. The Studio CI
-  job also runs the Runtime Inspector widget and worker tests; the MuJoCo job
-  verifies that a real dock produces the expected graph edge and event delta.
+  job also runs the Runtime Inspector widget, worker, and process-controller
+  tests; the MuJoCo job verifies that a real dock produces the expected graph
+  edge and event delta and exercises the passive-viewer wrapper and native
+  viewer host without opening a real display.
 
 The working SMORES-EP pack remains private and ignored at
 `.modsim/robot_packs/smores_ep`; its Fusion-exported visual assets are not
 committed pending an explicit redistribution decision. The integration copy now
 has a provisional genderless `ep_face` type; bottom, pan, left, and right
 connector instances; docking/undocking capabilities; and four 12-triangle OBJ
-collision proxies. All four same-face pairs complete a headless MuJoCo dock in
-the connector-pair scenario. The pre-integration local pack is backed up at
+collision proxies. The fixed `bottom` connector is authored on the rear `-X`
+plane of `base_link`, opposite `pan`, with its proxy thin dimension aligned to
+X. All four same-face pairs complete a headless MuJoCo dock in the
+connector-pair scenario. The seven-module Driver-to-Snake preset also completes
+all four edge replacements against this private pack with six final welds, no
+docking failures, and finite module state. The pre-integration local pack is
+backed up at
 `.modsim/backups/smores_ep-pre-mujoco-integration`.
 
 ## Actual repository map
@@ -459,10 +518,11 @@ src/modsim/core/               runtime identifiers, transforms, state, events, a
 src/modsim/model_views/        immutable view DTOs, builders, factory, topology graph
 src/modsim/connectors/         compatibility, acceptance, guards, docking execution
 src/modsim/backends/           adapter contract, registry, mock backend
-src/modsim/runtime/            session, metrics, scenarios, immutable inspector frames
+src/modsim/runtime/            session, metrics, pair/reconfiguration scenarios,
+                               named presets, inspector runner/frames/protocol
 src/modsim/importers/          URDF parser and draft builder
 src/modsim/robot_packs/        schema, loader, validator, writer, issues
-src/modsim_backend_mujoco/     optional MuJoCo scene, adapter, weld pool, viewer
+src/modsim_backend_mujoco/     optional scene, adapter, weld pool, viewer/process host
 src/modsim_studio/app.py       Qt application lifecycle
 src/modsim_studio/main_window.py
                                menus, tree, panels, Properties editors
@@ -470,7 +530,7 @@ src/modsim_studio/project.py   GUI-independent immutable editing facade
 src/modsim_studio/session_logging.py
                                per-launch local logging
 src/modsim_studio/viewport.py  PyVista rendering and mesh picking
-src/modsim_studio/runtime_*.py worker, presenter, PyQtGraph widgets, runtime window
+src/modsim_studio/runtime_*.py worker/process controllers, presenter, widgets, window
 tests/                         core, importer, CLI, and project-model tests
 pyproject.toml                 package metadata, extras, tool configuration
 pyright-mujoco.json            optional-backend type-check configuration
@@ -560,6 +620,14 @@ tests cover the corresponding dialogs, tree selection, project switching, or
   being discarded by MuJoCo. Separate collision geoms remain active for
   physics in hidden viewer group 3, so lightweight proxies no longer cover the
   detailed robot meshes.
+- **SMORES-PACK-001:** the private pack's fixed `bottom` connector and collision
+  proxy now occupy the rear `-X` mating plane of `base_link`. They were
+  previously placed on the underside (`-Z`), which made TOP/BOTTOM connections
+  kink vertically and distorted the Driver-to-Snake demonstration. After the
+  correction, simulation-profile validation is clean, a real MuJoCo
+  bottom-to-bottom dock/release completes without failures, and the private
+  seven-module preset completes as one collinear six-edge chain with ten docks,
+  four undocks, and zero failures.
 
 ## Known core limitations and technical debt
 
@@ -576,8 +644,9 @@ These are either deliberate format-0.1 boundaries or work not yet implemented:
 - Named-frame-only connectors are refused by MuJoCo until frame mappings are
   resolved. Connectors with a numeric `local_pose` are materialized as measured
   MuJoCo sites.
-- There is no joint-command/actuator API. The docking demo drives a module's
-  root free joint for scenario testing, not SMORES wheel or joint actuators.
+- There is no joint-command/actuator API. Pair demos drive a module's root free
+  joint; the multi-module demo kinematically stages complete components. These
+  are scenario controls, not SMORES wheel or joint actuators.
 - MuJoCo does not report equality-constraint forces, so connector break-force
   release and load metrics remain dormant on that backend.
 - Welded module contact exclusion is not implemented. Flush lightweight
@@ -604,15 +673,17 @@ These are either deliberate format-0.1 boundaries or work not yet implemented:
   complete dedicated Studio editors.
 - The viewport shows one module at zero joint configuration. It has no joint
   animation, multi-module assembly view, contacts, runtime state, or physics.
-- The Runtime Inspector is a separate two-module docking window, not a general
-  scene/dashboard shell. It has one topology renderer, one event table, Stop,
-  and final-state inspection; pause/restart, arbitrary scenes, metric plots,
-  joint commands, docking-lifecycle panels, and additional view renderers are
-  not implemented.
-- The Runtime Inspector is intentionally semantic and 2D. It does not embed
-  backend 3D geometry, contacts, collision-debug views, or force plots. The
-  native MuJoCo viewer remains separate, particularly on macOS where it and Qt
-  both require main-thread ownership.
+- The Runtime Inspector is a separate named-demo window, not a general
+  scene/dashboard shell. It has one topology renderer, one event table, live
+  summary metrics, Stop, two pair presets, one seven-module preset, and
+  final-state inspection; pause/restart, arbitrary user-authored scenes,
+  time-series metric plots, joint commands, docking-lifecycle panels, and
+  additional view renderers are not implemented.
+- The Runtime Inspector window is intentionally semantic and 2D. It does not
+  embed backend 3D geometry, contacts, collision-debug views, or force plots.
+  The native MuJoCo viewer remains a separate companion process/window,
+  particularly on macOS where it and Qt both require main-thread ownership;
+  the two windows are launched and shut down together around one runtime.
 - Model-view builders require explicit Python registration. Third-party entry
   point or plugin discovery, additional graph/matrix/frame views, cohorts,
   docking controllers, approach planners, and reconfiguration planners are not
@@ -632,10 +703,10 @@ a second physics viewer.
 2. Add bounded PyQtGraph time-series plots for the metrics already present in
    `RuntimeInspectorFrame`, including connection/assembly counts and docking
    outcomes. Do not accumulate unbounded simulation history.
-3. Generalize launch configuration from one scripted connector pair to named
-   scenes/controllers while keeping the current pair demo as a reproducible
-   preset. Reconfiguration algorithms should drive the runtime through stable
-   commands rather than UI-specific state.
+3. Generalize the implemented named-preset boundary into user-authored scene
+   and controller selection. Keep shipped presets reproducible, and let future
+   reconfiguration algorithms drive stable runtime commands rather than
+   UI-specific state or direct pose staging.
 4. Add connector lifecycle/candidate diagnostics and additional registered
    model-view renderers through the same immutable frame boundary.
 5. Then return to backend mappings, mechanical-source validation, real joint
@@ -653,7 +724,19 @@ modsim views .modsim/robot_packs/smores_ep --view smores_topology --count 4
 modsim studio .modsim/robot_packs/smores_ep
 modsim runtime .modsim/robot_packs/smores_ep \
   --fixed-connector pan --moving-connector pan
+modsim runtime .modsim/robot_packs/smores_ep \
+  --demo dock_undock \
+  --fixed-connector pan --moving-connector pan
+modsim runtime .modsim/robot_packs/smores_ep \
+  --demo smores_driver_to_snake
 ```
+
+The last preset uses seven modules and the four connector replacements from
+Figure 16 and Table III of Liu, Whitzer, and Yim's 2019 Driver-to-Snake
+example. The shipped timing is deterministic sequential kinematic staging for
+runtime visualization; it is not the paper's planner, actuator control, or a
+physical locomotion reproduction. See `runtime_inspector.md` and
+`smores_ep_mujoco.md` for exact topology, provenance, and expected metrics.
 
 Its five detailed Fusion STL meshes are the MuJoCo visual geometry. The four
 simple face proxies remain active collision geometry but start hidden in native
@@ -677,10 +760,11 @@ Replace both `pan` values with `bottom`, `left`, or `right` to exercise the
 other same-face demos. On macOS, add `--view` and launch the same command with
 `.venv/bin/mjpython -m modsim` so MuJoCo owns the main thread.
 
-For the live semantic view, use `modsim runtime` without `mjpython`. Qt owns the
-main thread, MuJoCo runs headlessly in the inspector worker, and the graph edge
-appears after the same physical weld commit. The native MuJoCo 3D viewer is a
-separate process/workflow.
+For live 3D physics and semantics together, use `modsim runtime` without
+manually invoking `mjpython`. Qt owns the main process, ModSim automatically
+uses environment-local `mjpython` for the native child on macOS, and the graph
+edge appears after the same physical weld commit shown in 3D. Add
+`--no-viewer` for the headless-worker transport and semantic window alone.
 
 ## Fresh-machine setup
 
@@ -773,7 +857,8 @@ Read docs/AGENTS.md, docs/IMPLEMENTATION_STATUS.md,
 docs/robot_pack_spec.md, docs/model_views.md, docs/runtime_inspector.md,
 docs/studio.md, and docs/docking_semantics.md. Extend the standalone Runtime
 Inspector with pause/resume/restart and bounded metric plots over immutable
-worker frames. Preserve lossless event delivery and stable graph selection,
-keep Qt out of the core package, and run core, Studio, MuJoCo, packaging, and
-cross-backend checks.
+worker/process frames. Preserve lossless event delivery and stable graph
+selection, do not duplicate the runtime for the native viewer, keep Qt out of
+the core package, and run core, Studio, MuJoCo, packaging, and cross-backend
+checks.
 ```

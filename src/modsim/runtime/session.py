@@ -84,6 +84,18 @@ class RuntimeSession:
         """Return the current candidate evaluations without committing any."""
         return self.docking.detect(self.world)
 
+    def process_docking(self) -> tuple[Event, ...]:
+        """Process queued docking commands against the current backend snapshot.
+
+        This does not step physics or advance time. It exists for deterministic
+        scenario staging: once connector frames are exact-aligned, a runtime
+        may establish the physical constraint before an unconstrained contact
+        step can push the pair apart. Compatibility, acceptance, guards,
+        backend two-phase commit, canonical events, and assembly updates still
+        go through the ordinary :class:`DockingManager` pipeline.
+        """
+        return self.docking.run(self.world, self.adapter)
+
     # ------------------------------------------------------------------
     # loop
     # ------------------------------------------------------------------
@@ -100,7 +112,7 @@ class RuntimeSession:
         snapshot = self.adapter.snapshot()
         self.world.ingest(snapshot)
         events: list[Event] = list(self._evaluate_overloads(snapshot.constraint_forces_n))
-        events.extend(self.docking.run(self.world, self.adapter))
+        events.extend(self.process_docking())
         return tuple(events)
 
     def _evaluate_overloads(

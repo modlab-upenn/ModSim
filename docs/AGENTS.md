@@ -48,7 +48,10 @@ ModSim should let users:
 - ModSim Studio is a standalone desktop app, not a web GUI for MVP.
 - The primary Studio GUI stack is PySide6/Qt + PyVistaQt/PyVista + PyQtGraph.
 - Do not make the primary GUI an Isaac Sim extension. Isaac integration comes later through an adapter or optional extension.
-- Do not embed MuJoCo/Isaac viewer into Studio for MVP; use simulator viewer separately and Studio for semantic/model-view inspection.
+- Do not embed MuJoCo/Isaac viewers into Studio for MVP. A runtime command may
+  supervise a separate native-viewer companion process while Studio renders
+  semantic/model-view inspection from immutable snapshots of that same
+  authoritative runtime.
 
 ## Language and style
 
@@ -138,8 +141,10 @@ pre-commit
    graph — implemented and consumed by the first Runtime Inspector renderer.
 8. Runtime core and mock backend — implemented.
 9. Runtime Inspector mode in Studio with PyQtGraph metrics and model-view
-   rendering — first standalone two-module graph/event slice implemented;
-   general scenes, metric plots, and richer controls remain.
+   rendering — standalone graph/event slice, coupled MuJoCo companion viewer,
+   named two-module lifecycle presets, and one seven-module scripted
+   reconfiguration preset implemented; general scenes, metric plots, and
+   richer controls remain.
 10. MuJoCo backend MVP — implemented for fixed docking constraints.
 11. Docking/undocking with backend bridge — implemented for the mock and
     MuJoCo backends, with the limitations in `IMPLEMENTATION_STATUS.md`.
@@ -156,6 +161,9 @@ pre-commit
 - Runtime Inspector renderers must consume immutable generated model-view
   snapshots; they must not traverse or mutate a live `WorldState` while a
   backend is stepping.
+- When a native simulator viewer and Qt both require main-thread ownership,
+  keep them in separate processes. Exactly one process owns and steps the
+  runtime; never approximate the two views with duplicate simulations.
 - Use PyQtGraph for live metrics and simple matrix/model-view panels.
 - Keep Studio optional through packaging extras:
   `modsim-robotics[studio]` after publication or `.[studio]` from a source
@@ -193,8 +201,9 @@ Use this preferred Codex starting prompt for the next iteration:
 Read docs/AGENTS.md, docs/IMPLEMENTATION_STATUS.md,
 docs/robot_pack_spec.md, docs/model_views.md, docs/runtime_inspector.md, and
 docs/studio.md. Extend the standalone Runtime Inspector with pause/restart
-controls and bounded live metric plots while preserving immutable worker
-frames, lossless event delivery, and stable graph selection. Do not read live
-WorldState from the Qt thread. Preserve the core/Studio dependency boundary and
-run all repository checks.
+controls and bounded live metric plots while preserving immutable
+worker/process frames, lossless event delivery, and stable graph selection. Do
+not read live WorldState from the Qt thread or create a duplicate simulation
+for the native viewer. Preserve the core/Studio dependency boundary and run all
+repository checks.
 ```

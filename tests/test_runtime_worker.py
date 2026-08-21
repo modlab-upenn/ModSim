@@ -14,7 +14,13 @@ from PySide6.QtCore import QEventLoop, QThread, QTimer
 from PySide6.QtWidgets import QApplication
 
 from modsim.runtime import RuntimeInspectorFrame
+from modsim.runtime.inspector_runner import RuntimeInspectorConfig as CoreRuntimeInspectorConfig
 from modsim_studio.runtime_worker import RuntimeInspectorConfig, RuntimeInspectorWorker
+
+
+def test_worker_preserves_public_config_import() -> None:
+    assert RuntimeInspectorConfig is CoreRuntimeInspectorConfig
+    assert not RuntimeInspectorConfig(pack_path=Path("pack")).viewer_enabled
 
 
 def test_worker_publishes_a_docked_graph_and_lossless_events(

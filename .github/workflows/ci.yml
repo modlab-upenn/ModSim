@@ -70,6 +70,9 @@ jobs:
           uv run --no-sync pytest
           tests/test_mujoco_backend.py
           tests/test_mujoco_docking.py
+          tests/test_mujoco_reconfiguration.py
+          tests/test_mujoco_runtime_inspector_process.py
+          tests/test_mujoco_viewer.py
           tests/test_mujoco_welds.py
           tests/test_backend_conformance.py
 
@@ -93,9 +96,10 @@ jobs:
       - name: Type check Studio
         run: uv run --no-sync pyright --project pyright-studio.json
 
-      - name: Test Runtime Inspector widgets and worker
+      - name: Test Runtime Inspector widgets, worker, and process controller
         run: >-
           xvfb-run -a uv run --no-sync pytest
+          tests/test_runtime_process.py
           tests/test_runtime_widgets.py
           tests/test_runtime_worker.py
 
