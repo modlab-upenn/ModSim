@@ -70,7 +70,7 @@ process owns the physics session and streams immutable graph/event frames to
 Qt, so the windows cannot diverge. The shipped runtime presets are `dock`,
 `dock_undock`, and the seven-module `smores_driver_to_snake` demonstration.
 
-The current feature branch is verified by 419 tests with native MuJoCo enabled,
+The current feature branch is verified by 421 tests with native MuJoCo enabled,
 strict core/Studio/MuJoCo type checks, lint/format checks, and wheel/source
 distribution smoke tests.
 
@@ -146,13 +146,14 @@ ModSim automatically launches the viewer child with the active environment's
 simulation stops stepping and retains its final graph, events, metrics, and 3D
 state for inspection until the windows are closed.
 
-## Run the local SMORES-EP Robot Pack
+## Run the included SMORES-EP Robot Pack
 
-The working SMORES-EP pack is private development data at
-`.modsim/robot_packs/smores_ep`. It is intentionally ignored by Git because the
-redistribution terms for the Fusion-exported URDF and meshes have not been
-settled. These commands therefore work in the current development checkout,
-but a fresh clone must first receive that complete pack at the same path.
+The complete SMORES-EP pack is committed at
+`examples/robot_packs/smores_ep`, including the Fusion-exported URDF, five STL
+visual meshes, four lightweight OBJ collision proxies, and all Robot Pack YAML.
+It is available in every source checkout and source distribution. The project
+owner authorized repository inclusion for collaborator access; broader reuse
+terms have not yet been expressed in a formal asset license.
 
 The current pack defines module type `smores_ep`, the provisional genderless
 and self-compatible connector type `ep_face`, connector IDs `bottom`, `pan`,
@@ -182,11 +183,11 @@ specifications.
 Inspect and validate it before launching a GUI:
 
 ```bash
-.venv/bin/modsim pack inspect .modsim/robot_packs/smores_ep
+.venv/bin/modsim pack inspect examples/robot_packs/smores_ep
 .venv/bin/modsim pack validate \
-  .modsim/robot_packs/smores_ep --profile simulation
-.venv/bin/modsim views .modsim/robot_packs/smores_ep
-.venv/bin/modsim views .modsim/robot_packs/smores_ep \
+  examples/robot_packs/smores_ep --profile simulation
+.venv/bin/modsim views examples/robot_packs/smores_ep
+.venv/bin/modsim views examples/robot_packs/smores_ep \
   --view smores_topology --count 4 --output json
 ```
 
@@ -195,7 +196,7 @@ started. Open the Robot Pack Builder to inspect the detailed meshes, links,
 joints, connector semantics, and YAML:
 
 ```bash
-.venv/bin/modsim studio .modsim/robot_packs/smores_ep
+.venv/bin/modsim studio examples/robot_packs/smores_ep
 ```
 
 In Studio, select `bottom` and enable connector and collision overlays. The
@@ -206,7 +207,7 @@ as a thin vertical rear plate.
 ### Two modules: dock
 
 ```bash
-.venv/bin/modsim runtime .modsim/robot_packs/smores_ep \
+.venv/bin/modsim runtime examples/robot_packs/smores_ep \
   --backend mujoco \
   --demo dock \
   --fixed-connector pan \
@@ -224,7 +225,7 @@ dock, and assembly-merge events.
 ### Two modules: dock, then undock
 
 ```bash
-.venv/bin/modsim runtime .modsim/robot_packs/smores_ep \
+.venv/bin/modsim runtime examples/robot_packs/smores_ep \
   --backend mujoco \
   --demo dock_undock \
   --fixed-connector bottom \
@@ -244,7 +245,7 @@ other verified same-face pair demos.
 ### Seven modules: Driver to Snake
 
 ```bash
-.venv/bin/modsim runtime .modsim/robot_packs/smores_ep \
+.venv/bin/modsim runtime examples/robot_packs/smores_ep \
   --backend mujoco \
   --demo smores_driver_to_snake \
   --model-view smores_topology \
@@ -287,7 +288,7 @@ display or Xvfb.
 Use `modsim run` for a fully non-GUI two-module MuJoCo lifecycle:
 
 ```bash
-.venv/bin/modsim run .modsim/robot_packs/smores_ep \
+.venv/bin/modsim run examples/robot_packs/smores_ep \
   --backend mujoco \
   --fixed-connector pan \
   --moving-connector pan \
@@ -307,9 +308,9 @@ ModSim automatically selects the environment's `mjpython` for its viewer
 child. Only the standalone `modsim run --view` workflow requires invoking
 `.venv/bin/mjpython -m modsim` explicitly.
 
-Runtime and Studio launches rewrite the current pack's local session log at
-`.modsim/robot_packs/.modsim/logs/smores_ep/studio.log`. Reproduce one issue per
-launch when collecting a clean debugging log. When using `uv`, replace
+Runtime and Studio launches rewrite the example pack's local session log at
+`examples/robot_packs/.modsim/logs/smores_ep/studio.log`. Reproduce one issue
+per launch when collecting a clean debugging log. When using `uv`, replace
 `.venv/bin/modsim` in the examples with `uv run --no-sync modsim`.
 
 Before a public package release, install a locally built wheel in a clean
@@ -431,9 +432,9 @@ same file while Studio is running. During a coupled runtime, the Qt process is
 the only log writer and captures the native-viewer child's diagnostics into
 that file.
 
-See `docs/studio.md` for the exact workflow and current limitations. Do not add
-SMORES CAD, URDF, or mesh assets to this repository until their redistribution
-terms are confirmed.
+See `docs/studio.md` for the exact workflow and current limitations. The
+SMORES-EP assets are an explicitly authorized example; do not commit additional
+robot CAD, URDF, or meshes without equivalent owner authorization.
 
 ## Python API
 
@@ -518,7 +519,7 @@ modsim runtime examples/robot_packs/generic_cube \
 ```
 
 The edge is removed after `UndockCommitted`, and the event log also records
-`AssemblySplit`. See **Run the local SMORES-EP Robot Pack** above for the exact
+`AssemblySplit`. See **Run the included SMORES-EP Robot Pack** above for the exact
 two-module and seven-module SMORES commands, expected topology, metrics, and
 staging limitations. Additional pack-specific details are in
 [`docs/smores_ep_mujoco.md`](docs/smores_ep_mujoco.md).
@@ -672,7 +673,7 @@ runner backs the driven module away at `--retract` (default: the approach speed)
 so the undock is visible. `--retract 0` shows the coasting behaviour instead.
 
 `docs/backends.md` covers the adapter contract, the differences between the two
-backends, and the cross-backend conformance suite. The private SMORES-EP setup,
+backends, and the cross-backend conformance suite. The committed SMORES-EP example,
 provisional connector frames, lightweight collision proxies, and exact demo
 commands are recorded in `docs/smores_ep_mujoco.md`.
 
@@ -691,7 +692,7 @@ uv run --no-sync pytest
 git diff --check
 ```
 
-The current feature baseline is 419 passing tests with native MuJoCo enabled.
+The current feature baseline is 421 passing tests with native MuJoCo enabled.
 GUI smoke tests use Xvfb in CI; local Studio and Runtime Inspector launches need
 a working display and OpenGL environment.
 
@@ -714,5 +715,6 @@ a working display and OpenGL environment.
   exclusion, or constraint-force/load feedback.
 
 The package is pre-release. A software license, publication channel, public
-project URLs, and redistribution policy for robot assets must be chosen before
-public distribution.
+project URLs, and a general policy for future robot assets still need to be
+chosen. The included SMORES-EP assets are available to repository collaborators,
+but no separate license currently grants broader reuse rights.

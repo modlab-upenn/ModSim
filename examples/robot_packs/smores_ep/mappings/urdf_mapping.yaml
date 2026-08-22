@@ -1,0 +1,19 @@
+schema_version: '0.1'
+backend: urdf
+asset_catalog: urdf
+module_types:
+  smores_ep:
+    asset_ref: smores_ep
+    link_map:
+      base_link: base_link
+      left_wheel_1: left_wheel_1
+      right_wheel_1: right_wheel_1
+      tilt_body_1: tilt_body_1
+      front_wheel_1: front_wheel_1
+    joint_map:
+      joint_left_wheel: joint_left_wheel
+      joint_right_wheel: joint_right_wheel
+      joint_tilt: joint_tilt
+      joint_pan: joint_pan
+    connector_frame_map: {}
+    constraint_map: {}

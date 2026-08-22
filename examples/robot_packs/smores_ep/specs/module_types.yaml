@@ -1,0 +1,113 @@
+schema_version: '0.1'
+module_types:
+  smores_ep:
+    name: SMORES-EP
+    asset_ref: smores_ep
+    root_link: base_link
+    mass_kg: 0.4386367977876995
+    joints:
+      - id: joint_left_wheel
+        source_joint_name: joint_left_wheel
+        type: continuous
+        parent_link: base_link
+        child_link: left_wheel_1
+        axis:
+          - 0.0
+          - 1.0
+          - 0.0
+        control_modes: []
+        limits: null
+      - id: joint_right_wheel
+        source_joint_name: joint_right_wheel
+        type: continuous
+        parent_link: base_link
+        child_link: right_wheel_1
+        axis:
+          - 0.0
+          - 1.0
+          - 0.0
+        control_modes: []
+        limits: null
+      - id: joint_tilt
+        source_joint_name: joint_tilt
+        type: revolute
+        parent_link: base_link
+        child_link: tilt_body_1
+        axis:
+          - 0.0
+          - 1.0
+          - 0.0
+        control_modes: []
+        limits:
+          lower_position_rad: -1.570796
+          upper_position_rad: 1.570796
+          lower_position_m: null
+          upper_position_m: null
+          max_velocity_rad_per_s: 100.0
+          max_velocity_m_per_s: null
+          max_effort_nm: 100.0
+          max_effort_n: null
+      - id: joint_pan
+        source_joint_name: joint_pan
+        type: continuous
+        parent_link: tilt_body_1
+        child_link: front_wheel_1
+        axis:
+          - 1.0
+          - 0.0
+          - 0.0
+        control_modes: []
+        limits: null
+    connectors:
+      - id: bottom
+        connector_type: ep_face
+        parent_link: base_link
+        frame: null
+        local_pose:
+          xyz_m: [-0.010741577148, 0.0, 0.0]
+          rpy_rad: [0.0, 0.0, 3.141592653589793]
+        docking_axis: [-1.0, 0.0, 0.0]
+        approach_axis: [-1.0, 0.0, 0.0]
+        metadata:
+          face: bottom
+          physical_location: rear_base
+          pose_source: fusion_mesh_planar_face
+      - id: pan
+        connector_type: ep_face
+        parent_link: front_wheel_1
+        frame: null
+        local_pose:
+          xyz_m: [0.005762, 0.0, 0.0]
+          rpy_rad: [0.0, 0.0, 0.0]
+        docking_axis: [1.0, 0.0, 0.0]
+        approach_axis: [1.0, 0.0, 0.0]
+        metadata:
+          face: pan
+          pose_source: fusion_mesh_bounds
+      - id: left
+        connector_type: ep_face
+        parent_link: left_wheel_1
+        frame: null
+        local_pose:
+          xyz_m: [0.0, 0.04405, 0.0]
+          rpy_rad: [0.0, 0.0, 1.5707963267948966]
+        docking_axis: [0.0, 1.0, 0.0]
+        approach_axis: [0.0, 1.0, 0.0]
+        metadata:
+          face: left
+          pose_source: fusion_mesh_bounds
+      - id: right
+        connector_type: ep_face
+        parent_link: right_wheel_1
+        frame: null
+        local_pose:
+          xyz_m: [0.0, -0.04405, 0.0]
+          rpy_rad: [0.0, 0.0, -1.5707963267948966]
+        docking_axis: [0.0, -1.0, 0.0]
+        approach_axis: [0.0, -1.0, 0.0]
+        metadata:
+          face: right
+          pose_source: fusion_mesh_bounds
+    capabilities:
+      - dock
+      - undock

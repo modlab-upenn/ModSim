@@ -1,0 +1,38 @@
+schema_version: '0.1'
+connector_types:
+  ep_face:
+    name: SMORES-EP Electropermanent Face
+    active: true
+    gender: genderless
+    compatible_with:
+      - ep_face
+    allowed_orientations:
+      mode: discrete
+      values_rad:
+        - 0.0
+        - 1.5707963267948966
+        - 3.141592653589793
+        - 4.71238898038469
+    acceptance_region:
+      shape: cylinder
+      position_tolerance_m: 0.006
+      orientation_tolerance_rad: 0.17453292519943295
+      max_relative_velocity_m_s: 0.05
+    physical_connection:
+      constraint: fixed
+      compliance: null
+    limits:
+      max_normal_force_n: 100.0
+      max_shear_force_n: 50.0
+      max_bending_moment_nm: 2.0
+    supports_undocking: true
+    docking_policy:
+      auto_latch: false
+      alignment: nominal
+      redock_cooldown_s: 0.1
+      break_force_n: null
+    metadata:
+      interface: electropermanent_magnet
+      status: provisional_demo
+      hardware_ratings_verified: false
+      note: Load limits and capture tolerances are simulation placeholders pending hardware validation.

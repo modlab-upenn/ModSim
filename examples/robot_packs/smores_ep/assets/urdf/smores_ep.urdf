@@ -1,0 +1,159 @@
+<?xml version='1.0' encoding='utf-8'?>
+<robot name="SMORES_EP_V4.2.0_URDF">
+  <mujoco>
+    <compiler discardvisual="false" />
+  </mujoco>
+  <material name="silver">
+    <color rgba="0.700 0.700 0.700 1.000" />
+  </material>
+  <gazebo reference="base_link">
+    <material>Gazebo/Silver</material>
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <self_collide>true</self_collide>
+    <gravity>true</gravity>
+  </gazebo>
+  <gazebo reference="left_wheel_1">
+    <material>Gazebo/Silver</material>
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <self_collide>true</self_collide>
+  </gazebo>
+  <gazebo reference="right_wheel_1">
+    <material>Gazebo/Silver</material>
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <self_collide>true</self_collide>
+  </gazebo>
+  <gazebo reference="tilt_body_1">
+    <material>Gazebo/Silver</material>
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <self_collide>true</self_collide>
+  </gazebo>
+  <gazebo reference="front_wheel_1">
+    <material>Gazebo/Silver</material>
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <self_collide>true</self_collide>
+  </gazebo>
+  <link name="base_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="0.0031489501883319535 -0.00016602533535364005 3.359366217456069e-05" />
+      <mass value="0.21126729893698074" />
+      <inertia ixx="0.000219" ixy="1e-06" ixz="0.0" iyy="0.000154" iyz="0.0" izz="0.000153" />
+    </inertial>
+    <visual>
+      <origin rpy="0 0 0" xyz="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/base_link.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+      <material name="silver" />
+    </visual>
+    <collision name="bottom_face_proxy">
+      <origin rpy="0 0 0" xyz="-0.006741577148 0 0" />
+      <geometry>
+        <mesh filename="../collision_meshes/bottom_face_box.obj" scale="0.008 0.0651 0.0708856" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="left_wheel_1">
+    <inertial>
+      <origin rpy="0 0 0" xyz="1.4285802414214233e-05 0.039323422658391796 1.1707051038491707e-05" />
+      <mass value="0.07722957032161351" />
+      <inertia ixx="1.8e-05" ixy="0.0" ixz="0.0" iyy="3.3e-05" iyz="0.0" izz="1.8e-05" />
+    </inertial>
+    <visual>
+      <origin rpy="0 0 0" xyz="-0.034458 -0.0 -0.0" />
+      <geometry>
+        <mesh filename="../meshes/left_wheel_1.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+      <material name="silver" />
+    </visual>
+    <collision name="left_face_proxy">
+      <origin rpy="0 0 0" xyz="0 0.04005 0" />
+      <geometry>
+        <mesh filename="../collision_meshes/left_face_box.obj" scale="0.075 0.008 0.075" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="right_wheel_1">
+    <inertial>
+      <origin rpy="0 0 0" xyz="1.4282394199163773e-05 -0.039323422411277516 -1.1710095128829764e-05" />
+      <mass value="0.07722950784796127" />
+      <inertia ixx="1.8e-05" ixy="-0.0" ixz="-0.0" iyy="3.3e-05" iyz="0.0" izz="1.8e-05" />
+    </inertial>
+    <visual>
+      <origin rpy="0 0 0" xyz="-0.034458 -0.0 -0.0" />
+      <geometry>
+        <mesh filename="../meshes/right_wheel_1.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+      <material name="silver" />
+    </visual>
+    <collision name="right_face_proxy">
+      <origin rpy="0 0 0" xyz="0 -0.04005 0" />
+      <geometry>
+        <mesh filename="../collision_meshes/right_face_box.obj" scale="0.075 0.008 0.075" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="tilt_body_1">
+    <inertial>
+      <origin rpy="0 0 0" xyz="0.018880520013409244 -0.00021423502177737798 6.95488508724099e-05" />
+      <mass value="0.041194439942392795" />
+      <inertia ixx="3.2e-05" ixy="-0.0" ixz="-0.0" iyy="2.4e-05" iyz="0.0" izz="3.3e-05" />
+    </inertial>
+    <visual>
+      <origin rpy="0 0 0" xyz="-0.034458 -0.0 -0.0" />
+      <geometry>
+        <mesh filename="../meshes/tilt_body_1.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+      <material name="silver" />
+    </visual>
+  </link>
+  <link name="front_wheel_1">
+    <inertial>
+      <origin rpy="0 0 0" xyz="0.0006570820646822212 2.8637889182632384e-05 -5.061828486081447e-05" />
+      <mass value="0.031715980738751155" />
+      <inertia ixx="2.3e-05" ixy="0.0" ixz="-0.0" iyy="1.2e-05" iyz="-0.0" izz="1.2e-05" />
+    </inertial>
+    <visual>
+      <origin rpy="0 0 0" xyz="-0.07437 -0.0 0.0" />
+      <geometry>
+        <mesh filename="../meshes/front_wheel_1.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+      <material name="silver" />
+    </visual>
+    <collision name="pan_face_proxy">
+      <origin rpy="0 0 0" xyz="0.001762 0 0" />
+      <geometry>
+        <mesh filename="../collision_meshes/pan_face_box.obj" scale="0.008 0.07 0.07" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="joint_left_wheel" type="continuous">
+    <origin rpy="0 0 0" xyz="0.034458 0.0 0.0" />
+    <parent link="base_link" />
+    <child link="left_wheel_1" />
+    <axis xyz="0.0 1.0 0.0" />
+  </joint>
+  <joint name="joint_right_wheel" type="continuous">
+    <origin rpy="0 0 0" xyz="0.034458 0.0 0.0" />
+    <parent link="base_link" />
+    <child link="right_wheel_1" />
+    <axis xyz="0.0 1.0 0.0" />
+  </joint>
+  <joint name="joint_tilt" type="revolute">
+    <origin rpy="0 0 0" xyz="0.034458 0.0 0.0" />
+    <parent link="base_link" />
+    <child link="tilt_body_1" />
+    <axis xyz="0.0 1.0 0.0" />
+    <limit effort="100" lower="-1.570796" upper="1.570796" velocity="100" />
+  </joint>
+  <joint name="joint_pan" type="continuous">
+    <origin rpy="0 0 0" xyz="0.039912 0.0 -0.0" />
+    <parent link="tilt_body_1" />
+    <child link="front_wheel_1" />
+    <axis xyz="1.0 0.0 0.0" />
+  </joint>
+</robot>

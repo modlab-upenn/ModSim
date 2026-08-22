@@ -1,7 +1,8 @@
 """Real-physics regressions for scripted multi-module reconfiguration.
 
-The tests use the committed generic-cube URDF and add four semantic connector
-faces in memory. No private SMORES-EP assets are required.
+These focused controller tests use the generic-cube URDF and add four semantic
+connector faces in memory, keeping geometry-independent coverage alongside the
+separate committed SMORES-EP pack regression.
 """
 
 from __future__ import annotations

@@ -104,11 +104,11 @@ connection and retracts the moving module.
 
 ### `smores_driver_to_snake`
 
-The private SMORES-EP Robot Pack can run a seven-module Driver-to-Snake
+The included SMORES-EP Robot Pack can run a seven-module Driver-to-Snake
 reconfiguration demonstration:
 
 ```bash
-modsim runtime .modsim/robot_packs/smores_ep \
+modsim runtime examples/robot_packs/smores_ep \
   --backend mujoco \
   --demo smores_driver_to_snake \
   --duration 14.0 \
@@ -133,7 +133,7 @@ Table III of Chao Liu, Michael Whitzer, and Mark Yim,
 IEEE Robotics and Automation Letters, 2019,
 DOI [`10.1109/LRA.2019.2930432`](https://doi.org/10.1109/LRA.2019.2930432).
 The paper directly specifies the action pairs; ModSim maps paper face `TOP` to
-the local pack's `pan` connector and retains `bottom`, `left`, and `right`.
+the pack's `pan` connector and retains `bottom`, `left`, and `right`.
 
 ModSim executes those four pairs sequentially in Table III order using
 deterministic kinematic component staging. That ordering and motion staging are

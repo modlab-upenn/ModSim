@@ -501,8 +501,12 @@ Then open the draft in Studio or edit its YAML documents to:
 4. Define advertised capabilities and their required connector types.
 5. Run inspect, authoring validation, and then simulation-profile validation.
 
-`examples/robot_packs/generic_cube` remains available as a manual format
-reference when starting without a URDF.
+`examples/robot_packs/generic_cube` is the minimal simulator-neutral format
+reference. `examples/robot_packs/smores_ep` is a complete real-platform example
+with an imported URDF, detailed visual meshes, collision proxies, four authored
+connectors, capabilities, mapping, and a runtime model-view recipe.
 
 Do not add proprietary or redistribution-restricted CAD, URDF, or mesh assets
-to the repository until their distribution terms are confirmed.
+to the repository until their distribution terms are confirmed. The included
+SMORES-EP assets were explicitly authorized for repository collaborator access;
+that authorization does not define a general policy for other robot assets.

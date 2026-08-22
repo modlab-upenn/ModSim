@@ -7,7 +7,7 @@ without relying on prior conversation history.
 
 ## Snapshot and document authority
 
-- Snapshot date: 2026-08-21
+- Snapshot date: 2026-08-22
 - Distribution: `modsim-robotics`
 - Package version: `0.1.0`
 - Robot Pack format: `0.1`
@@ -49,8 +49,9 @@ code. Do not treat it as an inventory of implemented modules.
   reconfiguration algorithms.
 - The framework must remain generic. SMORES-EP is the first real integration
   target, not a hard-coded platform.
-- Do not commit SMORES CAD, URDF, meshes, or related assets until their
-  redistribution terms are known.
+- The project owner authorized the SMORES-EP Fusion export for repository
+  inclusion and collaborator access. Do not commit additional robot assets
+  without equivalent owner authorization.
 
 ## Owner-specified work boundary
 
@@ -462,9 +463,10 @@ collecting a clean debugging log.
 
 ### Examples and tests
 
-- `examples/robot_packs/generic_cube` is the only committed Robot Pack. It is
-  intentionally simulator-neutral and self-contained, and declares a default
-  runtime module-topology recipe.
+- `examples/robot_packs/generic_cube` is the committed simulator-neutral
+  example. `examples/robot_packs/smores_ep` is the committed real-platform
+  example with its complete URDF, visual meshes, collision proxies, semantics,
+  backend mapping, and default runtime module-topology recipe.
 - Test modules also cover transforms, acceptance, assembly derivation, docking
   lifecycle, pair and seven-module reconfiguration scenarios, backend
   registration/conformance, MuJoCo scene compilation, weld allocation,
@@ -476,7 +478,7 @@ collecting a clean debugging log.
   failure handling, viewer-host control and cleanup, worker shutdown, a real
   MuJoCo graph/event dock, a real seven-module/six-weld/four-action
   reconfiguration using public synthetic assets, and Studio project mutations.
-- The complete feature-branch verification passes 419 tests with native
+- The complete feature-branch verification passes 421 tests with native
   MuJoCo enabled and reports 85% branch-aware core coverage.
 - The CI Studio smoke opens the generic cube in a real Qt/PyVista window under
   Xvfb, selects a module tree item, and verifies session logging. The Studio CI
@@ -485,19 +487,15 @@ collecting a clean debugging log.
   edge and event delta and exercises the passive-viewer wrapper and native
   viewer host without opening a real display.
 
-The working SMORES-EP pack remains private and ignored at
-`.modsim/robot_packs/smores_ep`; its Fusion-exported visual assets are not
-committed pending an explicit redistribution decision. The integration copy now
-has a provisional genderless `ep_face` type; bottom, pan, left, and right
-connector instances; docking/undocking capabilities; and four 12-triangle OBJ
-collision proxies. The fixed `bottom` connector is authored on the rear `-X`
-plane of `base_link`, opposite `pan`, with its proxy thin dimension aligned to
-X. All four same-face pairs complete a headless MuJoCo dock in the
-connector-pair scenario. The seven-module Driver-to-Snake preset also completes
-all four edge replacements against this private pack with six final welds, no
-docking failures, and finite module state. The pre-integration local pack is
-backed up at
-`.modsim/backups/smores_ep-pre-mujoco-integration`.
+The committed SMORES-EP pack at `examples/robot_packs/smores_ep` has a
+provisional genderless `ep_face` type; bottom, pan, left, and right connector
+instances; docking/undocking capabilities; five Fusion-exported STL visual
+meshes; and four 12-triangle OBJ collision proxies. The fixed `bottom`
+connector is authored on the rear `-X` plane of `base_link`, opposite `pan`,
+with its proxy thin dimension aligned to X. All four same-face pairs complete a
+headless MuJoCo dock in the connector-pair scenario. The seven-module
+Driver-to-Snake preset also completes all four edge replacements against this
+pack with six final welds, no docking failures, and finite module state.
 
 ## Actual repository map
 
@@ -512,7 +510,7 @@ docs/model_views.md            generated-view contracts and recipe workflow
 docs/robot_pack_spec.md        implemented format-0.1 contract
 docs/runtime_inspector.md      live graph/event workflow and thread boundary
 docs/studio.md                 current desktop workflow and limitations
-examples/robot_packs/          committed generic example
+examples/robot_packs/          committed generic-cube and SMORES-EP examples
 src/modsim/cli.py              Typer CLI
 src/modsim/core/               runtime identifiers, transforms, state, events, assemblies
 src/modsim/model_views/        immutable view DTOs, builders, factory, topology graph
@@ -620,12 +618,12 @@ tests cover the corresponding dialogs, tree selection, project switching, or
   being discarded by MuJoCo. Separate collision geoms remain active for
   physics in hidden viewer group 3, so lightweight proxies no longer cover the
   detailed robot meshes.
-- **SMORES-PACK-001:** the private pack's fixed `bottom` connector and collision
+- **SMORES-PACK-001:** the committed pack's fixed `bottom` connector and collision
   proxy now occupy the rear `-X` mating plane of `base_link`. They were
   previously placed on the underside (`-Z`), which made TOP/BOTTOM connections
   kink vertically and distorted the Driver-to-Snake demonstration. After the
   correction, simulation-profile validation is clean, a real MuJoCo
-  bottom-to-bottom dock/release completes without failures, and the private
+  bottom-to-bottom dock/release completes without failures, and the committed
   seven-module preset completes as one collinear six-edge chain with ten docks,
   four undocks, and zero failures.
 
@@ -691,7 +689,8 @@ These are either deliberate format-0.1 boundaries or work not yet implemented:
 - Canonical saves intentionally rewrite YAML formatting.
 - There is no migration framework for future Robot Pack format versions.
 - There is no project license, publication channel, public project URL, or
-  settled robot-asset redistribution policy.
+  general policy for future robot assets. The SMORES-EP assets were authorized
+  for repository inclusion, but no separate asset license grants broader reuse.
 
 ## Recommended next implementation iteration
 
@@ -715,19 +714,19 @@ a second physics viewer.
 
 ## SMORES-EP MuJoCo workflow
 
-The current private development pack is:
+The committed example pack is:
 
 ```bash
-modsim pack inspect .modsim/robot_packs/smores_ep
-modsim pack validate .modsim/robot_packs/smores_ep --profile simulation
-modsim views .modsim/robot_packs/smores_ep --view smores_topology --count 4
-modsim studio .modsim/robot_packs/smores_ep
-modsim runtime .modsim/robot_packs/smores_ep \
+modsim pack inspect examples/robot_packs/smores_ep
+modsim pack validate examples/robot_packs/smores_ep --profile simulation
+modsim views examples/robot_packs/smores_ep --view smores_topology --count 4
+modsim studio examples/robot_packs/smores_ep
+modsim runtime examples/robot_packs/smores_ep \
   --fixed-connector pan --moving-connector pan
-modsim runtime .modsim/robot_packs/smores_ep \
+modsim runtime examples/robot_packs/smores_ep \
   --demo dock_undock \
   --fixed-connector pan --moving-connector pan
-modsim runtime .modsim/robot_packs/smores_ep \
+modsim runtime examples/robot_packs/smores_ep \
   --demo smores_driver_to_snake
 ```
 
@@ -746,7 +745,7 @@ assets and richer material graphs remain future work.
 Run a headless pan-face approach, fixed weld, release, and retract:
 
 ```bash
-modsim run .modsim/robot_packs/smores_ep \
+modsim run examples/robot_packs/smores_ep \
   --backend mujoco \
   --fixed-connector pan \
   --moving-connector pan \

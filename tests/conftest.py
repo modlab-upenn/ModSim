@@ -8,13 +8,25 @@ from typing import Any
 
 import pytest
 
-from modsim.robot_packs import RobotPack, RobotPackLoader
+from modsim.robot_packs import LoadedRobotPack, RobotPack, RobotPackLoader
 
 
 @pytest.fixture
 def example_pack_dir() -> Path:
     """Return the immutable generic example pack."""
     return Path(__file__).resolve().parents[1] / "examples" / "robot_packs" / "generic_cube"
+
+
+@pytest.fixture
+def smores_pack_dir() -> Path:
+    """Return the immutable SMORES-EP example pack."""
+    return Path(__file__).resolve().parents[1] / "examples" / "robot_packs" / "smores_ep"
+
+
+@pytest.fixture
+def smores_loaded_pack(smores_pack_dir: Path) -> LoadedRobotPack:
+    """Load the committed SMORES-EP example pack and its filesystem context."""
+    return RobotPackLoader().load(smores_pack_dir)
 
 
 @pytest.fixture

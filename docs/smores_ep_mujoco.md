@@ -1,10 +1,10 @@
 # SMORES-EP MuJoCo docking demo
 
-This is the reproducible local workflow for the private SMORES-EP Robot Pack at
-`.modsim/robot_packs/smores_ep`. The Fusion-exported visual meshes remain
-ignored by Git; do not publish them until redistribution is explicitly cleared.
-The pre-integration pack is preserved at
-`.modsim/backups/smores_ep-pre-mujoco-integration`.
+This is the reproducible workflow for the committed SMORES-EP Robot Pack at
+`examples/robot_packs/smores_ep`. The source checkout includes the complete
+Fusion-exported URDF and visual meshes, semantic YAML, and lightweight
+collision proxies. Repository inclusion was authorized for collaborator
+access; no separate asset license currently grants broader reuse rights.
 
 ## Authored connector semantics
 
@@ -67,13 +67,13 @@ UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
 
 uv run --no-sync modsim backends
 uv run --no-sync modsim pack validate \
-  .modsim/robot_packs/smores_ep --profile simulation
+  examples/robot_packs/smores_ep --profile simulation
 ```
 
 ## Headless docking and undocking
 
 ```bash
-uv run --no-sync modsim run .modsim/robot_packs/smores_ep \
+uv run --no-sync modsim run examples/robot_packs/smores_ep \
   --backend mujoco \
   --fixed-connector pan \
   --moving-connector pan \
@@ -104,7 +104,7 @@ Launch the same real MuJoCo scenario with its native 3D view, live semantic
 graph, and event log:
 
 ```bash
-uv run --no-sync modsim runtime .modsim/robot_packs/smores_ep \
+uv run --no-sync modsim runtime examples/robot_packs/smores_ep \
   --backend mujoco \
   --fixed-connector pan \
   --moving-connector pan \
@@ -118,7 +118,7 @@ The graph starts with `smores_ep_0` and `smores_ep_1` as isolated nodes. The
 edge `smores_ep_0/pan<->smores_ep_1/pan` appears after MuJoCo accepts the weld,
 and the table shows `DockCandidateDetected`, `DockCommitted`, and
 `AssemblyMerged`. Add `--undock-at 1.0 --retract 0.03` to watch the edge be
-removed and the assembly split. The local pack's default `smores_topology`
+removed and the assembly split. The pack's default `smores_topology`
 recipe supplies the graph model.
 
 That one command opens two separate windows backed by one authoritative
@@ -136,7 +136,7 @@ Use the named preset when the two-module demonstration should always dock and
 then undock without calculating `--undock-at` manually:
 
 ```bash
-uv run --no-sync modsim runtime .modsim/robot_packs/smores_ep \
+uv run --no-sync modsim runtime examples/robot_packs/smores_ep \
   --backend mujoco \
   --demo dock_undock \
   --fixed-connector pan \
@@ -160,7 +160,7 @@ Runtime Inspector and native MuJoCo windows remain views of the same session.
 Run the paper-backed multi-module demonstration with:
 
 ```bash
-uv run --no-sync modsim runtime .modsim/robot_packs/smores_ep \
+uv run --no-sync modsim runtime examples/robot_packs/smores_ep \
   --backend mujoco \
   --demo smores_driver_to_snake \
   --duration 14.0 \
@@ -212,7 +212,7 @@ still must own the main thread on macOS, so that standalone command requires
 `mjpython` explicitly:
 
 ```bash
-.venv/bin/mjpython -m modsim run .modsim/robot_packs/smores_ep \
+.venv/bin/mjpython -m modsim run examples/robot_packs/smores_ep \
   --backend mujoco \
   --fixed-connector pan \
   --moving-connector pan \

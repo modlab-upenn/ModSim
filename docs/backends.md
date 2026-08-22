@@ -232,7 +232,7 @@ The Runtime Inspector exposes the two-module dock/release lifecycle as a named
 preset:
 
 ```bash
-modsim runtime .modsim/robot_packs/smores_ep \
+modsim runtime examples/robot_packs/smores_ep \
   --backend mujoco \
   --demo dock_undock \
   --fixed-connector pan \
@@ -244,7 +244,7 @@ modsim runtime .modsim/robot_packs/smores_ep \
 The SMORES-EP pack also supports a seven-module topology demonstration:
 
 ```bash
-modsim runtime .modsim/robot_packs/smores_ep \
+modsim runtime examples/robot_packs/smores_ep \
   --backend mujoco \
   --demo smores_driver_to_snake \
   --duration 14.0 \
