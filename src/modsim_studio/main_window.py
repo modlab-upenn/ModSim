@@ -1466,6 +1466,13 @@ class MainWindow(QMainWindow):
                 event.ignore()
                 return
         self._logger.info("Studio window closing")
+        try:
+            # Release the viewport's OpenGL/shadow-map resources while the GL
+            # context is still current; otherwise VTK's shadow render passes are
+            # destroyed without ReleaseGraphicsResources() and log errors.
+            self.viewport.close()
+        except Exception:  # never block window close on viewport teardown
+            self._logger.exception("Viewport teardown failed")
         if self._qt_log_handler is not None:
             self._logger.removeHandler(self._qt_log_handler)
             self._qt_log_handler.close()

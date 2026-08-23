@@ -98,8 +98,34 @@ class RobotViewport(QWidget):
         self.plotter.render()
 
     def close(self) -> bool:
+        self._release_shadow_resources()
         self.plotter.close()
         return super().close()
+
+    def _release_shadow_resources(self) -> None:
+        """Free shadow-map GPU resources before the GL context is torn down.
+
+        PyVista's teardown drops its Python references to the shadow render
+        passes without calling ``ReleaseGraphicsResources``, so VTK destroys
+        ``vtkShadowMapBakerPass`` after the OpenGL context is already gone and
+        logs FBO / ShadowMap / LightCamera errors. Releasing explicitly while
+        the context is still current avoids that. Best-effort only: this reaches
+        into PyVista internals, so any failure must not block window close.
+        """
+        try:
+            render_passes = self.plotter.renderer._render_passes
+            shadow_pass = getattr(render_passes, "_shadow_map_pass", None)
+            render_window = self.plotter.render_window
+        except AttributeError:
+            return
+        if shadow_pass is None or render_window is None:
+            return
+        try:
+            render_window.MakeCurrent()
+            shadow_pass.ReleaseGraphicsResources(render_window)
+            shadow_pass.GetShadowMapBakerPass().ReleaseGraphicsResources(render_window)
+        except Exception:  # noqa: BLE001 - teardown must never raise
+            pass
 
     def _rebuild(self) -> None:
         self.plotter.disable_picking()
