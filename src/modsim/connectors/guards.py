@@ -150,15 +150,3 @@ def evaluate_undock_guards(
                 f"connector type '{connector_type.id}' declares supports_undocking: false",
             )
     return GuardResult(allowed=True)
-
-
-def connectors_for_pair(
-    world: WorldState,
-    connector_a: ConnectorInstanceId,
-    connector_b: ConnectorInstanceId,
-) -> tuple[ConnectorInstance, ConnectorInstance] | None:
-    """Return both connector instances, or ``None`` when either is unknown."""
-    try:
-        return world.connector(connector_a), world.connector(connector_b)
-    except KeyError:
-        return None

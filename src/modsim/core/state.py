@@ -183,10 +183,6 @@ class WorldState:
         except KeyError as error:
             raise KeyError(f"unknown connector '{connector}'") from error
 
-    def connectors_of(self, module_id: ModuleInstanceId) -> tuple[ConnectorInstanceId, ...]:
-        """Return every connector belonging to one module."""
-        return self._connectors_by_module.get(module_id, ())
-
     def connector_type(self, connector: ConnectorInstanceId) -> ConnectorTypeSpec:
         """Return the Robot Pack connector type backing one connector instance."""
         type_id = self.connector(connector).connector_type_id
@@ -208,14 +204,6 @@ class WorldState:
             neighbours[connection.module_a].add(connection.module_b)
             neighbours[connection.module_b].add(connection.module_a)
         return {module_id: frozenset(values) for module_id, values in neighbours.items()}
-
-    def connections_of(self, module_id: ModuleInstanceId) -> tuple[ConnectionRuntime, ...]:
-        """Return every connection touching one module."""
-        return tuple(
-            connection
-            for connection in self._connections.values()
-            if module_id in (connection.module_a, connection.module_b)
-        )
 
     # ------------------------------------------------------------------
     # snapshot ingestion
@@ -334,10 +322,6 @@ class WorldState:
             event=True,
         )
         return recorded
-
-    def apply_all(self, events: Iterable[Event]) -> tuple[Event, ...]:
-        """Apply several events in order."""
-        return tuple(self.apply(event) for event in events)
 
     def _apply_dock_committed(self, event: DockCommitted) -> None:
         first = self.connector(event.connector_a)

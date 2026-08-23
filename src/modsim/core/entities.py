@@ -40,18 +40,6 @@ class ConnectorLifecycleState(StrEnum):
     RELEASING = "releasing"
     FAILED = "failed"
 
-
-UNDOCKED_STATES = frozenset(
-    {
-        ConnectorLifecycleState.FREE,
-        ConnectorLifecycleState.CANDIDATE_DETECTED,
-        ConnectorLifecycleState.ALIGNING,
-        ConnectorLifecycleState.IN_ACCEPTANCE_REGION,
-        ConnectorLifecycleState.FAILED,
-    }
-)
-"""States in which a connector holds no logical connection."""
-
 ENGAGED_STATES = frozenset(
     {
         ConnectorLifecycleState.LATCHING,
@@ -115,14 +103,6 @@ class ConnectionRuntime:
     constraint_handle: ConstraintHandle
     created_at_s: float
     measured_force_n: float | None = None
-
-    def other_connector(self, connector: ConnectorInstanceId) -> ConnectorInstanceId:
-        """Return the opposite end of this connection."""
-        if connector == self.connector_a:
-            return self.connector_b
-        if connector == self.connector_b:
-            return self.connector_a
-        raise KeyError(f"connector '{connector}' is not part of connection '{self.id}'")
 
     @property
     def connectors(self) -> tuple[ConnectorInstanceId, ConnectorInstanceId]:

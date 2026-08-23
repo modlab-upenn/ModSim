@@ -57,12 +57,6 @@ class AcceptanceCriterion:
     unit: str
     detail: str | None = None
 
-    @property
-    def margin(self) -> float:
-        """Return how much tolerance is left, negative when violated."""
-        return self.tolerance - self.measured
-
-
 @dataclass(frozen=True, slots=True)
 class AcceptanceResult:
     """The full outcome of evaluating one candidate connector pair."""

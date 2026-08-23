@@ -99,12 +99,6 @@ class AssemblyIndex:
         """Return the module count of the largest assembly, or zero when empty."""
         return max((len(members) for members in self._members.values()), default=0)
 
-    def add_module(self, module_id: ModuleInstanceId) -> AssemblyId:
-        """Register a new, disconnected module as an assembly of size one."""
-        if module_id in self._owner:
-            return self._owner[module_id]
-        return self._register(frozenset({module_id}))
-
     def merge_on_connection(
         self,
         module_a: ModuleInstanceId,
