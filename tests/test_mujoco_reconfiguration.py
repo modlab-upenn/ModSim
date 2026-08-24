@@ -8,6 +8,7 @@ separate committed SMORES-EP pack regression.
 from __future__ import annotations
 
 import math
+from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from typing import Any, Protocol, cast
 
@@ -21,14 +22,26 @@ from modsim.core.ids import ConnectorInstanceId, ModuleInstanceId
 from modsim.core.scene import ModulePlacement, SceneSpec
 from modsim.core.transforms import Transform, vec_norm
 from modsim.robot_packs import LoadedRobotPack, RobotPack, RobotPackLoader
-from modsim.runtime.presets import smores_driver_to_snake_plan
 from modsim.runtime.reconfiguration import (
     ReconfigurationPhase,
+    ReconfigurationPlan,
     ScriptedReconfigurationConfig,
     ScriptedReconfigurationScenario,
+    stage_docking_assembly_pair,
 )
-from modsim.runtime.scenarios import stage_docking_pair
 from modsim.runtime.session import RuntimeSession
+
+
+def _example_plan() -> ReconfigurationPlan:
+    path = Path(__file__).parents[1] / "examples/scenarios/smores_driver_to_snake.py"
+    spec = spec_from_file_location("test_mujoco_smores_driver_to_snake", path)
+    assert spec is not None and spec.loader is not None
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    plan = module.build_plan()
+    assert isinstance(plan, ReconfigurationPlan)
+    return plan
+
 
 pytestmark = pytest.mark.mujoco
 
@@ -115,7 +128,7 @@ def _connector_spec(
 
 
 def _seven_module_scene() -> SceneSpec:
-    plan = smores_driver_to_snake_plan()
+    plan = _example_plan()
     return SceneSpec.of(
         ModulePlacement(
             instance_id=module_id,
@@ -160,7 +173,7 @@ def test_driver_to_snake_completes_with_six_real_mujoco_welds(
     four_face_loaded_pack: LoadedRobotPack,
 ) -> None:
     """Run the complete seven-module paper sequence through real MuJoCo."""
-    plan = smores_driver_to_snake_plan()
+    plan = _example_plan()
     session, adapter = _weightless_session(four_face_loaded_pack, _seven_module_scene())
     action_events: list[Event] = []
 
@@ -217,6 +230,7 @@ def test_driver_to_snake_completes_with_six_real_mujoco_welds(
 
         expected = {pair.connection_id for pair in plan.initial_connections}
         for action in plan.actions:
+            assert action.undock is not None and action.dock is not None
             expected.remove(action.undock.connection_id)
             expected.add(action.dock.connection_id)
         assert set(session.world.connections) == expected
@@ -258,7 +272,7 @@ def test_process_docking_commits_without_advancing_mujoco_time(
     moving = ConnectorInstanceId("module_2/pan")
 
     try:
-        stage_docking_pair(session, fixed, moving, gap_m=0.0)
+        stage_docking_assembly_pair(session, fixed, moving, gap_m=0.0)
         before_world_s = session.world.time_s
         before_backend_s = adapter.time_s
         session.request_dock(fixed, moving)

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import math
+from importlib.util import module_from_spec, spec_from_file_location
+from pathlib import Path
 from typing import Any, cast
 
 import pytest
@@ -21,10 +23,6 @@ from modsim.model_views import (
     ModuleTopologyGraphView,
 )
 from modsim.robot_packs import RobotPack
-from modsim.runtime.presets import (
-    SMORES_DRIVER_TO_SNAKE_SOURCE,
-    smores_driver_to_snake_plan,
-)
 from modsim.runtime.reconfiguration import (
     ConnectorPairRef,
     ReconfigurationAction,
@@ -42,14 +40,26 @@ _SOURCE_URL = (
 )
 
 
+def _example_plan() -> ReconfigurationPlan:
+    path = Path(__file__).parents[1] / "examples/scenarios/smores_driver_to_snake.py"
+    spec = spec_from_file_location("test_smores_driver_to_snake", path)
+    assert spec is not None and spec.loader is not None
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    plan = module.build_plan()
+    assert isinstance(plan, ReconfigurationPlan)
+    assert module.SOURCE_URL == _SOURCE_URL
+    return plan
+
+
 def _undirected_pair(pair: ConnectorPairRef) -> frozenset[str]:
     return frozenset(str(connector) for connector in pair.connectors)
 
 
 def test_builtin_driver_to_snake_plan_matches_the_published_connector_actions() -> None:
-    plan = smores_driver_to_snake_plan()
+    plan = _example_plan()
 
-    assert plan.source_url == SMORES_DRIVER_TO_SNAKE_SOURCE == _SOURCE_URL
+    assert plan.source_url == _SOURCE_URL
     assert tuple(str(module_id) for module_id in plan.module_ids) == tuple(
         f"module_{number}" for number in range(1, 8)
     )
@@ -61,8 +71,11 @@ def test_builtin_driver_to_snake_plan_matches_the_published_connector_actions() 
         frozenset(("module_5/pan", "module_6/bottom")),
         frozenset(("module_5/bottom", "module_7/pan")),
     )
+    assert all(action.undock is not None and action.dock is not None for action in plan.actions)
     assert tuple(
-        (_undirected_pair(action.undock), _undirected_pair(action.dock)) for action in plan.actions
+        (_undirected_pair(action.undock), _undirected_pair(action.dock))
+        for action in plan.actions
+        if action.undock is not None and action.dock is not None
     ) == (
         (
             frozenset(("module_1/bottom", "module_2/pan")),

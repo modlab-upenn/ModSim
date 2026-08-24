@@ -13,7 +13,6 @@ from typing import Literal
 
 from modsim.model_views import ModuleTopologyGraphView
 from modsim.runtime.inspection import RuntimeEventRow, RuntimeInspectorFrame
-from modsim.runtime.reconfiguration import ReconfigurationStatus
 
 SelectionKind = Literal["node", "edge"]
 Point2D = tuple[float, float]
@@ -392,14 +391,11 @@ def _status_text(frame: RuntimeInspectorFrame) -> str:
         phase_value = scenario.phase
         phase = phase_value.value if hasattr(phase_value, "value") else str(phase_value)
         scenario_fields = [phase]
-        if isinstance(scenario, ReconfigurationStatus):
-            scenario_fields.insert(0, scenario.plan_name)
-            if scenario.action_index is not None:
-                scenario_fields.append(
-                    f"action={scenario.action_index + 1}/{scenario.action_count}"
-                )
-            if scenario.detail:
-                scenario_fields.append(scenario.detail)
+        scenario_fields.insert(0, scenario.plan_name)
+        if scenario.action_index is not None:
+            scenario_fields.append(f"action={scenario.action_index + 1}/{scenario.action_count}")
+        if scenario.detail:
+            scenario_fields.append(scenario.detail)
     metrics = frame.metrics
     return (
         f"{frame.backend_name} | {' | '.join(scenario_fields)} | "

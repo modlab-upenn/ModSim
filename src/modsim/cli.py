@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import math
 from collections.abc import Callable
 from enum import StrEnum
 from pathlib import Path
@@ -26,6 +25,7 @@ from modsim.core.ids import ModuleInstanceId, connector_instance_id
 from modsim.core.scene import SceneError, SceneSpec
 from modsim.core.state import WorldState
 from modsim.core.transforms import Vec3, vec_scale
+from modsim.core.validation import require_finite, require_finite_positive
 from modsim.importers import DraftPackBuilder
 from modsim.model_views import (
     ModelView,
@@ -46,13 +46,14 @@ from modsim.robot_packs import (
     ValidationProfile,
     ValidationReport,
 )
-from modsim.runtime import RuntimeInspectorConfig
+from modsim.runtime import RuntimeDemo, RuntimeInspectorConfig
 from modsim.runtime.inspection import format_event_detail
-from modsim.runtime.presets import RuntimeDemo
-from modsim.runtime.scenarios import (
-    DockingPairScenario,
-    DockingPairScenarioConfig,
-    ScenarioSetupError,
+from modsim.runtime.reconfiguration import (
+    ReconfigurationPlanError,
+    ReconfigurationScenarioError,
+    ScriptedReconfigurationConfig,
+    ScriptedReconfigurationScenario,
+    connector_pair_plan,
 )
 from modsim.runtime.session import RuntimeSession
 
@@ -66,16 +67,20 @@ class OutputFormat(StrEnum):
 
 def _require_positive_finite(value: float, option: str) -> None:
     """Reject unsafe time arguments before a command starts a session."""
-    if not math.isfinite(value) or value <= 0.0:
+    try:
+        require_finite_positive(value, option)
+    except ValueError:
         typer.echo(f"{option} must be a finite number greater than 0.", err=True)
-        raise typer.Exit(code=2)
+        raise typer.Exit(code=2) from None
 
 
 def _require_finite(value: float, option: str) -> None:
     """Reject non-finite numeric arguments before they enter typed state."""
-    if not math.isfinite(value):
+    try:
+        require_finite(value, option)
+    except ValueError:
         typer.echo(f"{option} must be a finite number.", err=True)
-        raise typer.Exit(code=2)
+        raise typer.Exit(code=2) from None
 
 
 app = typer.Typer(
@@ -965,22 +970,26 @@ def run_command(
     stepper: Callable[[], tuple[Event, ...]]
     if fixed_connector is not None and moving_connector is not None:
         try:
-            scenario = DockingPairScenario.create(
+            fixed_id = connector_instance_id(scene.instance_ids[0], fixed_connector)
+            moving_id = connector_instance_id(scene.instance_ids[-1], moving_connector)
+            scenario = ScriptedReconfigurationScenario.create(
                 session,
-                DockingPairScenarioConfig(
-                    fixed_connector=connector_instance_id(scene.instance_ids[0], fixed_connector),
-                    moving_connector=connector_instance_id(
-                        scene.instance_ids[-1], moving_connector
-                    ),
+                connector_pair_plan(
+                    fixed_id,
+                    moving_id,
+                    include_undock=undock_at_s is not None,
+                ),
+                ScriptedReconfigurationConfig(
                     gap_m=connector_gap_m,
                     orientation_rad=orientation_rad,
                     approach_speed_m_s=approach_m_s,
                     dt_s=dt_s,
+                    initial_hold_s=0.0,
                     release_after_s=undock_at_s,
                     retract_speed_m_s=retract,
                 ),
             )
-        except ScenarioSetupError as error:
+        except (ReconfigurationPlanError, ReconfigurationScenarioError) as error:
             session.shutdown()
             typer.echo(f"Could not arrange the connector pair: {error}", err=True)
             raise typer.Exit(code=2) from error

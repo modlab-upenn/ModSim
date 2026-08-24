@@ -8,19 +8,21 @@ from pathlib import Path
 import pytest
 
 from modsim.runtime import (
-    MAX_RUNTIME_MESSAGE_BYTES,
-    RUNTIME_PROTOCOL_PREFIX,
     ReconfigurationPhase,
     ReconfigurationStatus,
     RuntimeDemo,
+    RuntimeInspectorConfig,
+    RuntimeInspectorRunner,
+)
+from modsim.runtime.inspection_protocol import (
+    MAX_RUNTIME_MESSAGE_BYTES,
+    RUNTIME_PROTOCOL_PREFIX,
     RuntimeError,
     RuntimeFinished,
     RuntimeFinishedReason,
     RuntimeFrame,
     RuntimeHello,
     RuntimeInitialize,
-    RuntimeInspectorConfig,
-    RuntimeInspectorRunner,
     RuntimeProtocolError,
     RuntimeProtocolFramer,
     RuntimeStatus,

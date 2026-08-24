@@ -11,7 +11,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from modsim.core.entities import ConnectionRuntime, ConnectorInstance
-from modsim.core.ids import ConnectorInstanceId
 from modsim.core.state import WorldState
 from modsim.robot_packs.schema import (
     ConnectorTypeSpec,

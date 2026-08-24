@@ -20,7 +20,7 @@ from modsim.core.ids import ConnectorInstanceId, ModuleInstanceId
 from modsim.core.scene import ModulePlacement, SceneSpec
 from modsim.core.transforms import Transform, quat_from_axis_angle, vec_norm, vec_sub
 from modsim.robot_packs import LoadedRobotPack, RobotPack, RobotPackLoader
-from modsim.runtime.scenarios import stage_docking_pair
+from modsim.runtime.reconfiguration import stage_docking_assembly_pair
 from modsim.runtime.session import RuntimeSession
 from modsim_backend_mujoco.adapter import MuJoCoBackendAdapter
 from modsim_backend_mujoco.scene import (
@@ -545,7 +545,7 @@ def test_nominal_snap_preserves_root_to_articulated_connector_transform(
         gravity=(0.0, 0.0, 0.0),
     )
     moving_front = ConnectorInstanceId("generic_cube_1/front")
-    stage_docking_pair(session, FRONT_0, moving_front, gap_m=0.0)
+    stage_docking_assembly_pair(session, FRONT_0, moving_front, gap_m=0.0)
     root_before = session.world.modules[CUBE_1].pose
 
     session.request_dock(FRONT_0, moving_front)

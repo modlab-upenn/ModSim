@@ -25,10 +25,9 @@ from modsim.model_views import ModelViewContext, ModelViewFactory, ModuleTopolog
 from modsim.robot_packs.schema import ModelViewSpec
 from modsim.runtime.metrics import DockingMetrics
 from modsim.runtime.reconfiguration import ReconfigurationStatus
-from modsim.runtime.scenarios import DockingPairScenarioStatus
 from modsim.runtime.session import RuntimeSession
 
-RuntimeScenarioStatus = DockingPairScenarioStatus | ReconfigurationStatus
+RuntimeScenarioStatus = ReconfigurationStatus
 
 
 class RuntimeInspectionError(RuntimeError):

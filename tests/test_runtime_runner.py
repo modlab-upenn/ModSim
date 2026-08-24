@@ -7,9 +7,8 @@ from pathlib import Path
 import pytest
 
 from modsim.runtime import (
-    DockingPairPhase,
-    DockingPairScenario,
-    DockingPairScenarioStatus,
+    ReconfigurationPhase,
+    ReconfigurationStatus,
     RuntimeDemo,
     RuntimeInspectorConfig,
     RuntimeInspectorRunner,
@@ -86,6 +85,25 @@ def test_runner_rejects_incomplete_connector_pair_before_backend_start(
         )
 
 
+def test_runner_loads_smores_plan_from_the_example_tree(smores_pack_dir: Path) -> None:
+    runner = RuntimeInspectorRunner.create(
+        RuntimeInspectorConfig(
+            pack_path=smores_pack_dir,
+            demo=RuntimeDemo.SMORES_DRIVER_TO_SNAKE,
+            backend="mock",
+            duration_s=0.01,
+            dt_s=0.01,
+        )
+    )
+    try:
+        assert runner.scenario.plan.id == "smores_driver_to_snake"
+        assert len(runner.scenario.plan.module_ids) == 7
+        assert runner.session.world.assemblies.count == 1
+        assert len(runner.session.world.connections) == 6
+    finally:
+        runner.shutdown()
+
+
 def test_runner_dock_undock_demo_supplies_a_release_schedule(
     example_pack_dir: Path,
 ) -> None:
@@ -103,7 +121,7 @@ def test_runner_dock_undock_demo_supplies_a_release_schedule(
         )
     )
     try:
-        assert isinstance(runner.scenario, DockingPairScenario)
+        assert runner.scenario.plan.id == "dock_undock"
         assert runner.scenario.config.release_after_s == pytest.approx(0.055)
         frames = [runner.frame()]
         for _ in range(runner.step_count):
@@ -112,15 +130,13 @@ def test_runner_dock_undock_demo_supplies_a_release_schedule(
     finally:
         runner.shutdown()
 
-    phases: list[DockingPairPhase] = []
+    phases: list[ReconfigurationPhase] = []
     for frame in frames:
-        assert isinstance(frame.scenario, DockingPairScenarioStatus)
+        assert isinstance(frame.scenario, ReconfigurationStatus)
         phases.append(frame.scenario.phase)
-    assert phases == [
-        DockingPairPhase.APPROACHING,
-        *(DockingPairPhase.DOCKED for _ in range(6)),
-        *(DockingPairPhase.COMPLETE for _ in range(4)),
-    ]
+    assert phases[0] is ReconfigurationPhase.APPROACHING
+    assert ReconfigurationPhase.HOLDING_CONNECTED in phases
+    assert phases[-1] is ReconfigurationPhase.COMPLETE
     assert [len(frame.view.edges) for frame in frames] == [0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0]
     assert [(frame.event_start_sequence, frame.next_event_sequence) for frame in frames] == [
         (0, 0),

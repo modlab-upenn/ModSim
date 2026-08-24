@@ -8,7 +8,7 @@ from modsim.core.events import AssemblyMerged, DockCandidateDetected, DockCommit
 from modsim.core.ids import ConnectorInstanceId, ModuleInstanceId
 from modsim.core.scene import SceneSpec
 from modsim.robot_packs import LoadedRobotPack, RobotPackValidator, ValidationProfile
-from modsim.runtime.scenarios import stage_docking_pair
+from modsim.runtime.reconfiguration import stage_docking_assembly_pair
 from modsim.runtime.session import RuntimeSession
 
 MODULE_TYPE = "smores_ep"
@@ -71,7 +71,7 @@ def test_smores_rear_bottom_pair_compiles_and_docks_in_mujoco(
         assert (MODULE_0, "base_link") in session.handles.bodies
         assert (MODULE_1, "base_link") in session.handles.bodies
 
-        stage_docking_pair(session, BOTTOM_0, BOTTOM_1, gap_m=0.0)
+        stage_docking_assembly_pair(session, BOTTOM_0, BOTTOM_1, gap_m=0.0)
         session.request_dock(BOTTOM_0, BOTTOM_1)
         events = session.process_docking()
 

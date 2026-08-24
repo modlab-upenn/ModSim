@@ -17,28 +17,33 @@ from modsim.runtime.inspection import (
     build_runtime_inspector_frame,
     event_row,
 )
-from modsim.runtime.scenarios import (
-    DockingPairPhase,
-    DockingPairScenario,
-    DockingPairScenarioConfig,
+from modsim.runtime.reconfiguration import (
+    ReconfigurationPhase,
+    ScriptedReconfigurationConfig,
+    ScriptedReconfigurationScenario,
+    connector_pair_plan,
 )
 from modsim.runtime.session import RuntimeSession
 
 
-def _docking_scenario(pack: RobotPack) -> DockingPairScenario:
+def _docking_scenario(pack: RobotPack) -> ScriptedReconfigurationScenario:
     session = RuntimeSession.create(
         pack,
         SceneSpec.grid("generic_cube", 2, spacing_m=1.0),
         MockBackendAdapter(),
     )
-    return DockingPairScenario.create(
+    return ScriptedReconfigurationScenario.create(
         session,
-        DockingPairScenarioConfig(
-            fixed_connector=ConnectorInstanceId("generic_cube_0/front"),
-            moving_connector=ConnectorInstanceId("generic_cube_1/front"),
+        connector_pair_plan(
+            ConnectorInstanceId("generic_cube_0/front"),
+            ConnectorInstanceId("generic_cube_1/front"),
+            include_undock=False,
+        ),
+        ScriptedReconfigurationConfig(
             gap_m=0.005,
             approach_speed_m_s=0.0,
             dt_s=0.01,
+            initial_hold_s=0.0,
         ),
     )
 
@@ -62,7 +67,7 @@ def test_inspector_frame_copies_initial_graph_metrics_and_status(
     assert frame.event_start_sequence == 0
     assert frame.next_event_sequence == 0
     assert frame.scenario is not None
-    assert frame.scenario.phase is DockingPairPhase.APPROACHING
+    assert frame.scenario.phase is ReconfigurationPhase.APPROACHING
     assert frame.view.source.sample_sequence == 2
 
 
@@ -100,7 +105,7 @@ def test_inspector_frame_delivers_each_event_once_as_a_contiguous_delta(
     assert len(docked.view.edges) == 1
     assert docked.view.source.topology_revision == 1
     assert docked.scenario is not None
-    assert docked.scenario.phase is DockingPairPhase.DOCKED
+    assert docked.scenario.phase is ReconfigurationPhase.DOCKING
 
     unchanged = build_runtime_inspector_frame(
         scenario.session,

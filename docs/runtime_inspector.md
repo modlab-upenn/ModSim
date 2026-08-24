@@ -96,6 +96,14 @@ requested speed.
 
 ## Named demonstrations
 
+All named demonstrations run through the same generic
+`ScriptedReconfigurationScenario` engine. The two-module entries are small
+dock-only or dock-then-undock plan builders; they no longer have a separate
+phase machine. The SMORES-specific connector plan is example content at
+`examples/scenarios/smores_driver_to_snake.py`, outside the installable
+`modsim.runtime` library. A source checkout loads that plan beside the committed
+SMORES Robot Pack when the named example is selected.
+
 ### `dock` and `dock_undock`
 
 The connector-pair presets create exactly two modules. `dock` approaches and
@@ -377,12 +385,12 @@ the launch fails with an installation-oriented message instead of a raw Cocoa
 or GLFW traceback. If only the MuJoCo native window is unavailable, use
 `--no-viewer`; the Qt semantic window still needs a display or Xvfb.
 
-The first inspector has one graph renderer, one event table, targeted
-connector-pair presets, one seven-module scripted topology preset, and a Stop
-control. General scenes, autonomous reconfiguration planning, pause/restart
-controls, live joint commands, metric plots, docking-lifecycle panels,
-additional model-view renderers, and a combined authoring/runtime shell remain
-later increments.
+The first inspector has one graph renderer, one event table, one generic
+scenario engine with small connector-pair plan builders, one external
+seven-module example plan, and a Stop control. General scenes, autonomous
+reconfiguration planning, pause/restart controls, live joint commands, metric
+plots, docking-lifecycle panels, additional model-view renderers, and a
+combined authoring/runtime shell remain later increments.
 
 Runtime Inspector launches use the same repository-local, truncated Studio log
 described in `studio.md`. Worker or child startup, validation, backend,

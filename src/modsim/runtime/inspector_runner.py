@@ -13,6 +13,7 @@ import logging
 import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
 from modsim.backends.registry import create_backend
@@ -21,6 +22,11 @@ from modsim.core.events import Event
 from modsim.core.ids import connector_instance_id
 from modsim.core.scene import ModulePlacement, SceneSpec
 from modsim.core.transforms import Transform
+from modsim.core.validation import (
+    require_finite,
+    require_finite_nonnegative,
+    require_finite_positive,
+)
 from modsim.model_views import ModelViewFactory
 from modsim.robot_packs import (
     LoadedRobotPack,
@@ -31,15 +37,13 @@ from modsim.robot_packs import (
     RobotPackValidator,
     ValidationProfile,
 )
+from modsim.runtime.demos import RuntimeDemo
 from modsim.runtime.inspection import RuntimeInspectorFrame, build_runtime_inspector_frame
-from modsim.runtime.presets import RuntimeDemo, smores_driver_to_snake_plan
 from modsim.runtime.reconfiguration import (
+    ReconfigurationPlan,
     ScriptedReconfigurationConfig,
     ScriptedReconfigurationScenario,
-)
-from modsim.runtime.scenarios import (
-    DockingPairScenario,
-    DockingPairScenarioConfig,
+    connector_pair_plan,
 )
 from modsim.runtime.session import RuntimeSession
 
@@ -91,7 +95,7 @@ class RuntimeInspectorRunner:
 
     config: RuntimeInspectorConfig
     session: RuntimeSession
-    scenario: DockingPairScenario | ScriptedReconfigurationScenario
+    scenario: ScriptedReconfigurationScenario
     recipe: ModelViewSpec
     module_type: str
     fixed_connector: str | None
@@ -129,8 +133,9 @@ class RuntimeInspectorRunner:
         module_type = resolve_runtime_module_type(pack, config.module_type)
         recipe = resolve_runtime_recipe(pack, config.view_id)
         demo = _resolve_demo(config.demo)
+        release_after_s: float | None = None
         if demo is RuntimeDemo.SMORES_DRIVER_TO_SNAKE:
-            plan = smores_driver_to_snake_plan()
+            plan = _load_smores_example_plan(config.pack_path)
             fixed_local = moving_local = None
             scene = SceneSpec.of(
                 ModulePlacement(
@@ -147,7 +152,6 @@ class RuntimeInspectorRunner:
                 for index, module_id in enumerate(plan.module_ids)
             )
         else:
-            plan = None
             fixed_local, moving_local = resolve_runtime_connector_pair(
                 pack,
                 module_type,
@@ -160,45 +164,42 @@ class RuntimeInspectorRunner:
                 spacing_m=_INITIAL_SCENE_SPACING_M,
                 origin=(0.0, 0.0, config.height_m),
             )
+            fixed_id = connector_instance_id(scene.instance_ids[0], fixed_local)
+            moving_id = connector_instance_id(scene.instance_ids[1], moving_local)
+            release_after_s = config.undock_at_s
+            include_undock = demo is RuntimeDemo.DOCK_UNDOCK or release_after_s is not None
+            if demo is RuntimeDemo.DOCK_UNDOCK and release_after_s is None:
+                release_after_s = config.duration_s * 0.55
+            plan = connector_pair_plan(
+                fixed_id,
+                moving_id,
+                include_undock=include_undock,
+            )
 
         report_status(f"Starting {config.backend} backend…")
         session = _create_session(loaded, scene, config)
         try:
-            if plan is not None:
-                scenario = ScriptedReconfigurationScenario.create(
-                    session,
-                    plan,
-                    ScriptedReconfigurationConfig(
-                        dt_s=config.dt_s,
-                        gap_m=config.connector_gap_m,
-                        approach_speed_m_s=config.approach_m_s,
+            scenario = ScriptedReconfigurationScenario.create(
+                session,
+                plan,
+                ScriptedReconfigurationConfig(
+                    dt_s=config.dt_s,
+                    gap_m=config.connector_gap_m,
+                    orientation_rad=config.orientation_rad,
+                    approach_speed_m_s=config.approach_m_s,
+                    initial_hold_s=(1.0 if demo is RuntimeDemo.SMORES_DRIVER_TO_SNAKE else 0.0),
+                    retract_speed_m_s=(
+                        config.approach_m_s if config.retract_m_s is None else config.retract_m_s
                     ),
-                )
+                    release_after_s=(
+                        None if demo is RuntimeDemo.SMORES_DRIVER_TO_SNAKE else release_after_s
+                    ),
+                ),
+            )
+            if demo is RuntimeDemo.SMORES_DRIVER_TO_SNAKE:
                 report_status(f"Running {plan.name} with {len(plan.module_ids)} modules")
             else:
                 assert fixed_local is not None and moving_local is not None
-                release_after_s = config.undock_at_s
-                if demo is RuntimeDemo.DOCK_UNDOCK and release_after_s is None:
-                    release_after_s = config.duration_s * 0.55
-                scenario = DockingPairScenario.create(
-                    session,
-                    DockingPairScenarioConfig(
-                        fixed_connector=connector_instance_id(
-                            scene.instance_ids[0],
-                            fixed_local,
-                        ),
-                        moving_connector=connector_instance_id(
-                            scene.instance_ids[1],
-                            moving_local,
-                        ),
-                        gap_m=config.connector_gap_m,
-                        orientation_rad=config.orientation_rad,
-                        approach_speed_m_s=config.approach_m_s,
-                        dt_s=config.dt_s,
-                        release_after_s=release_after_s,
-                        retract_speed_m_s=config.retract_m_s,
-                    ),
-                )
                 report_status(f"Running {module_type}: {fixed_local} ↔ {moving_local}")
             return cls(
                 config=config,
@@ -290,17 +291,20 @@ def validate_runtime_inspector_config(config: RuntimeInspectorConfig) -> None:
                 "smores_driver_to_snake currently requires gravity and ground disabled; "
                 "the scripted topology demo does not yet model supported locomotion"
             )
-    _require_finite_nonnegative(config.connector_gap_m, "connector_gap_m")
-    _require_finite(config.orientation_rad, "orientation_rad")
-    _require_finite_positive(config.approach_m_s, "approach_m_s")
-    _require_finite_positive(config.duration_s, "duration_s")
-    _require_finite_positive(config.dt_s, "dt_s")
-    _require_finite(config.height_m, "height_m")
-    _require_finite_positive(config.publish_hz, "publish_hz")
-    if config.retract_m_s is not None:
-        _require_finite_nonnegative(config.retract_m_s, "retract_m_s")
-    if config.undock_at_s is not None:
-        _require_finite_nonnegative(config.undock_at_s, "undock_at_s")
+    try:
+        require_finite_nonnegative(config.connector_gap_m, "connector_gap_m")
+        require_finite(config.orientation_rad, "orientation_rad")
+        require_finite_positive(config.approach_m_s, "approach_m_s")
+        require_finite_positive(config.duration_s, "duration_s")
+        require_finite_positive(config.dt_s, "dt_s")
+        require_finite(config.height_m, "height_m")
+        require_finite_positive(config.publish_hz, "publish_hz")
+        if config.retract_m_s is not None:
+            require_finite_nonnegative(config.retract_m_s, "retract_m_s")
+        if config.undock_at_s is not None:
+            require_finite_nonnegative(config.undock_at_s, "undock_at_s")
+    except ValueError as error:
+        raise RuntimeInspectorSetupError(str(error)) from error
 
 
 def resolve_runtime_module_type(pack: RobotPack, requested: str | None) -> str:
@@ -437,6 +441,29 @@ def _ignore_status(message: str) -> None:
     del message
 
 
+def _load_smores_example_plan(pack_path: Path) -> ReconfigurationPlan:
+    pack_directory = pack_path if pack_path.is_dir() else pack_path.parent
+    scenario_path = pack_directory.parent.parent / "scenarios" / "smores_driver_to_snake.py"
+    spec = spec_from_file_location("modsim_example_smores_driver_to_snake", scenario_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeInspectorSetupError(
+            f"SMORES Driver-to-Snake example is unavailable at '{scenario_path}'"
+        )
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    build_plan = getattr(module, "build_plan", None)
+    if not callable(build_plan):
+        raise RuntimeInspectorSetupError(
+            f"SMORES scenario '{scenario_path}' does not define build_plan()"
+        )
+    plan = build_plan()
+    if not isinstance(plan, ReconfigurationPlan):
+        raise RuntimeInspectorSetupError(
+            f"SMORES scenario '{scenario_path}' returned an invalid plan"
+        )
+    return plan
+
+
 def _resolve_demo(value: RuntimeDemo | str) -> RuntimeDemo:
     try:
         return RuntimeDemo(value)
@@ -445,23 +472,6 @@ def _resolve_demo(value: RuntimeDemo | str) -> RuntimeDemo:
         raise RuntimeInspectorSetupError(
             f"unknown runtime demo '{value}'; available: {choices}"
         ) from error
-
-
-def _require_finite(value: float, name: str) -> None:
-    if not math.isfinite(value):
-        raise RuntimeInspectorSetupError(f"{name} must be finite")
-
-
-def _require_finite_positive(value: float, name: str) -> None:
-    _require_finite(value, name)
-    if value <= 0.0:
-        raise RuntimeInspectorSetupError(f"{name} must be greater than zero")
-
-
-def _require_finite_nonnegative(value: float, name: str) -> None:
-    _require_finite(value, name)
-    if value < 0.0:
-        raise RuntimeInspectorSetupError(f"{name} must not be negative")
 
 
 __all__ = [

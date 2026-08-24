@@ -13,7 +13,6 @@ still emitted exclusively by ``RuntimeSession``.
 
 from __future__ import annotations
 
-import math
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
@@ -39,6 +38,11 @@ from modsim.core.transforms import (
     vec_scale,
     vec_sub,
 )
+from modsim.core.validation import (
+    require_finite,
+    require_finite_nonnegative,
+    require_finite_positive,
+)
 from modsim.runtime.session import RuntimeSession
 
 _STAGING_POSITION_TOLERANCE_M = 1e-4
@@ -51,23 +55,6 @@ class ReconfigurationPlanError(ValueError):
 
 class ReconfigurationScenarioError(RuntimeError):
     """Raised when a backend cannot execute a valid reconfiguration plan."""
-
-
-def _require_finite(value: float, field_name: str) -> None:
-    if not math.isfinite(value):
-        raise ValueError(f"{field_name} must be finite")
-
-
-def _require_finite_nonnegative(value: float, field_name: str) -> None:
-    _require_finite(value, field_name)
-    if value < 0.0:
-        raise ValueError(f"{field_name} must not be negative")
-
-
-def _require_finite_positive(value: float, field_name: str) -> None:
-    _require_finite(value, field_name)
-    if value <= 0.0:
-        raise ValueError(f"{field_name} must be greater than zero")
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,15 +96,17 @@ class ConnectorPairRef:
 
 @dataclass(frozen=True, slots=True)
 class ReconfigurationAction:
-    """Replace one active connection with one directed docking pair."""
+    """Dock, undock, or replace one connection in a scripted plan."""
 
     label: str
-    undock: ConnectorPairRef
-    dock: ConnectorPairRef
+    undock: ConnectorPairRef | None = None
+    dock: ConnectorPairRef | None = None
 
     def __post_init__(self) -> None:
         if not self.label.strip():
             raise ValueError("reconfiguration action label must not be empty")
+        if self.undock is None and self.dock is None:
+            raise ValueError("reconfiguration action must dock, undock, or do both")
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,14 +143,21 @@ class ScriptedReconfigurationConfig:
     initial_hold_s: float = 1.0
     separated_hold_s: float = 0.5
     connected_hold_s: float = 1.0
+    retract_speed_m_s: float = 0.0
+    orientation_rad: float = 0.0
+    release_after_s: float | None = None
 
     def __post_init__(self) -> None:
-        _require_finite_positive(self.dt_s, "dt_s")
-        _require_finite_nonnegative(self.gap_m, "gap_m")
-        _require_finite_positive(self.approach_speed_m_s, "approach_speed_m_s")
-        _require_finite_nonnegative(self.initial_hold_s, "initial_hold_s")
-        _require_finite_nonnegative(self.separated_hold_s, "separated_hold_s")
-        _require_finite_nonnegative(self.connected_hold_s, "connected_hold_s")
+        require_finite_positive(self.dt_s, "dt_s")
+        require_finite_nonnegative(self.gap_m, "gap_m")
+        require_finite_nonnegative(self.approach_speed_m_s, "approach_speed_m_s")
+        require_finite_nonnegative(self.initial_hold_s, "initial_hold_s")
+        require_finite_nonnegative(self.separated_hold_s, "separated_hold_s")
+        require_finite_nonnegative(self.connected_hold_s, "connected_hold_s")
+        require_finite_nonnegative(self.retract_speed_m_s, "retract_speed_m_s")
+        require_finite(self.orientation_rad, "orientation_rad")
+        if self.release_after_s is not None:
+            require_finite_nonnegative(self.release_after_s, "release_after_s")
 
 
 class ReconfigurationPhase(StrEnum):
@@ -213,6 +209,7 @@ class ScriptedReconfigurationScenario:
     plan: ReconfigurationPlan
     config: ScriptedReconfigurationConfig
     _phase: ReconfigurationPhase
+    _scenario_started_at_s: float
     _phase_started_at_s: float
     _action_index: int | None
     _detail: str
@@ -231,17 +228,21 @@ class ScriptedReconfigurationScenario:
         _validate_plan_against_session(session, plan)
         _require_kinematic_adapter(session)
         _build_initial_tree(session, plan)
-        return cls(
+        scenario = cls(
             session=session,
             plan=plan,
             config=resolved_config,
             _phase=ReconfigurationPhase.HOLDING_INITIAL,
+            _scenario_started_at_s=session.world.time_s,
             _phase_started_at_s=session.world.time_s,
             _action_index=None,
             _detail=(
                 f"Holding initial configuration with {len(plan.initial_connections)} connections"
             ),
         )
+        if resolved_config.initial_hold_s == 0.0 and plan.actions:
+            scenario._start_action(0)
+        return scenario
 
     @property
     def status(self) -> ReconfigurationStatus:
@@ -285,6 +286,8 @@ class ScriptedReconfigurationScenario:
 
     def _step_undocking(self) -> tuple[Event, ...]:
         action = self._current_action()
+        if action.undock is None:  # pragma: no cover - phase invariant
+            raise AssertionError("undocking phase requires an undock pair")
         events = self.session.step(self.config.dt_s)
         failure = next(
             (
@@ -298,10 +301,14 @@ class ScriptedReconfigurationScenario:
         if failure is not None:
             self._fail(f"{action.label}: undock failed ({failure.reason.value}): {failure.detail}")
         elif action.undock.connection_id not in self.session.world.connections:
-            self._enter_phase(
-                ReconfigurationPhase.HOLDING_SEPARATED,
-                f"{action.label}: assemblies separated",
-            )
+            if action.dock is None:
+                self._start_retraction(action.undock)
+                self._advance_action()
+            else:
+                self._enter_phase(
+                    ReconfigurationPhase.HOLDING_SEPARATED,
+                    f"{action.label}: assemblies separated",
+                )
         return events
 
     def _step_separated_hold(self) -> tuple[Event, ...]:
@@ -310,12 +317,15 @@ class ScriptedReconfigurationScenario:
             return events
 
         action = self._current_action()
+        if action.dock is None:  # pragma: no cover - phase invariant
+            raise AssertionError("separated hold requires a docking pair")
         try:
             setup = stage_docking_assembly_pair(
                 self.session,
                 action.dock.fixed_connector,
                 action.dock.moving_connector,
                 gap_m=self.config.gap_m,
+                orientation_rad=self.config.orientation_rad,
             )
         except (ReconfigurationPlanError, ReconfigurationScenarioError) as error:
             raise ReconfigurationScenarioError(
@@ -332,6 +342,8 @@ class ScriptedReconfigurationScenario:
 
     def _step_approach(self) -> tuple[Event, ...]:
         action = self._current_action()
+        if action.dock is None:  # pragma: no cover - phase invariant
+            raise AssertionError("approach phase requires a docking pair")
         events = self.session.step(self.config.dt_s)
         target = action.dock.connection_id
         if target in self.session.world.connections:
@@ -402,6 +414,8 @@ class ScriptedReconfigurationScenario:
 
     def _step_docking(self) -> tuple[Event, ...]:
         action = self._current_action()
+        if action.dock is None:  # pragma: no cover - phase invariant
+            raise AssertionError("docking phase requires a docking pair")
         events = self.session.step(self.config.dt_s)
         failure = next(
             (
@@ -423,33 +437,96 @@ class ScriptedReconfigurationScenario:
 
     def _step_connected_hold(self) -> tuple[Event, ...]:
         events = self.session.step(self.config.dt_s)
-        if not self._held_for(self.config.connected_hold_s):
-            return events
         current = self._action_index
-        if current is None:  # pragma: no cover - guarded by phase transitions
+        if current is None:  # pragma: no cover - phase invariant
             raise AssertionError("connected hold requires a current action")
         next_index = current + 1
-        if next_index >= len(self.plan.actions):
-            self._complete()
-        else:
-            self._start_action(next_index)
+        next_action = self.plan.actions[next_index] if next_index < len(self.plan.actions) else None
+        scheduled_release = (
+            next_action is not None
+            and next_action.undock is not None
+            and next_action.dock is None
+            and self.config.release_after_s is not None
+        )
+        if scheduled_release:
+            if (
+                self.session.world.time_s + 1e-12
+                < self._scenario_started_at_s + self.config.release_after_s  # type: ignore[operator]
+            ):
+                return events
+        elif not self._held_for(self.config.connected_hold_s):
+            return events
+        self._advance_action()
         return events
 
     def _start_action(self, index: int) -> None:
         action = self.plan.actions[index]
+        self._action_index = index
+        self._approach_setup = None
+        self._approach_gap_m = None
+        if action.undock is None:
+            self._start_docking(action)
+            return
         if action.undock.connection_id not in self.session.world.connections:
             raise ReconfigurationScenarioError(
                 f"action {index + 1} '{action.label}' expected active connection "
                 f"'{action.undock.connection_id}'"
             )
-        self._action_index = index
-        self._approach_setup = None
-        self._approach_gap_m = None
         self.session.request_undock(action.undock.connection_id)
         self._enter_phase(
             ReconfigurationPhase.UNDOCKING,
             f"{action.label}: undock requested",
         )
+
+    def _start_docking(self, action: ReconfigurationAction) -> None:
+        if action.dock is None:  # pragma: no cover - caller invariant
+            raise AssertionError("docking action requires a pair")
+        try:
+            setup = stage_docking_assembly_pair(
+                self.session,
+                action.dock.fixed_connector,
+                action.dock.moving_connector,
+                gap_m=self.config.gap_m,
+                orientation_rad=self.config.orientation_rad,
+            )
+        except (ReconfigurationPlanError, ReconfigurationScenarioError) as error:
+            raise ReconfigurationScenarioError(
+                f"{action.label}: could not start docking approach: {error}"
+            ) from error
+        self._approach_setup = setup
+        self._approach_gap_m = self.config.gap_m
+        self._enter_phase(
+            ReconfigurationPhase.APPROACHING,
+            f"{action.label}: moving {len(setup.moving_modules)} module(s) toward "
+            f"{action.dock.fixed_connector}",
+        )
+
+    def _start_retraction(self, pair: ConnectorPairRef) -> None:
+        speed = self.config.retract_speed_m_s
+        if speed == 0.0:
+            return
+        adapter = _require_kinematic_adapter(self.session)
+        fixed = self.session.world.connector(pair.fixed_connector)
+        moving = self.session.world.connector(pair.moving_connector)
+        moving_assembly = self.session.world.assemblies.assembly_of(moving.module_id)
+        direction = fixed.world_docking_axis
+        try:
+            for module_id in self.session.world.assemblies.members(moving_assembly):
+                adapter.set_module_twist(module_id, linear_m_s=vec_scale(direction, speed))
+        except BackendError as error:
+            raise ReconfigurationScenarioError(
+                f"backend could not start retraction: {error}"
+            ) from error
+
+    def _advance_action(self) -> None:
+        current = self._action_index
+        if current is None:  # pragma: no cover - phase invariant
+            raise AssertionError("action phase requires a current action")
+        next_index = current + 1
+        if next_index >= len(self.plan.actions):
+            self._complete()
+        else:
+            self._start_action(next_index)
 
     def _current_action(self) -> ReconfigurationAction:
         if self._action_index is None:
@@ -493,8 +570,8 @@ def stage_docking_assembly_pair(
     and applies only the minimum rotation needed to restore opposing docking
     axes.
     """
-    _require_finite_nonnegative(gap_m, "gap_m")
-    _require_finite(orientation_rad, "orientation_rad")
+    require_finite_nonnegative(gap_m, "gap_m")
+    require_finite(orientation_rad, "orientation_rad")
     adapter = _require_kinematic_adapter(session)
 
     try:
@@ -595,6 +672,34 @@ def stage_docking_assembly_pair(
     )
 
 
+def connector_pair_plan(
+    fixed_connector: ConnectorInstanceId,
+    moving_connector: ConnectorInstanceId,
+    *,
+    include_undock: bool,
+) -> ReconfigurationPlan:
+    """Build a minimal two-module dock or dock/undock demonstration plan."""
+    pair = ConnectorPairRef(fixed_connector, moving_connector)
+    module_ids = tuple(
+        sorted(
+            (
+                _module_from_full_connector_id(fixed_connector, field_name="fixed_connector"),
+                _module_from_full_connector_id(moving_connector, field_name="moving_connector"),
+            )
+        )
+    )
+    actions = [ReconfigurationAction(label="Dock connector pair", dock=pair)]
+    if include_undock:
+        actions.append(ReconfigurationAction(label="Undock connector pair", undock=pair))
+    return ReconfigurationPlan(
+        id="dock_undock" if include_undock else "dock",
+        name="Two-module dock and undock" if include_undock else "Two-module dock",
+        module_ids=module_ids,
+        initial_connections=(),
+        actions=tuple(actions),
+    )
+
+
 def _require_kinematic_adapter(session: RuntimeSession) -> SupportsModuleKinematics:
     adapter = session.adapter
     if not isinstance(adapter, SupportsModuleKinematics):
@@ -673,16 +778,16 @@ def _validate_plan_against_session(
             f"plan '{plan.id}' requires a fresh world with no connections; "
             f"active: {active_connections_text}"
         )
-    if len(plan.initial_connections) != len(plan.module_ids) - 1:
+    if len(plan.initial_connections) > len(plan.module_ids) - 1:
         raise ReconfigurationPlanError(
-            f"plan '{plan.id}' initial tree requires {len(plan.module_ids) - 1} connections, "
-            f"got {len(plan.initial_connections)}"
+            f"plan '{plan.id}' initial forest has too many connections: "
+            f"{len(plan.initial_connections)} for {len(plan.module_ids)} modules"
         )
 
     referenced_pairs = [
         *plan.initial_connections,
-        *(action.undock for action in plan.actions),
-        *(action.dock for action in plan.actions),
+        *(action.undock for action in plan.actions if action.undock is not None),
+        *(action.dock for action in plan.actions if action.dock is not None),
     ]
     module_by_connector: dict[ConnectorInstanceId, ModuleInstanceId] = {}
     for pair in referenced_pairs:
@@ -712,6 +817,14 @@ def _validate_plan_against_session(
     active: dict[ConnectionId, ConnectorPairRef] = {}
     engaged: dict[ConnectorInstanceId, ConnectionId] = {}
     for index, pair in enumerate(plan.initial_connections):
+        components = _components(plan.module_ids, active.values(), module_by_connector)
+        if (
+            components[module_by_connector[pair.fixed_connector]]
+            == components[module_by_connector[pair.moving_connector]]
+        ):
+            raise ReconfigurationPlanError(
+                f"plan '{plan.id}' initial connection {index + 1} creates a cycle"
+            )
         _add_planned_connection(
             plan,
             pair,
@@ -720,42 +833,33 @@ def _validate_plan_against_session(
             module_by_connector,
             context=f"initial connection {index + 1}",
         )
-    initial_components = _components(plan.module_ids, active.values(), module_by_connector)
-    if len(set(initial_components.values())) != 1:
-        raise ReconfigurationPlanError(
-            f"plan '{plan.id}' initial connections do not form one connected tree"
-        )
-
     for index, action in enumerate(plan.actions):
         context = f"action {index + 1} '{action.label}'"
-        existing = active.pop(action.undock.connection_id, None)
-        if existing is None:
-            raise ReconfigurationPlanError(
-                f"{context} cannot undock inactive connection '{action.undock.connection_id}'"
-            )
-        for connector_id in existing.connectors:
-            engaged.pop(connector_id)
+        if action.undock is not None:
+            existing = active.pop(action.undock.connection_id, None)
+            if existing is None:
+                raise ReconfigurationPlanError(
+                    f"{context} cannot undock inactive connection '{action.undock.connection_id}'"
+                )
+            for connector_id in existing.connectors:
+                engaged.pop(connector_id)
 
-        components = _components(plan.module_ids, active.values(), module_by_connector)
-        fixed_module = module_by_connector[action.dock.fixed_connector]
-        moving_module = module_by_connector[action.dock.moving_connector]
-        if components[fixed_module] == components[moving_module]:
-            raise ReconfigurationPlanError(
-                f"{context} dock '{action.dock.connection_id}' would connect modules already "
-                "in the same assembly"
-            )
-        _add_planned_connection(
-            plan,
-            action.dock,
-            active,
-            engaged,
-            module_by_connector,
-            context=f"{context} dock",
-        )
-        reconnected = _components(plan.module_ids, active.values(), module_by_connector)
-        if len(set(reconnected.values())) != 1:
-            raise ReconfigurationPlanError(
-                f"{context} does not reconnect the two separated assemblies"
+        if action.dock is not None:
+            components = _components(plan.module_ids, active.values(), module_by_connector)
+            fixed_module = module_by_connector[action.dock.fixed_connector]
+            moving_module = module_by_connector[action.dock.moving_connector]
+            if components[fixed_module] == components[moving_module]:
+                raise ReconfigurationPlanError(
+                    f"{context} dock '{action.dock.connection_id}' would connect modules "
+                    "already in the same assembly"
+                )
+            _add_planned_connection(
+                plan,
+                action.dock,
+                active,
+                engaged,
+                module_by_connector,
+                context=f"{context} dock",
             )
 
 

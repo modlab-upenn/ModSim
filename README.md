@@ -105,7 +105,10 @@ inspector. Use `modsim run` for a fully non-GUI execution.
 
 The larger `examples/robot_packs/smores_ep` pack includes the `dock`,
 `dock_undock`, and `smores_driver_to_snake` demonstrations. Its geometry and
-connector values are example data, not certified hardware specifications.
+connector values are example data, not certified hardware specifications. The
+platform-specific Driver-to-Snake plan lives in
+`examples/scenarios/smores_driver_to_snake.py`; all three demonstrations use
+the same generic runtime scenario engine.
 
 See [Runtime Inspector](docs/runtime_inspector.md) for the execution boundary,
 controls, and named demonstrations.

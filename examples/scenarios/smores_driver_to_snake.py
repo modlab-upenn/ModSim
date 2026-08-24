@@ -1,14 +1,4 @@
-"""Named, reproducible Runtime Inspector demonstrations.
-
-Presets select scenario data; they do not become canonical robot state and do
-not bypass the ordinary docking pipeline.  The platform-specific SMORES-EP
-example is intentionally kept as declarative connector pairs over the generic
-scripted reconfiguration controller.
-"""
-
-from __future__ import annotations
-
-from enum import StrEnum
+"""SMORES-EP Driver-to-Snake example plan from Liu, Whitzer, and Yim (2019)."""
 
 from modsim.core.ids import ConnectorInstanceId, ModuleInstanceId, connector_instance_id
 from modsim.runtime.reconfiguration import (
@@ -17,33 +7,17 @@ from modsim.runtime.reconfiguration import (
     ReconfigurationPlan,
 )
 
-SMORES_DRIVER_TO_SNAKE_SOURCE = (
+SOURCE_URL = (
     "https://www.modlabupenn.org/wp-content/uploads/2019/08/chao_smores_reconfiguration_2019.pdf"
 )
 
 
-class RuntimeDemo(StrEnum):
-    """Built-in Runtime Inspector demonstrations."""
-
-    DOCK = "dock"
-    DOCK_UNDOCK = "dock_undock"
-    SMORES_DRIVER_TO_SNAKE = "smores_driver_to_snake"
-
-
-def smores_driver_to_snake_plan() -> ReconfigurationPlan:
-    """Return the paper-backed seven-module Driver-to-Snake action plan.
-
-    Paper face names map to the local Robot Pack as TOP -> ``pan`` and
-    BOTTOM -> ``bottom``; LEFT and RIGHT retain their names.  The four action
-    pairs come from Table III of Liu, Whitzer, and Yim (2019).  Their ordering
-    here is the demo's deterministic sequential schedule.
-    """
-
-    module_ids = tuple(_module(index) for index in range(1, 8))
+def build_plan() -> ReconfigurationPlan:
+    """Return the seven-module Driver-to-Snake demonstration plan."""
     return ReconfigurationPlan(
-        id=RuntimeDemo.SMORES_DRIVER_TO_SNAKE.value,
+        id="smores_driver_to_snake",
         name="SMORES-EP Driver to Snake",
-        module_ids=module_ids,
+        module_ids=tuple(_module(index) for index in range(1, 8)),
         initial_connections=(
             _pair(2, "pan", 1, "bottom"),
             _pair(2, "bottom", 3, "pan"),
@@ -74,7 +48,7 @@ def smores_driver_to_snake_plan() -> ReconfigurationPlan:
                 dock=_pair(4, "pan", 5, "bottom"),
             ),
         ),
-        source_url=SMORES_DRIVER_TO_SNAKE_SOURCE,
+        source_url=SOURCE_URL,
     )
 
 
@@ -98,8 +72,4 @@ def _pair(
     )
 
 
-__all__ = [
-    "SMORES_DRIVER_TO_SNAKE_SOURCE",
-    "RuntimeDemo",
-    "smores_driver_to_snake_plan",
-]
+__all__ = ["SOURCE_URL", "build_plan"]

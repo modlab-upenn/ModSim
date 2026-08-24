@@ -34,7 +34,11 @@ from modsim.core.transforms import (
 from modsim.model_views import ModelViewFactory
 from modsim.robot_packs import LoadedRobotPack, RobotPackLoader
 from modsim.runtime.inspection import build_runtime_inspector_frame
-from modsim.runtime.scenarios import DockingPairScenario, DockingPairScenarioConfig
+from modsim.runtime.reconfiguration import (
+    ScriptedReconfigurationConfig,
+    ScriptedReconfigurationScenario,
+    connector_pair_plan,
+)
 from modsim.runtime.session import RuntimeSession
 from modsim_backend_mujoco.adapter import MuJoCoBackendAdapter
 
@@ -164,14 +168,15 @@ def test_runtime_inspector_frames_follow_a_real_mujoco_dock(
         "mujoco",
         gravity=(0.0, 0.0, 0.0),
     )
-    scenario = DockingPairScenario.create(
+    moving_front = ConnectorInstanceId("generic_cube_1/front")
+    scenario = ScriptedReconfigurationScenario.create(
         session,
-        DockingPairScenarioConfig(
-            fixed_connector=FRONT_0,
-            moving_connector=ConnectorInstanceId("generic_cube_1/front"),
+        connector_pair_plan(FRONT_0, moving_front, include_undock=False),
+        ScriptedReconfigurationConfig(
             gap_m=0.02,
             approach_speed_m_s=APPROACH_SPEED_M_S,
             dt_s=STEP_S,
+            initial_hold_s=0.0,
         ),
     )
     factory = ModelViewFactory()
