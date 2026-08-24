@@ -1,7 +1,7 @@
 # Robot Pack format 0.1
 
 This document is the implemented format 0.1 contract for Robot Packs. The broader
-architecture in `HANDOFF.md` is a roadmap; when examples differ, this document
+architecture in `archive/HANDOFF.md` is a roadmap; when examples differ, this document
 and the typed models in `src/modsim/robot_packs/schema.py` describe the code that
 currently runs.
 

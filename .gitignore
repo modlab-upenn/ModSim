@@ -214,6 +214,7 @@ tempCodeRunnerFile.py
 .uv-cache/
 .uv-python/
 .test-tmp/
+.vscode/
 
 # PyPI configuration file
 .pypirc

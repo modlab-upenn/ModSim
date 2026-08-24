@@ -1,16 +1,18 @@
 # ModSim repository instructions
 
-Before changing this repository, read these files completely:
+Before changing the repository, read the contract relevant to the work:
 
-1. `docs/AGENTS.md` for architectural and implementation rules.
-2. `docs/IMPLEMENTATION_STATUS.md` for the current inventory, known defects,
-   verification baseline, and continuation priorities.
-3. `docs/robot_pack_spec.md` for the implemented Robot Pack format.
-4. `docs/studio.md` when changing the desktop application.
-5. `docs/model_views.md` and `docs/runtime_inspector.md` when changing generated
-   views or live runtime visualization.
+- `docs/robot_pack_spec.md` for Robot Pack schema and persistence;
+- `docs/docking_semantics.md` for connector and lifecycle behavior;
+- `docs/backends.md` for the core/backend boundary;
+- `docs/model_views.md` for generated views;
+- `docs/runtime_inspector.md` for live runtime visualization; and
+- `docs/studio.md` for the desktop application.
 
-`docs/HANDOFF.md` is a future design roadmap, not a record of implemented
-packages or commands. Preserve the core/Studio dependency boundary and update
-the implementation-status document whenever a defect is fixed or an
-operational subsystem is added.
+Keep core code independent of Studio and simulator dependencies. Treat URDF as
+an imported mechanical asset, Robot Pack YAML as the semantic description,
+`WorldState` as canonical runtime state, and graphs as generated views.
+
+Dated plans, implementation snapshots, and former agent instructions are kept
+in `docs/archive/` for historical context only; do not treat them as current
+contracts or inventories.

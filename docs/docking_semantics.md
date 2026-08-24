@@ -1,6 +1,6 @@
 # Docking semantics 0.1
 
-This document is the implemented contract for docking execution. `HANDOFF.md`
+This document is the implemented contract for docking execution. `archive/HANDOFF.md`
 is a roadmap; when the two differ, this document and the code under
 `src/modsim/core`, `src/modsim/connectors`, `src/modsim/backends`, and
 `src/modsim/runtime` describe what actually runs.

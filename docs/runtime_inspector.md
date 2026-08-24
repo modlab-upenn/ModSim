@@ -141,6 +141,159 @@ the demonstration's reproducible presentation, not a claim that ModSim has
 implemented the paper's autonomous planner, path planner, wheel control, or
 physical SMORES locomotion.
 
+## Reproducible SMORES-EP workflows
+
+The commands in this section are the complete reference for the committed
+`examples/robot_packs/smores_ep` pack. Run them from the repository root after
+installing the `studio` and `mujoco` extras. The examples use `modsim`; an
+unactivated source checkout can use `uv run --no-sync modsim` or
+`.venv/bin/modsim` instead.
+
+### Inspect and validate
+
+First inspect the aggregate pack contents:
+
+```bash
+modsim pack inspect examples/robot_packs/smores_ep
+```
+
+The report should identify pack `smores_ep` at version `0.1.0` and report one
+module type, one connector type, two capabilities, one model-view recipe, and
+one backend mapping. For machine-readable output, append `--output json`.
+
+Run authoring validation and then the stricter simulation-readiness profile:
+
+```bash
+modsim pack validate examples/robot_packs/smores_ep
+modsim pack validate \
+  examples/robot_packs/smores_ep \
+  --profile simulation
+```
+
+Both commands should report zero errors. Authoring validation permits certain
+incomplete fields as warnings; simulation validation promotes required runtime
+metadata and mapping gaps to errors. Neither command launches MuJoCo. Append
+`--output json` when the result will be consumed by another tool.
+
+Confirm that MuJoCo is installed and registered before launching a runtime:
+
+```bash
+modsim backends
+```
+
+### Two modules: dock
+
+```bash
+modsim runtime examples/robot_packs/smores_ep \
+  --backend mujoco \
+  --demo dock \
+  --fixed-connector pan \
+  --moving-connector pan \
+  --model-view smores_topology \
+  --connector-gap 0.02 \
+  --approach 0.03 \
+  --duration 4.0 \
+  --dt 0.002 \
+  --no-gravity
+```
+
+The graph begins with two isolated nodes. After the moving module reaches the
+fixed module, one edge appears and the event table contains, in order:
+
+```text
+DockCandidateDetected
+DockCommitted
+AssemblyMerged
+```
+
+The final state has two modules, one assembly, one active connection, and one
+successful dock. No undock event is expected. Replace both `pan` arguments with
+`bottom`, `left`, or `right` to exercise the other same-face pairs.
+
+### Two modules: dock and undock
+
+```bash
+modsim runtime examples/robot_packs/smores_ep \
+  --backend mujoco \
+  --demo dock_undock \
+  --fixed-connector pan \
+  --moving-connector pan \
+  --model-view smores_topology \
+  --connector-gap 0.02 \
+  --approach 0.03 \
+  --retract 0.03 \
+  --duration 6.0 \
+  --dt 0.002 \
+  --no-gravity
+```
+
+The graph follows `0 → 1 → 0` edges. In addition to the docking events above,
+the event table records `UndockCommitted` and `AssemblySplit`; the moving
+module then retracts so the released bodies visibly separate. The final state
+has two modules, two assemblies, no active connection, one successful dock,
+and one successful undock.
+
+For the same lifecycle without Qt or a native viewer, run:
+
+```bash
+modsim run examples/robot_packs/smores_ep \
+  --backend mujoco \
+  --fixed-connector pan \
+  --moving-connector pan \
+  --connector-gap 0.02 \
+  --approach 0.03 \
+  --duration 1.5 \
+  --dt 0.002 \
+  --undock-at 1.0 \
+  --retract 0.03
+```
+
+### Seven modules: Driver to Snake
+
+```bash
+modsim runtime examples/robot_packs/smores_ep \
+  --backend mujoco \
+  --demo smores_driver_to_snake \
+  --model-view smores_topology \
+  --duration 14.0 \
+  --dt 0.002 \
+  --connector-gap 0.02 \
+  --approach 0.03 \
+  --no-gravity
+```
+
+Do not add `--ground`; this scripted staging demonstration requires both
+gravity and the ground plane to remain disabled. It starts with seven graph
+nodes, six connections, and one assembly. Four replacements each remove one
+edge and commit another, producing four visible `6 → 5 → 6` transitions:
+
+| Action | Undock | Dock |
+|---:|---|---|
+| 1 | `module_1/bottom ↔ module_2/pan` | `module_1/pan ↔ module_3/bottom` |
+| 2 | `module_7/pan ↔ module_5/bottom` | `module_7/bottom ↔ module_6/pan` |
+| 3 | `module_2/right ↔ module_4/left` | `module_2/pan ↔ module_4/bottom` |
+| 4 | `module_5/left ↔ module_4/right` | `module_5/bottom ↔ module_4/pan` |
+
+The final topology is:
+
+```text
+module_1 — module_3 — module_2 — module_4 — module_5 — module_6 — module_7
+```
+
+Expected final metrics are seven modules, six active connections, one
+assembly, ten successful docks (six initial connections plus four
+replacements), four successful undocks, and zero dock or undock failures. This
+is deterministic execution of a predefined plan, not autonomous planning or
+SMORES joint/wheel locomotion.
+
+### Viewer and display behavior
+
+Each `modsim runtime` command above opens the Qt Runtime Inspector and MuJoCo's
+native viewer, backed by one authoritative runtime. Add `--no-viewer` to hide
+only the MuJoCo window; Qt still requires a display or Xvfb. Use the documented
+`modsim run` command for a completely non-GUI process. On macOS, the runtime
+launcher automatically selects `mjpython` for its viewer child.
+
 ## What happens during a connector-pair run
 
 The runtime owner loads and simulation-validates the pack, creates exactly two
