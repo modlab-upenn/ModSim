@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
 from types import TracebackType
@@ -91,6 +92,83 @@ def test_viewer_starts_with_collision_proxies_hidden(
     assert viewer.opt.geomgroup[URDF_COLLISION_GEOM_GROUP] == 0
     assert viewer.opt.geomgroup[1] == 1
     assert viewer.opt.geomgroup[ENVIRONMENT_GEOM_GROUP] == 1
+
+
+def test_viewer_scales_wall_deadlines_without_changing_simulated_steps(
+    example_pack_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loaded = RobotPackLoader().load(example_pack_dir)
+    session = RuntimeSession.create(
+        loaded,
+        SceneSpec.grid("generic_cube", 1, spacing_m=0.1),
+        "mujoco",
+        gravity=(0.0, 0.0, 0.0),
+    )
+    viewer = _PassiveViewer()
+    deadlines: list[float] = []
+    simulated_started = session.world.time_s
+
+    def launch_passive(model: object, data: object) -> _PassiveViewer:
+        del model, data
+        return viewer
+
+    def step_once() -> tuple[()]:
+        session.step(0.01)
+        return ()
+
+    def record_deadline(target_s: float, stop_requested: object) -> bool:
+        del stop_requested
+        deadlines.append(target_s)
+        return True
+
+    monkeypatch.setattr(
+        "modsim_backend_mujoco.viewer.mujoco.viewer.launch_passive",
+        launch_passive,
+    )
+    monkeypatch.setattr("modsim_backend_mujoco.viewer.time.perf_counter", lambda: 100.0)
+    monkeypatch.setattr("modsim_backend_mujoco.viewer._wait_until", record_deadline)
+
+    try:
+        run_with_viewer(
+            session,
+            duration_s=0.02,
+            step_once=step_once,
+            real_time_factor=4.0,
+            hold=False,
+        )
+    finally:
+        session.shutdown()
+
+    assert session.world.time_s - simulated_started == pytest.approx(0.02)
+    assert deadlines == pytest.approx([100.0025, 100.005])
+    assert viewer.sync_count == 2
+
+
+@pytest.mark.parametrize("real_time_factor", (0.0, -1.0, math.nan, math.inf, -math.inf))
+def test_viewer_rejects_invalid_real_time_factor_before_opening(
+    example_pack_dir: Path,
+    real_time_factor: float,
+) -> None:
+    loaded = RobotPackLoader().load(example_pack_dir)
+    session = RuntimeSession.create(
+        loaded,
+        SceneSpec.grid("generic_cube", 1, spacing_m=0.1),
+        "mujoco",
+        gravity=(0.0, 0.0, 0.0),
+    )
+
+    try:
+        with pytest.raises(ValueError, match="real_time_factor"):
+            run_with_viewer(
+                session,
+                duration_s=0.0,
+                step_once=lambda: (),
+                real_time_factor=real_time_factor,
+                hold=False,
+            )
+    finally:
+        session.shutdown()
 
 
 def test_viewer_supports_cooperative_stop_and_lifecycle_hooks(

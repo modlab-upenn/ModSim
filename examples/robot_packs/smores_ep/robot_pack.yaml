@@ -4,7 +4,8 @@ name: SMORES-EP
 version: 0.1.0
 description: >-
   SMORES-EP V4.2.0 Fusion 360 export with four provisional EP-face connector
-  semantics and lightweight MuJoCo collision proxies for docking development.
+  semantics, detailed visuals, and a provisional MuJoCo locomotion/contact
+  model for docking development.
 metadata:
   asset_source: SMORES-EP V4.2.0 Fusion 360 export
   repository_inclusion: authorized_for_collaborator_access
@@ -23,7 +24,8 @@ assets:
   mesh_directories:
     meshes: assets/meshes
     collision_meshes: assets/collision_meshes
-  mujoco: {}
+  mujoco:
+    smores_ep: assets/mujoco/smores_ep.xml
   isaac_usd: {}
   thumbnails: {}
 specs:

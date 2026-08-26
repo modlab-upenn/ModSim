@@ -14,13 +14,60 @@ from PySide6.QtCore import QEventLoop, QThread, QTimer
 from PySide6.QtWidgets import QApplication
 
 from modsim.runtime import RuntimeInspectorFrame
-from modsim.runtime.inspector_runner import RuntimeInspectorConfig as CoreRuntimeInspectorConfig
+from modsim.runtime.inspector_runner import (
+    RuntimeInspectorConfig as CoreRuntimeInspectorConfig,
+)
+from modsim.runtime.inspector_runner import RuntimeInspectorRunner
+from modsim_studio import runtime_worker as runtime_worker_module
 from modsim_studio.runtime_worker import RuntimeInspectorConfig, RuntimeInspectorWorker
 
 
 def test_worker_preserves_public_config_import() -> None:
     assert RuntimeInspectorConfig is CoreRuntimeInspectorConfig
-    assert not RuntimeInspectorConfig(pack_path=Path("pack")).viewer_enabled
+    config = RuntimeInspectorConfig(pack_path=Path("pack"))
+    assert not config.viewer_enabled
+    assert config.real_time_factor == 1.0
+
+
+def test_worker_applies_real_time_factor_only_to_pacing_deadlines(
+    example_pack_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = RuntimeInspectorConfig(
+        pack_path=example_pack_dir,
+        backend="mock",
+        connector_gap_m=0.005,
+        approach_m_s=0.03,
+        duration_s=0.05,
+        dt_s=0.01,
+        publish_hz=100.0,
+        real_time_factor=4.0,
+    )
+    runner = RuntimeInspectorRunner.create(config)
+    worker = RuntimeInspectorWorker(config)
+    pacing_calls: list[tuple[float, float, float]] = []
+
+    def record_deadline(
+        wall_started_s: float,
+        simulated_elapsed_s: float,
+        real_time_factor: float,
+    ) -> float:
+        pacing_calls.append((wall_started_s, simulated_elapsed_s, real_time_factor))
+        # The helper's arithmetic has dependency-free unit coverage. Returning
+        # an already-reached deadline keeps this execution-lane test clock-free.
+        return wall_started_s
+
+    monkeypatch.setattr(runtime_worker_module, "wall_clock_deadline_s", record_deadline)
+    monkeypatch.setattr(RuntimeInspectorWorker, "_wait_until", lambda _self, _target: True)
+    try:
+        interrupted = worker._run_scenario(runner)
+    finally:
+        runner.shutdown()
+
+    assert not interrupted
+    assert [call[1] for call in pacing_calls] == pytest.approx([0.01, 0.02, 0.03, 0.04, 0.05])
+    assert {call[2] for call in pacing_calls} == {4.0}
+    assert runner.session.world.time_s == pytest.approx(config.duration_s)
 
 
 def test_worker_publishes_a_docked_graph_and_lossless_events(

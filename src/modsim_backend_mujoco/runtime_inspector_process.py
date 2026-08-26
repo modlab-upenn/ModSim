@@ -184,6 +184,7 @@ def run_runtime_inspector_process(
                 runner.session,
                 duration_s=config.duration_s,
                 step_once=runner.step,
+                real_time_factor=config.real_time_factor,
                 hold=True,
                 stop_requested=stop_requested.is_set,
                 on_started=publisher.viewer_started,

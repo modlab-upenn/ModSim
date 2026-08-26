@@ -46,6 +46,10 @@ class RuntimeInspectorWindow(QMainWindow):
 
         self.status_label = QLabel("Preparing runtime…")
         self.status_label.setWordWrap(True)
+        self.speed_label = QLabel(f"Target speed: {config.real_time_factor:g}x")
+        self.speed_label.setToolTip(
+            "Wall-clock playback target; simulated motor speeds and physics are unchanged."
+        )
         self.source_label = QLabel(str(config.pack_path))
         self.source_label.setWordWrap(True)
         self.source_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -60,6 +64,7 @@ class RuntimeInspectorWindow(QMainWindow):
         status_row.addWidget(self.status_label, 1)
         status_row.addWidget(self.stop_button)
         header_layout.addLayout(status_row)
+        header_layout.addWidget(self.speed_label)
         header_layout.addWidget(self.source_label)
 
         self.graph = TopologyGraphWidget()

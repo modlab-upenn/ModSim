@@ -15,11 +15,12 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
+from typing import Protocol
 
 from modsim.backends.registry import create_backend
 from modsim.connectors.compatibility import evaluate_compatibility
 from modsim.core.events import Event
-from modsim.core.ids import connector_instance_id
+from modsim.core.ids import ModuleInstanceId, connector_instance_id
 from modsim.core.scene import ModulePlacement, SceneSpec
 from modsim.core.transforms import Transform
 from modsim.core.validation import (
@@ -39,8 +40,18 @@ from modsim.robot_packs import (
 )
 from modsim.runtime.demos import RuntimeDemo
 from modsim.runtime.inspection import RuntimeInspectorFrame, build_runtime_inspector_frame
+from modsim.runtime.physical_reconfiguration import (
+    DifferentialDriveReconfigurationConfig,
+    DifferentialDriveReconfigurationScenario,
+)
+from modsim.runtime.physics_docking import (
+    MAX_PHYSICAL_TIMESTEP_S,
+    DifferentialDriveDockingConfig,
+    DifferentialDriveDockingScenario,
+)
 from modsim.runtime.reconfiguration import (
     ReconfigurationPlan,
+    ReconfigurationStatus,
     ScriptedReconfigurationConfig,
     ScriptedReconfigurationScenario,
     connector_pair_plan,
@@ -50,12 +61,41 @@ from modsim.runtime.session import RuntimeSession
 _LOGGER = logging.getLogger("modsim.runtime_inspector")
 _INITIAL_SCENE_SPACING_M = 0.2
 _RECONFIGURATION_SCENE_SPACING_M = 0.12
+_DEFAULT_CONNECTOR_GAP_M = 0.02
+_SMORES_EXAMPLE_SCENARIO = (
+    Path(__file__).resolve().parents[3] / "examples" / "scenarios" / "smores_driver_to_snake.py"
+)
+_SMORES_PHYSICS_SCENARIO = (
+    Path(__file__).resolve().parents[3]
+    / "examples"
+    / "scenarios"
+    / "smores_ep_diff_drive_dock_undock.py"
+)
+_SMORES_PHYSICAL_RECONFIGURATION_SCENARIO = (
+    Path(__file__).resolve().parents[3]
+    / "examples"
+    / "scenarios"
+    / "smores_ep_physical_driver_to_snake.py"
+)
 
 StatusCallback = Callable[[str], None]
 
 
 class RuntimeInspectorSetupError(ValueError):
     """Raised when an inspector configuration cannot produce a runtime."""
+
+
+class RuntimeScenario(Protocol):
+    """Minimal scenario surface consumed by the execution owner."""
+
+    @property
+    def status(self) -> ReconfigurationStatus:
+        """Return immutable presentation state."""
+        ...
+
+    def step(self) -> tuple[Event, ...]:
+        """Advance one configured simulation step."""
+        ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,10 +114,10 @@ class RuntimeInspectorConfig:
     backend: str = "mujoco"
     fixed_connector: str | None = None
     moving_connector: str | None = None
-    connector_gap_m: float = 0.02
+    connector_gap_m: float | None = None
     orientation_rad: float = 0.0
     approach_m_s: float = 0.03
-    retract_m_s: float | None = 0.03
+    retract_m_s: float | None = None
     duration_s: float = 4.0
     dt_s: float = 0.002
     undock_at_s: float | None = None
@@ -87,6 +127,7 @@ class RuntimeInspectorConfig:
     view_id: str | None = None
     publish_hz: float = 20.0
     viewer_enabled: bool = False
+    real_time_factor: float = 1.0
 
 
 @dataclass(slots=True)
@@ -95,7 +136,7 @@ class RuntimeInspectorRunner:
 
     config: RuntimeInspectorConfig
     session: RuntimeSession
-    scenario: ScriptedReconfigurationScenario
+    scenario: RuntimeScenario
     recipe: ModelViewSpec
     module_type: str
     fixed_connector: str | None
@@ -134,8 +175,12 @@ class RuntimeInspectorRunner:
         recipe = resolve_runtime_recipe(pack, config.view_id)
         demo = _resolve_demo(config.demo)
         release_after_s: float | None = None
-        if demo is RuntimeDemo.SMORES_DRIVER_TO_SNAKE:
-            plan = _load_smores_example_plan(config.pack_path)
+        plan: ReconfigurationPlan | None = None
+        if demo in {
+            RuntimeDemo.SMORES_DRIVER_TO_SNAKE,
+            RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE,
+        }:
+            plan = _load_smores_example_plan()
             fixed_local = moving_local = None
             scene = SceneSpec.of(
                 ModulePlacement(
@@ -150,6 +195,19 @@ class RuntimeInspectorRunner:
                     ),
                 )
                 for index, module_id in enumerate(plan.module_ids)
+            )
+        elif demo is RuntimeDemo.SMORES_DIFF_DRIVE_DOCK_UNDOCK:
+            fixed_local, moving_local = resolve_runtime_connector_pair(
+                pack,
+                module_type,
+                "bottom",
+                "pan",
+            )
+            scene = SceneSpec.grid(
+                module_type,
+                2,
+                spacing_m=_INITIAL_SCENE_SPACING_M,
+                origin=(0.0, 0.0, config.height_m),
             )
         else:
             fixed_local, moving_local = resolve_runtime_connector_pair(
@@ -179,25 +237,59 @@ class RuntimeInspectorRunner:
         report_status(f"Starting {config.backend} backend…")
         session = _create_session(loaded, scene, config)
         try:
-            scenario = ScriptedReconfigurationScenario.create(
-                session,
-                plan,
-                ScriptedReconfigurationConfig(
-                    dt_s=config.dt_s,
-                    gap_m=config.connector_gap_m,
-                    orientation_rad=config.orientation_rad,
-                    approach_speed_m_s=config.approach_m_s,
-                    initial_hold_s=(1.0 if demo is RuntimeDemo.SMORES_DRIVER_TO_SNAKE else 0.0),
-                    retract_speed_m_s=(
-                        config.approach_m_s if config.retract_m_s is None else config.retract_m_s
+            if demo is RuntimeDemo.SMORES_DIFF_DRIVE_DOCK_UNDOCK:
+                physical_config = _load_smores_physics_config(
+                    scene.instance_ids[0],
+                    scene.instance_ids[1],
+                    config,
+                )
+                scenario: RuntimeScenario = DifferentialDriveDockingScenario.create(
+                    session,
+                    physical_config,
+                )
+            elif demo is RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE:
+                if plan is None:  # pragma: no cover - branch invariant
+                    raise AssertionError("physical runtime demo requires a plan")
+                reconfiguration_config = _load_smores_physical_reconfiguration_config(config)
+                scenario = DifferentialDriveReconfigurationScenario.create(
+                    session,
+                    plan,
+                    reconfiguration_config,
+                )
+            else:
+                if plan is None:  # pragma: no cover - branch invariant
+                    raise AssertionError("scripted runtime demo requires a plan")
+                scenario = ScriptedReconfigurationScenario.create(
+                    session,
+                    plan,
+                    ScriptedReconfigurationConfig(
+                        dt_s=config.dt_s,
+                        gap_m=_resolved_connector_gap_m(config),
+                        orientation_rad=config.orientation_rad,
+                        approach_speed_m_s=config.approach_m_s,
+                        initial_hold_s=(1.0 if demo is RuntimeDemo.SMORES_DRIVER_TO_SNAKE else 0.0),
+                        retract_speed_m_s=(
+                            config.approach_m_s
+                            if config.retract_m_s is None
+                            else config.retract_m_s
+                        ),
+                        release_after_s=(
+                            None if demo is RuntimeDemo.SMORES_DRIVER_TO_SNAKE else release_after_s
+                        ),
                     ),
-                    release_after_s=(
-                        None if demo is RuntimeDemo.SMORES_DRIVER_TO_SNAKE else release_after_s
-                    ),
-                ),
-            )
-            if demo is RuntimeDemo.SMORES_DRIVER_TO_SNAKE:
-                report_status(f"Running {plan.name} with {len(plan.module_ids)} modules")
+                )
+            if demo in {
+                RuntimeDemo.SMORES_DRIVER_TO_SNAKE,
+                RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE,
+            }:
+                assert plan is not None
+                if demo is RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE:
+                    report_status(
+                        "Running smores_physical_driver_to_snake: "
+                        f"{plan.name} with {len(plan.module_ids)} modules"
+                    )
+                else:
+                    report_status(f"Running {plan.name} with {len(plan.module_ids)} modules")
             else:
                 assert fixed_local is not None and moving_local is not None
                 report_status(f"Running {module_type}: {fixed_local} ↔ {moving_local}")
@@ -291,14 +383,102 @@ def validate_runtime_inspector_config(config: RuntimeInspectorConfig) -> None:
                 "smores_driver_to_snake currently requires gravity and ground disabled; "
                 "the scripted topology demo does not yet model supported locomotion"
             )
+    elif demo is RuntimeDemo.SMORES_DIFF_DRIVE_DOCK_UNDOCK:
+        if config.backend != "mujoco":
+            raise RuntimeInspectorSetupError(
+                "smores_diff_drive_dock_undock requires the MuJoCo backend's "
+                "joint and contact dynamics"
+            )
+        if config.fixed_connector is not None or config.moving_connector is not None:
+            raise RuntimeInspectorSetupError(
+                "smores_diff_drive_dock_undock uses fixed bottom and moving pan; "
+                "do not supply fixed_connector or moving_connector"
+            )
+        if config.undock_at_s is not None:
+            raise RuntimeInspectorSetupError(
+                "smores_diff_drive_dock_undock performs its own post-contact release; "
+                "do not supply undock_at_s"
+            )
+        if config.orientation_rad != 0.0:
+            raise RuntimeInspectorSetupError(
+                "smores_diff_drive_dock_undock keeps both modules upright; "
+                "orientation_rad must be zero"
+            )
+        if not config.gravity or not config.ground:
+            raise RuntimeInspectorSetupError(
+                "smores_diff_drive_dock_undock requires gravity and the ground plane; "
+                "enable both options"
+            )
+        if config.height_m < 0.04:
+            raise RuntimeInspectorSetupError(
+                "smores_diff_drive_dock_undock requires height_m >= 0.04 so the tires "
+                "start above the ground"
+            )
+        if config.dt_s > MAX_PHYSICAL_TIMESTEP_S:
+            raise RuntimeInspectorSetupError(
+                "smores_diff_drive_dock_undock requires dt_s <= "
+                f"{MAX_PHYSICAL_TIMESTEP_S:g} for the tuned contact/controller model"
+            )
+        if config.retract_m_s == 0.0:
+            raise RuntimeInspectorSetupError(
+                "smores_diff_drive_dock_undock requires a positive retract_m_s"
+            )
+    elif demo is RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE:
+        if config.backend != "mujoco":
+            raise RuntimeInspectorSetupError(
+                "smores_physical_driver_to_snake requires the MuJoCo backend's "
+                "joint and contact dynamics"
+            )
+        if config.fixed_connector is not None or config.moving_connector is not None:
+            raise RuntimeInspectorSetupError(
+                "smores_physical_driver_to_snake defines its connector actions; do not "
+                "supply fixed_connector or moving_connector"
+            )
+        if config.undock_at_s is not None:
+            raise RuntimeInspectorSetupError(
+                "smores_physical_driver_to_snake defines its own releases; do not supply "
+                "undock_at_s"
+            )
+        if config.connector_gap_m is not None:
+            raise RuntimeInspectorSetupError(
+                "smores_physical_driver_to_snake defines its initial seven-module "
+                "staging; leave connector_gap_m unspecified"
+            )
+        if config.retract_m_s is not None:
+            raise RuntimeInspectorSetupError(
+                "smores_physical_driver_to_snake defines its wheel-driven routes; "
+                "leave retract_m_s unspecified"
+            )
+        if config.orientation_rad != 0.0:
+            raise RuntimeInspectorSetupError(
+                "smores_physical_driver_to_snake keeps the staged modules upright; "
+                "orientation_rad must be zero"
+            )
+        if not config.gravity or not config.ground:
+            raise RuntimeInspectorSetupError(
+                "smores_physical_driver_to_snake requires gravity and the ground plane; "
+                "enable both options"
+            )
+        if config.height_m < 0.04:
+            raise RuntimeInspectorSetupError(
+                "smores_physical_driver_to_snake requires height_m >= 0.04 so the tires "
+                "start above the ground"
+            )
+        if config.dt_s > MAX_PHYSICAL_TIMESTEP_S:
+            raise RuntimeInspectorSetupError(
+                "smores_physical_driver_to_snake requires dt_s <= "
+                f"{MAX_PHYSICAL_TIMESTEP_S:g} for the tuned contact/controller model"
+            )
     try:
-        require_finite_nonnegative(config.connector_gap_m, "connector_gap_m")
+        if config.connector_gap_m is not None:
+            require_finite_nonnegative(config.connector_gap_m, "connector_gap_m")
         require_finite(config.orientation_rad, "orientation_rad")
         require_finite_positive(config.approach_m_s, "approach_m_s")
         require_finite_positive(config.duration_s, "duration_s")
         require_finite_positive(config.dt_s, "dt_s")
         require_finite(config.height_m, "height_m")
         require_finite_positive(config.publish_hz, "publish_hz")
+        require_finite_positive(config.real_time_factor, "real_time_factor")
         if config.retract_m_s is not None:
             require_finite_nonnegative(config.retract_m_s, "retract_m_s")
         if config.undock_at_s is not None:
@@ -426,6 +606,7 @@ def _create_session(
             config.backend,
             gravity=(0.0, 0.0, -9.81) if config.gravity else (0.0, 0.0, 0.0),
             ground=config.ground,
+            timestep_s=config.dt_s,
         )
     try:
         return RuntimeSession.create(loaded, scene, adapter)
@@ -441,27 +622,150 @@ def _ignore_status(message: str) -> None:
     del message
 
 
-def _load_smores_example_plan(pack_path: Path) -> ReconfigurationPlan:
-    pack_directory = pack_path if pack_path.is_dir() else pack_path.parent
-    scenario_path = pack_directory.parent.parent / "scenarios" / "smores_driver_to_snake.py"
+def _load_smores_example_plan() -> ReconfigurationPlan:
+    scenario_path = _SMORES_EXAMPLE_SCENARIO
+    if not scenario_path.is_file():
+        raise RuntimeInspectorSetupError(
+            "SMORES Driver-to-Snake example content was not found. This demonstration "
+            "requires a ModSim source checkout containing "
+            "'examples/scenarios/smores_driver_to_snake.py'. The Robot Pack may be "
+            "copied or staged anywhere inside that checkout."
+        )
     spec = spec_from_file_location("modsim_example_smores_driver_to_snake", scenario_path)
     if spec is None or spec.loader is None:
         raise RuntimeInspectorSetupError(
             f"SMORES Driver-to-Snake example is unavailable at '{scenario_path}'"
         )
     module = module_from_spec(spec)
-    spec.loader.exec_module(module)
+    try:
+        spec.loader.exec_module(module)
+    except Exception as error:
+        raise RuntimeInspectorSetupError(
+            f"Could not load SMORES scenario '{scenario_path}': {error}"
+        ) from error
     build_plan = getattr(module, "build_plan", None)
     if not callable(build_plan):
         raise RuntimeInspectorSetupError(
             f"SMORES scenario '{scenario_path}' does not define build_plan()"
         )
-    plan = build_plan()
+    try:
+        plan = build_plan()
+    except Exception as error:
+        raise RuntimeInspectorSetupError(
+            f"Could not build SMORES scenario '{scenario_path}': {error}"
+        ) from error
     if not isinstance(plan, ReconfigurationPlan):
         raise RuntimeInspectorSetupError(
             f"SMORES scenario '{scenario_path}' returned an invalid plan"
         )
     return plan
+
+
+def _load_smores_physics_config(
+    fixed_module: ModuleInstanceId,
+    moving_module: ModuleInstanceId,
+    config: RuntimeInspectorConfig,
+) -> DifferentialDriveDockingConfig:
+    """Load the source-checkout SMORES-EP dynamics configuration."""
+    scenario_path = _SMORES_PHYSICS_SCENARIO
+    if not scenario_path.is_file():
+        raise RuntimeInspectorSetupError(
+            "SMORES differential-drive example content was not found. This demonstration "
+            "requires a ModSim source checkout containing "
+            "'examples/scenarios/smores_ep_diff_drive_dock_undock.py'."
+        )
+    spec = spec_from_file_location("modsim_example_smores_physical_docking", scenario_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeInspectorSetupError(
+            f"SMORES differential-drive example is unavailable at '{scenario_path}'"
+        )
+    module = module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except Exception as error:
+        raise RuntimeInspectorSetupError(
+            f"Could not load SMORES differential-drive scenario '{scenario_path}': {error}"
+        ) from error
+    build_config = getattr(module, "build_config", None)
+    if not callable(build_config):
+        raise RuntimeInspectorSetupError(
+            f"SMORES differential-drive scenario '{scenario_path}' does not define build_config()"
+        )
+    try:
+        physical_config = build_config(
+            fixed_module,
+            moving_module,
+            dt_s=config.dt_s,
+            initial_gap_m=_resolved_connector_gap_m(config),
+            approach_speed_m_s=config.approach_m_s,
+            retract_speed_m_s=(
+                config.approach_m_s if config.retract_m_s is None else config.retract_m_s
+            ),
+        )
+    except Exception as error:
+        raise RuntimeInspectorSetupError(
+            f"Could not build SMORES differential-drive scenario '{scenario_path}': {error}"
+        ) from error
+    if not isinstance(physical_config, DifferentialDriveDockingConfig):
+        raise RuntimeInspectorSetupError(
+            f"SMORES differential-drive scenario '{scenario_path}' returned invalid configuration"
+        )
+    return physical_config
+
+
+def _resolved_connector_gap_m(config: RuntimeInspectorConfig) -> float:
+    """Return the pair-demo staging default when the option was omitted."""
+    return _DEFAULT_CONNECTOR_GAP_M if config.connector_gap_m is None else config.connector_gap_m
+
+
+def _load_smores_physical_reconfiguration_config(
+    config: RuntimeInspectorConfig,
+) -> DifferentialDriveReconfigurationConfig:
+    """Load the source-checkout physical Driver-to-Snake configuration."""
+    scenario_path = _SMORES_PHYSICAL_RECONFIGURATION_SCENARIO
+    if not scenario_path.is_file():
+        raise RuntimeInspectorSetupError(
+            "SMORES physical Driver-to-Snake example content was not found. The "
+            "smores_physical_driver_to_snake demo requires a ModSim source checkout "
+            "containing 'examples/scenarios/smores_ep_physical_driver_to_snake.py'."
+        )
+    spec = spec_from_file_location(
+        "modsim_example_smores_physical_driver_to_snake",
+        scenario_path,
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeInspectorSetupError(
+            f"smores_physical_driver_to_snake is unavailable at '{scenario_path}'"
+        )
+    module = module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except Exception as error:
+        raise RuntimeInspectorSetupError(
+            f"Could not load smores_physical_driver_to_snake scenario '{scenario_path}': {error}"
+        ) from error
+    build_config = getattr(module, "build_config", None)
+    if not callable(build_config):
+        raise RuntimeInspectorSetupError(
+            "smores_physical_driver_to_snake scenario "
+            f"'{scenario_path}' does not define build_config()"
+        )
+    try:
+        physical_config = build_config(
+            dt_s=config.dt_s,
+            navigation_speed_m_s=config.approach_m_s,
+            approach_speed_m_s=config.approach_m_s,
+        )
+    except Exception as error:
+        raise RuntimeInspectorSetupError(
+            f"Could not build smores_physical_driver_to_snake scenario '{scenario_path}': {error}"
+        ) from error
+    if not isinstance(physical_config, DifferentialDriveReconfigurationConfig):
+        raise RuntimeInspectorSetupError(
+            "smores_physical_driver_to_snake scenario "
+            f"'{scenario_path}' returned invalid configuration"
+        )
+    return physical_config
 
 
 def _resolve_demo(value: RuntimeDemo | str) -> RuntimeDemo:

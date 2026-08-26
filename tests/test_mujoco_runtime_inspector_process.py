@@ -79,7 +79,15 @@ def test_process_streams_frames_from_the_same_mujoco_runtime(
     read_descriptor, write_descriptor = os.pipe()
     control = os.fdopen(read_descriptor, "rb")
     parent_control = os.fdopen(write_descriptor, "wb")
-    parent_control.write(_initialize(_config(example_pack_dir)))
+    expected_real_time_factor = 3.0
+    parent_control.write(
+        _initialize(
+            _config(
+                example_pack_dir,
+                real_time_factor=expected_real_time_factor,
+            )
+        )
+    )
     parent_control.flush()
     output = _TerminalClosingOutput(parent_control)
     diagnostics = io.StringIO()
@@ -89,6 +97,7 @@ def test_process_streams_frames_from_the_same_mujoco_runtime(
         *,
         duration_s: float,
         step_once: Any,
+        real_time_factor: float,
         hold: bool,
         stop_requested: Any,
         on_started: Any,
@@ -98,6 +107,7 @@ def test_process_streams_frames_from_the_same_mujoco_runtime(
     ) -> tuple[()]:
         del session
         assert hold
+        assert real_time_factor == expected_real_time_factor
         on_started()
         for _ in range(math.ceil(duration_s / 0.01)):
             if stop_requested():
@@ -157,12 +167,14 @@ def test_process_treats_parent_stop_as_cooperative(
     def run_until_stopped(
         session: object,
         *,
+        real_time_factor: float,
         stop_requested: Any,
         on_started: Any,
         on_stopped: Any,
         **callbacks: Any,
     ) -> tuple[()]:
         del session, callbacks
+        assert real_time_factor == 1.0
         on_started()
         assert stop_requested()
         on_stopped()
@@ -210,12 +222,14 @@ def test_process_reports_invalid_post_initialization_control(
     def run_until_stopped(
         session: object,
         *,
+        real_time_factor: float,
         stop_requested: Any,
         on_started: Any,
         on_stopped: Any,
         **callbacks: Any,
     ) -> tuple[()]:
         del session, callbacks
+        assert real_time_factor == 1.0
         on_started()
         assert stop_requested()
         on_stopped()

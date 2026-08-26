@@ -13,13 +13,19 @@ import pytest
 
 pytest.importorskip("mujoco", reason="the MuJoCo backend extra is not installed")
 
-from modsim.backends.base import BackendAdapter, BackendError, SupportsModuleKinematics
-from modsim.core.entities import ConnectorLifecycleState
+from modsim.backends.base import (
+    BackendAdapter,
+    BackendError,
+    SupportsJointCommands,
+    SupportsModuleKinematics,
+)
+from modsim.core.entities import ConnectorLifecycleState, JointCommand
 from modsim.core.events import DockCommitted, DockFailed
-from modsim.core.ids import ConnectorInstanceId, ModuleInstanceId
+from modsim.core.ids import ConnectorInstanceId, JointInstanceId, ModuleInstanceId
 from modsim.core.scene import ModulePlacement, SceneSpec
 from modsim.core.transforms import Transform, quat_from_axis_angle, vec_norm, vec_sub
 from modsim.robot_packs import LoadedRobotPack, RobotPack, RobotPackLoader
+from modsim.robot_packs.schema import ControlMode
 from modsim.runtime.reconfiguration import stage_docking_assembly_pair
 from modsim.runtime.session import RuntimeSession
 from modsim_backend_mujoco.adapter import MuJoCoBackendAdapter
@@ -28,8 +34,10 @@ from modsim_backend_mujoco.scene import (
     GROUND_GEOM,
     URDF_COLLISION_GEOM_GROUP,
     MuJoCoSceneError,
+    actuator_name,
     body_name,
     build_scene,
+    joint_name,
     site_name,
 )
 
@@ -41,6 +49,14 @@ CUBE_0 = ModuleInstanceId("generic_cube_0")
 CUBE_1 = ModuleInstanceId("generic_cube_1")
 FRONT_0 = ConnectorInstanceId("generic_cube_0/front")
 REAR_1 = ConnectorInstanceId("generic_cube_1/rear")
+SMORES_MODULE_TYPE = "smores_ep"
+SMORES_0 = ModuleInstanceId("smores_ep_0")
+SMORES_1 = ModuleInstanceId("smores_ep_1")
+LEFT_WHEEL_0 = JointInstanceId("smores_ep_0/joint_left_wheel")
+RIGHT_WHEEL_0 = JointInstanceId("smores_ep_0/joint_right_wheel")
+RIGHT_WHEEL_1 = JointInstanceId("smores_ep_1/joint_right_wheel")
+TILT_0 = JointInstanceId("smores_ep_0/joint_tilt")
+PAN_0 = JointInstanceId("smores_ep_0/joint_pan")
 
 
 @pytest.fixture
@@ -63,6 +79,64 @@ def weightless_session(loaded: LoadedRobotPack, count: int = 2) -> RuntimeSessio
     )
 
 
+def smores_ground_session(loaded: LoadedRobotPack, count: int = 1) -> RuntimeSession:
+    """Return upright SMORES modules over the physics-oriented MJCF floor."""
+    scene = SceneSpec(
+        placements=tuple(
+            ModulePlacement(
+                instance_id=ModuleInstanceId(f"smores_ep_{index}"),
+                module_type_id=SMORES_MODULE_TYPE,
+                pose=Transform.from_translation((0.3 * index, 0.0, 0.05)),
+            )
+            for index in range(count)
+        )
+    )
+    return RuntimeSession.create(
+        loaded,
+        scene,
+        "mujoco",
+        ground=True,
+        timestep_s=0.002,
+    )
+
+
+def drive_smores_wheel_velocities(
+    session: RuntimeSession,
+    *,
+    left_target_rad_s: float,
+    right_target_rad_s: float,
+    duration_s: float,
+) -> None:
+    """Run the provisional 40 Hz wheel-velocity loop through effort commands."""
+    period_s = 0.025
+    proportional_gain_nm_per_rad_s = 0.04
+    steps = round(duration_s / period_s)
+    for _ in range(steps):
+        left = session.world.joint_state(LEFT_WHEEL_0)
+        right = session.world.joint_state(RIGHT_WHEEL_0)
+        left_effort = max(
+            -0.04,
+            min(0.04, proportional_gain_nm_per_rad_s * (left_target_rad_s - left.velocity)),
+        )
+        right_effort = max(
+            -0.04,
+            min(0.04, proportional_gain_nm_per_rad_s * (right_target_rad_s - right.velocity)),
+        )
+        session.set_joint_commands(
+            (
+                JointCommand(LEFT_WHEEL_0, ControlMode.EFFORT, left_effort),
+                JointCommand(RIGHT_WHEEL_0, ControlMode.EFFORT, right_effort),
+            )
+        )
+        session.step(period_s)
+
+
+def yaw_rad(transform: Transform) -> float:
+    """Return yaw from a scalar-first quaternion."""
+    w, x, y, z = transform.rotation
+    return math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
+
+
 # ----------------------------------------------------------------------
 # scene compilation
 # ----------------------------------------------------------------------
@@ -81,6 +155,41 @@ def test_each_placement_becomes_its_own_body(loaded_pack: LoadedRobotPack) -> No
         module = ModuleInstanceId(f"{MODULE_TYPE}_{index}")
         assert (module, "base_link") in compiled.body_ids
         assert compiled.handles.bodies[(module, "base_link")] == body_name(module, "base_link")
+
+
+def test_smores_mjcf_is_preferred_and_effort_actuators_are_indexed(
+    smores_loaded_pack: LoadedRobotPack,
+) -> None:
+    """The pack-local dynamics model supplies visuals, contacts, and motors."""
+    session = smores_ground_session(smores_loaded_pack)
+    adapter = session.adapter
+    assert isinstance(adapter, MuJoCoBackendAdapter)
+    model = adapter.model
+
+    assert model.nmesh == 5
+    assert model.nu == 4
+    assert sum(model.body_mass) == pytest.approx(0.4386367977876995)
+    assert len(session.handles.joints) == 4
+    assert session.handles.joints[(SMORES_0, "joint_left_wheel")] == joint_name(
+        SMORES_0, "joint_left_wheel"
+    )
+    assert model.actuator(actuator_name(SMORES_0, "joint_left_wheel")).ctrlrange == (
+        pytest.approx((-0.04, 0.04))
+    )
+    assert model.actuator(actuator_name(SMORES_0, "joint_tilt")).ctrlrange == pytest.approx(
+        (-0.1, 0.1)
+    )
+
+    ground = model.geom(GROUND_GEOM).id
+    tire = model.geom(f"{SMORES_0}/left_tire_contact").id
+    skid = model.geom(f"{SMORES_0}/rear_skid").id
+    face = model.geom(f"{SMORES_0}/bottom_face_proxy").id
+    assert model.geom_size[tire, :2] == pytest.approx((0.04, 0.01045))
+    assert model.geom_size[skid, 0] == pytest.approx(0.004)
+    assert int(model.geom_group[tire]) == URDF_COLLISION_GEOM_GROUP
+    assert int(model.geom_contype[tire]) & int(model.geom_conaffinity[ground])
+    assert not (int(model.geom_contype[face]) & int(model.geom_conaffinity[ground]))
+    assert int(model.geom_contype[face]) & int(model.geom_conaffinity[face])
 
 
 def test_urdf_visuals_are_retained_while_collision_proxies_stay_physical(
@@ -243,8 +352,13 @@ def test_the_adapter_satisfies_the_backend_protocol() -> None:
     assert isinstance(MuJoCoBackendAdapter(), BackendAdapter)
 
 
-def test_joint_commands_are_not_advertised_before_the_api_exists() -> None:
-    assert not MuJoCoBackendAdapter().capabilities().supports_joint_commands
+def test_effort_joint_commands_are_advertised() -> None:
+    adapter = MuJoCoBackendAdapter()
+    capabilities = adapter.capabilities()
+
+    assert capabilities.supports_joint_commands
+    assert capabilities.supported_joint_control_modes == frozenset({ControlMode.EFFORT})
+    assert isinstance(adapter, SupportsJointCommands)
 
 
 def test_loading_without_a_pack_root_is_refused(loaded_pack: LoadedRobotPack) -> None:
@@ -321,6 +435,147 @@ def test_ground_uses_a_visible_environment_geom_group(loaded_pack: LoadedRobotPa
 
     assert ground >= 0
     assert int(compiled.model.geom_group[ground]) == ENVIRONMENT_GEOM_GROUP
+
+
+def test_smores_provisional_contact_model_settles_upright(
+    smores_loaded_pack: LoadedRobotPack,
+) -> None:
+    """Two tires and the low-friction rear skid form a stable support triangle."""
+    session = smores_ground_session(smores_loaded_pack)
+    adapter = session.adapter
+    assert isinstance(adapter, MuJoCoBackendAdapter)
+
+    session.step(1.0)
+
+    module = session.world.modules[SMORES_0]
+    body_id = adapter.model.body(body_name(SMORES_0, "base_link")).id
+    up_z = float(adapter.data.xmat[body_id].reshape(3, 3)[2, 2])
+    assert module.pose.translation[2] == pytest.approx(0.04, abs=0.001)
+    assert abs(module.pose.translation[0]) < 0.002
+    assert abs(module.pose.translation[1]) < 0.002
+    assert up_z > 0.999
+    assert adapter.data.ncon >= 3
+
+
+def test_smores_provisional_pan_tilt_drivetrain_is_stable_at_40_hz(
+    smores_loaded_pack: LoadedRobotPack,
+) -> None:
+    """Reflected armature makes the provisional sampled PD hold well behaved."""
+    session = smores_ground_session(smores_loaded_pack)
+
+    for _ in range(20):
+        commands: list[JointCommand] = []
+        for joint in (TILT_0, PAN_0):
+            state = session.world.joint_state(joint)
+            effort = max(-0.1, min(0.1, -state.position - 0.02 * state.velocity))
+            commands.append(JointCommand(joint, ControlMode.EFFORT, effort))
+        session.set_joint_commands(commands)
+        session.step(0.025)
+
+    module = session.world.modules[SMORES_0]
+    tilt = session.world.joint_state(TILT_0)
+    pan = session.world.joint_state(PAN_0)
+    assert tilt.position == pytest.approx(0.02, abs=0.01)
+    assert abs(tilt.velocity) < 0.1
+    assert abs(pan.position) < 0.01
+    assert abs(pan.velocity) < 0.1
+    assert module.pose.translation[2] == pytest.approx(0.04, abs=0.002)
+
+
+def test_smores_joint_commands_are_atomic_persistent_and_isolated(
+    smores_loaded_pack: LoadedRobotPack,
+) -> None:
+    """Semantic joint IDs map to the correct per-instance motor and snapshot."""
+    session = smores_ground_session(smores_loaded_pack, count=2)
+    adapter = session.adapter
+    assert isinstance(adapter, MuJoCoBackendAdapter)
+    assert isinstance(adapter, SupportsJointCommands)
+
+    session.set_joint_commands(
+        (
+            JointCommand(LEFT_WHEEL_0, ControlMode.EFFORT, 0.01),
+            JointCommand(RIGHT_WHEEL_1, ControlMode.EFFORT, -0.02),
+        )
+    )
+    controls_before_bad_batch = adapter.data.ctrl.copy()
+    with pytest.raises(BackendError, match="has no MuJoCo effort actuator"):
+        adapter.set_joint_commands(
+            (
+                JointCommand(RIGHT_WHEEL_0, ControlMode.EFFORT, 0.03),
+                JointCommand(
+                    JointInstanceId("smores_ep_1/not_a_joint"),
+                    ControlMode.EFFORT,
+                    0.01,
+                ),
+            )
+        )
+    assert adapter.data.ctrl == pytest.approx(controls_before_bad_batch)
+
+    session.step(0.01)
+
+    assert session.world.joint_state(LEFT_WHEEL_0).effort == pytest.approx(0.01)
+    assert session.world.joint_state(RIGHT_WHEEL_1).effort == pytest.approx(-0.02)
+    assert session.world.joint_state(RIGHT_WHEEL_0).effort == pytest.approx(0.0)
+    assert session.world.joint_state(LEFT_WHEEL_0).velocity > 0.0
+    assert session.world.joint_state(RIGHT_WHEEL_1).velocity < 0.0
+
+    session.clear_joint_commands((LEFT_WHEEL_0,))
+    left_actuator = adapter.model.actuator(actuator_name(SMORES_0, "joint_left_wheel")).id
+    right_1_actuator = adapter.model.actuator(actuator_name(SMORES_1, "joint_right_wheel")).id
+    assert adapter.data.ctrl[left_actuator] == 0.0
+    assert adapter.data.ctrl[right_1_actuator] == pytest.approx(-0.02)
+    session.clear_joint_commands()
+    assert adapter.data.ctrl == pytest.approx(0.0)
+
+
+def test_smores_provisional_effort_loop_drives_forward_on_tire_contacts(
+    smores_loaded_pack: LoadedRobotPack,
+) -> None:
+    """Equal positive wheel targets produce +X differential-drive motion."""
+    session = smores_ground_session(smores_loaded_pack)
+    session.step(1.0)
+    start = session.world.modules[SMORES_0].pose
+
+    drive_smores_wheel_velocities(
+        session,
+        left_target_rad_s=1.0,
+        right_target_rad_s=1.0,
+        duration_s=2.0,
+    )
+
+    finish = session.world.modules[SMORES_0].pose
+    assert finish.translation[0] - start.translation[0] > 0.01
+    assert abs(finish.translation[1] - start.translation[1]) < 0.002
+    assert abs(yaw_rad(finish) - yaw_rad(start)) < 0.01
+    assert finish.translation[2] == pytest.approx(0.04, abs=0.002)
+
+
+def test_smores_provisional_effort_loop_turns_with_opposite_wheel_targets(
+    smores_loaded_pack: LoadedRobotPack,
+) -> None:
+    """Opposite wheel targets yaw the module without a root-pose write."""
+    session = smores_ground_session(smores_loaded_pack)
+    session.step(1.0)
+    start = session.world.modules[SMORES_0].pose
+
+    drive_smores_wheel_velocities(
+        session,
+        left_target_rad_s=1.0,
+        right_target_rad_s=-1.0,
+        duration_s=2.0,
+    )
+
+    finish = session.world.modules[SMORES_0].pose
+    planar_displacement = math.hypot(
+        finish.translation[0] - start.translation[0],
+        finish.translation[1] - start.translation[1],
+    )
+    assert abs(yaw_rad(finish) - yaw_rad(start)) > 0.05
+    # The anisotropic tire model now permits the small lateral scrub a real
+    # skid-steer pivot needs; the rear support point makes the turn trace a
+    # short arc rather than rotating about an exact mathematical point.
+    assert planar_displacement < 0.02
+    assert finish.translation[2] == pytest.approx(0.04, abs=0.002)
 
 
 def test_without_a_ground_plane_modules_keep_falling(loaded_pack: LoadedRobotPack) -> None:

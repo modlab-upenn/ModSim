@@ -1,6 +1,11 @@
 """ModSim public package."""
 
-from modsim.backends import BackendAdapter, BackendCapabilities, MockBackendAdapter
+from modsim.backends import (
+    BackendAdapter,
+    BackendCapabilities,
+    MockBackendAdapter,
+    SupportsJointCommands,
+)
 from modsim.connectors import DockingManager, DockProposal, evaluate_acceptance
 from modsim.core import (
     AssemblyIndex,
@@ -13,6 +18,8 @@ from modsim.core import (
     WorldState,
     WorldStateRevision,
 )
+from modsim.core.entities import JointCommand
+from modsim.core.ids import JointInstanceId
 from modsim.model_views import (
     GraphModelView,
     ModelView,
@@ -35,6 +42,7 @@ from modsim.robot_packs import (
     write_robot_pack,
 )
 from modsim.runtime import DockingMetrics, RuntimeSession, collect_metrics
+from modsim.runtime.session import JointCommandError
 
 __all__ = [
     "AssemblyIndex",
@@ -47,6 +55,9 @@ __all__ = [
     "DockingMetrics",
     "EventLog",
     "GraphModelView",
+    "JointCommand",
+    "JointCommandError",
+    "JointInstanceId",
     "LoadedRobotPack",
     "MockBackendAdapter",
     "ModelView",
@@ -63,6 +74,7 @@ __all__ = [
     "RobotPackWriter",
     "RuntimeSession",
     "SceneSpec",
+    "SupportsJointCommands",
     "Transform",
     "ValidationProfile",
     "WorldState",

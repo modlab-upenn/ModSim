@@ -40,6 +40,7 @@ def test_protocol_round_trips_every_message_and_nested_path(
         demo=RuntimeDemo.DOCK_UNDOCK,
         backend="mock",
         viewer_enabled=True,
+        real_time_factor=4.0,
     )
     runner = RuntimeInspectorRunner.create(config)
     try:
@@ -64,10 +65,36 @@ def test_protocol_round_trips_every_message_and_nested_path(
     assert isinstance(initialize, RuntimeInitialize)
     assert isinstance(initialize.config.pack_path, Path)
     assert initialize.config.viewer_enabled
+    assert initialize.config.real_time_factor == pytest.approx(4.0)
     assert initialize.config.demo is RuntimeDemo.DOCK_UNDOCK
     transported = decoded[4]
     assert isinstance(transported, RuntimeFrame)
     assert transported.frame == frame
+
+
+def test_protocol_defaults_a_legacy_initialize_without_real_time_factor(
+    example_pack_dir: Path,
+) -> None:
+    encoded = encode_runtime_message(
+        RuntimeInitialize(
+            config=RuntimeInspectorConfig(
+                pack_path=example_pack_dir,
+                backend="mock",
+            )
+        )
+    )
+    document = json.loads(encoded.removeprefix(RUNTIME_PROTOCOL_PREFIX.encode()).decode())
+    assert document["config"].pop("real_time_factor") == 1.0
+    legacy = (
+        RUNTIME_PROTOCOL_PREFIX.encode()
+        + json.dumps(document, separators=(",", ":")).encode()
+        + b"\n"
+    )
+
+    decoded = decode_runtime_message(legacy)
+
+    assert isinstance(decoded, RuntimeInitialize)
+    assert decoded.config.real_time_factor == 1.0
 
 
 def test_reconfiguration_status_round_trips_as_a_strict_runtime_frame(

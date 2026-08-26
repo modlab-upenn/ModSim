@@ -82,10 +82,12 @@ and the engine disagreeing about where a connector is.
 | Dynamics | none — kinematic | full rigid-body |
 | Gravity, contacts, mass | no | yes |
 | Articulated kinematics | no | yes |
+| Joint state | omitted | position, velocity, actuator effort |
+| Joint commands | no | declared scalar effort modes |
 | Connector frames | composed from local pose | measured from sites |
 | Runtime docking | yes | yes, via the weld pool |
 | Constraint forces | injectable, for tests | **not yet reported** |
-| Contact exclusion on dock | not applicable | **not yet** |
+| Contact exclusion on dock | not applicable | yes, one reserved body-pair exclusion per active weld |
 
 ### mock
 
@@ -130,6 +132,13 @@ and `eq_data`, then sets `eq_active`. Release deactivates the slot and returns
 it to the pool. An exhausted pool refuses the connection, which the two-phase
 commit reports as `DockFailed` rather than faking a latch.
 
+Each weld slot has a paired, precompiled contact-exclusion entry. Claiming a
+weld publishes the constrained body-pair signature alongside any authored
+static exclusions, keeps MuJoCo's signature array sorted, and returns both
+entries on release. The exclusion covers that exact constrained body pair; it
+does not recursively suppress contacts involving other articulated bodies in
+either module or assembly.
+
 ModSim commits a relative pose between *connector frames*; a weld constrains
 *bodies*. `modsim_backend_mujoco.welds.body_relative_transform` performs the
 conversion:
@@ -160,7 +169,12 @@ a named `frame` is refused until that mapping is implemented; use a numeric
 
 `modsim run --view` opens MuJoCo's passive viewer, paced to wall clock, and
 holds the window open when the scenario ends so the final configuration can be
-inspected.
+inspected. Runtime Inspector launches additionally accept `--speed FACTOR`
+(`--real-time-factor` is an alias): the viewer targets simulated elapsed time
+divided by that positive factor. This changes pacing only—solver steps, motor
+limits, controller targets, simulated duration, and event timestamps remain
+unchanged. A high requested factor is best-effort when physics or rendering
+throughput cannot keep up.
 
 MuJoCo normally discards URDF `<visual>` geometry unless the URDF opts out.
 The ModSim adapter retains it by default, while respecting an explicit
@@ -218,8 +232,18 @@ adapter converts, so callers work in world coordinates everywhere in ModSim.
 gravity, which is what driving against resistance needs.
 
 These methods are scenario controls over a module's root free joint, not robot
-actuator commands. `supports_joint_commands` remains false until ModSim has a
-joint command contract and the adapter maps it to real MuJoCo actuators.
+actuator commands. Physical robot control uses the separate optional
+`SupportsJointCommands` contract. A `JointCommand` carries a stable
+`<module>/<joint>` ID, one declared Robot Pack control mode, and an SI target.
+`RuntimeSession` validates a complete batch for existence, declaration,
+backend support, finiteness, and limits before forwarding any command.
+
+The current MuJoCo implementation supports `effort`. Scene composition creates
+one unit-gear motor for every Robot Pack joint that declares effort control and
+a finite matching effort limit. Commands persist in `data.ctrl` until replaced
+or cleared. Snapshots report every semantic joint's position, velocity, and
+actuator effort. Other modes and actuator/transmission catalogs remain later
+work; the command boundary does not infer motors from arbitrary URDF tags.
 
 `modsim run --fixed-connector ID --moving-connector ID` uses the measured root
 and connector frames to arrange exactly two modules, then drives along the
@@ -228,8 +252,34 @@ for robot packs whose connectors are not aligned with world X.
 
 #### Named Runtime Inspector demonstrations
 
+The physical SMORES-EP cycle enables real gravity/contact and drives the wheel
+joints rather than a module root:
+
+```bash
+modsim runtime examples/robot_packs/smores_ep \
+  --demo smores_diff_drive_dock_undock
+```
+
+The pack selects a backend-specific MJCF for MuJoCo while retaining its URDF
+as the Studio/imported mechanical source. Detailed STL meshes are visual-only.
+Primitive tire cylinders and a rear skid carry ground contact; connector-face
+proxies use a separate contact category so they can meet each other without
+dragging on the floor. The scenario places an upright `pan`/TOP-to-`bottom`
+pair once, settles under gravity, runs a bounded differential-drive effort
+controller, commits the ordinary measured-frame fixed weld, waits 80 ms before
+release, and reverses through the wheels. It never writes a root pose or twist
+after initial placement. Because magnetic attraction is deferred, the physical
+controller adds a 1 mm near-contact latch gate inside the pack's broader
+acceptance region; the tuned model supports solver steps up to 0.005 s.
+
+The tire/skid friction, effort gains and limits, damping, armature, and skid
+shape are provisional simulation parameters. The 40 mm wheel radius and 67.2
+mm track come from the Fusion-derived geometry; the 90°/s wheel cap comes from
+published SMORES-EP descriptions. Magnetic attraction before latch is not yet
+represented.
+
 The Runtime Inspector exposes the two-module dock/release lifecycle as a named
-preset:
+demonstration:
 
 ```bash
 modsim runtime examples/robot_packs/smores_ep \
@@ -261,8 +311,25 @@ Yim's 2019
 
 This is sequential kinematic staging through the ordinary backend connection
 API, not autonomous planning, actuator control, collision-free locomotion, or
-a reproduction of hardware dynamics. Gravity and ground are deliberately off
-because the scenario currently has no supported SMORES locomotion controller.
+a reproduction of hardware dynamics. Gravity and ground are deliberately off.
+
+The companion physics realization uses the same connector plan but drives the
+left/right wheel joints of each moving component:
+
+```bash
+modsim runtime examples/robot_packs/smores_ep \
+  --backend mujoco \
+  --demo smores_physical_driver_to_snake \
+  --speed 4
+```
+
+Its six initial connections are staged once at time zero. Thereafter all four
+replacement actions use effort commands, gravity, ground/tire contact, measured
+connector frames, runtime weld release/commit, and one preallocated contact
+exclusion paired with each active weld. The final two actions command coherent
+wheel targets across connected three-module components. The routes and control
+tuning are ModSim-authored physics-demo inputs, not trajectories supplied by
+the 2019 topology-planning paper and not autonomous reconfiguration planning.
 The MuJoCo adapter remains the authoritative runtime owner, so the 3D viewer,
 graph, event log, and metrics still describe one session.
 

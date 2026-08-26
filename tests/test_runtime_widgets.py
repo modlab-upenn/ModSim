@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 
@@ -15,6 +16,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 from modsim.runtime.inspection import RuntimeEventRow
+from modsim.runtime.inspector_runner import RuntimeInspectorConfig
 from modsim_studio.runtime_events import (
     RuntimeEventLogWidget,
     RuntimeEventTableModel,
@@ -26,6 +28,7 @@ from modsim_studio.runtime_presenter import (
     PresentedModuleNode,
     RuntimePresentation,
 )
+from modsim_studio.runtime_window import RuntimeInspectorWindow
 
 
 @pytest.fixture(scope="module")
@@ -152,3 +155,31 @@ def test_event_table_rejects_unsorted_or_duplicate_sequences() -> None:
     duplicate = RuntimeEventRow(sequence=0, time_s=0.1, kind="Duplicate")
     with pytest.raises(ValueError, match="unique ascending"):
         model.set_events((duplicate, duplicate))
+
+
+def test_runtime_window_keeps_target_speed_visible_across_presentations(
+    application: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # The window normally auto-starts on the next event-loop turn. This focused
+    # presentation test deliberately keeps its controller dormant.
+    monkeypatch.setattr(RuntimeInspectorWindow, "start", lambda _self: None)
+    window = RuntimeInspectorWindow(
+        RuntimeInspectorConfig(
+            pack_path=tmp_path / "pack",
+            backend="mock",
+            real_time_factor=4.0,
+        )
+    )
+    try:
+        assert window.speed_label.text() == "Target speed: 4x"
+        assert "motor speeds and physics are unchanged" in window.speed_label.toolTip()
+
+        window._apply_presentation(presentation())
+        application.processEvents()
+
+        assert window.speed_label.text() == "Target speed: 4x"
+        assert window.source_label.text() == "generic_cube@0.1.0 | sample=1"
+    finally:
+        window.close()

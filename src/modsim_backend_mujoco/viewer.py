@@ -14,6 +14,8 @@ import mujoco.viewer
 
 from modsim.backends.base import BackendError
 from modsim.core.events import Event
+from modsim.core.validation import require_finite_positive
+from modsim.runtime.pacing import wall_clock_deadline_s
 from modsim.runtime.session import RuntimeSession
 from modsim_backend_mujoco.adapter import MuJoCoBackendAdapter
 from modsim_backend_mujoco.scene import URDF_COLLISION_GEOM_GROUP
@@ -38,6 +40,7 @@ def run_with_viewer(
     *,
     duration_s: float,
     step_once: Stepper,
+    real_time_factor: float = 1.0,
     hold: bool = True,
     stop_requested: StopPredicate | None = None,
     on_started: ViewerCallback | None = None,
@@ -49,7 +52,10 @@ def run_with_viewer(
 
     ``step_once`` performs one scripted step and returns the events it produced,
     so the scenario logic stays with its caller and this function only handles
-    rendering and wall-clock pacing.
+    rendering and wall-clock pacing. ``real_time_factor`` changes only that
+    pacing: a factor of two requests two simulated seconds per wall-clock
+    second without changing the physics step, controller timing, or actuator
+    limits.
 
     When ``hold`` is set the window stays open after the scenario finishes,
     because the final configuration is usually the thing worth looking at and a
@@ -63,6 +69,7 @@ def run_with_viewer(
     reached. ``on_stopped`` runs exactly once immediately before the viewer
     context is closed. Existing callers need none of these hooks.
     """
+    require_finite_positive(real_time_factor, "real_time_factor")
     adapter = session.adapter
     if not isinstance(adapter, MuJoCoBackendAdapter):
         raise BackendError("the viewer requires the MuJoCo backend")
@@ -99,7 +106,11 @@ def run_with_viewer(
                     after_step()
                 # Pace to wall clock so the run is watchable rather than a flash.
                 simulated_elapsed = session.world.time_s - simulated_start
-                target_wall_time = wall_start + min(simulated_elapsed, duration_s)
+                target_wall_time = wall_clock_deadline_s(
+                    wall_start,
+                    min(simulated_elapsed, duration_s),
+                    real_time_factor,
+                )
                 if not _wait_until(target_wall_time, should_stop):
                     break
 

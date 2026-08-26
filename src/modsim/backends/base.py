@@ -14,16 +14,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
+from modsim.core.entities import JointCommand
 from modsim.core.ids import (
     ConnectionId,
     ConnectorInstanceId,
     ConstraintHandle,
+    JointInstanceId,
     ModuleInstanceId,
 )
 from modsim.core.scene import SceneSpec
 from modsim.core.snapshot import BackendStateSnapshot
 from modsim.core.transforms import ZERO_VEC3, Transform, Vec3
-from modsim.robot_packs.schema import PhysicalConnectionSpec, RobotPack
+from modsim.robot_packs.schema import ControlMode, PhysicalConnectionSpec, RobotPack
 
 
 class BackendError(RuntimeError):
@@ -48,6 +50,16 @@ class BackendCapabilities:
     supports_module_pose_write: bool = False
     supports_joint_commands: bool = False
     supports_external_viewer: bool = False
+    supported_joint_control_modes: frozenset[ControlMode] = field(
+        default_factory=frozenset[ControlMode]
+    )
+
+    def __post_init__(self) -> None:
+        """Normalize the mode set and keep the legacy boolean meaningful."""
+        modes = frozenset(ControlMode(mode) for mode in self.supported_joint_control_modes)
+        object.__setattr__(self, "supported_joint_control_modes", modes)
+        if modes and not self.supports_joint_commands:
+            object.__setattr__(self, "supports_joint_commands", True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,6 +120,28 @@ class BackendHandleRegistry:
     connector_frames: Mapping[ConnectorInstanceId, str] = field(
         default_factory=dict[ConnectorInstanceId, str]
     )
+
+
+@runtime_checkable
+class SupportsJointCommands(Protocol):
+    """Optional backend ability to command scalar robot joints.
+
+    Commands arrive only after :class:`~modsim.runtime.session.RuntimeSession`
+    has resolved their stable IDs and validated their declared modes and
+    limits. Implementations must apply each tuple as one batch: either every
+    target is accepted or no target is changed.
+    """
+
+    def set_joint_commands(self, commands: tuple[JointCommand, ...]) -> None:
+        """Set a validated batch of persistent joint targets."""
+        ...
+
+    def clear_joint_commands(
+        self,
+        joints: tuple[JointInstanceId, ...] | None = None,
+    ) -> None:
+        """Clear selected persistent targets, or every target when omitted."""
+        ...
 
 
 @runtime_checkable

@@ -38,7 +38,7 @@ modsim runtime examples/robot_packs/generic_cube \
 ```
 
 Run the same two-module approach, docking, release, and retraction as an
-explicit named preset:
+explicit named demonstration:
 
 ```bash
 modsim runtime examples/robot_packs/generic_cube \
@@ -62,6 +62,13 @@ disabled otherwise. Programmatic `RuntimeInspectorConfig` construction keeps
 `viewer_enabled=False` as its conservative backward-compatible default, so API
 clients opt into creating a native companion explicitly.
 
+The CLI also resolves demo-aware physics defaults. A programmatic launch of
+`smores_diff_drive_dock_undock` must explicitly set `backend="mujoco"`,
+`gravity=True`, `ground=True`, `height_m>=0.04`, a positive retract speed (or
+leave it `None`), `dt_s<=0.005`, and a duration long enough for the cycle (the
+CLI uses 12 s). This keeps `RuntimeInspectorConfig` a literal launch request
+rather than silently rewriting values supplied by API clients.
+
 If both connector options are omitted, ModSim selects the first declared
 connector whose type is self-compatible. Supplying explicit connector IDs is
 recommended for real platforms because it makes the scenario intent
@@ -74,7 +81,7 @@ initial inspector renderer accepts only the module-topology graph result.
 The useful scenario controls are:
 
 ```text
---demo dock|dock_undock|smores_driver_to_snake
+--demo dock|dock_undock|smores_diff_drive_dock_undock|smores_driver_to_snake|smores_physical_driver_to_snake
 --connector-gap METRES
 --orientation RADIANS
 --approach METRES_PER_SECOND
@@ -83,32 +90,77 @@ The useful scenario controls are:
 --undock-at SECONDS
 --retract METRES_PER_SECOND
 --publish-hz HERTZ
+--speed FACTOR
 --gravity / --no-gravity
---ground
+--ground / --no-ground
 --height METRES
 --viewer / --no-viewer
 ```
 
-`--undock-at` is optional for `dock`. The `dock_undock` preset supplies a
+`--speed` (also accepted as `--real-time-factor`) controls wall-clock pacing:
+`1` is real time, `2` requests twice real time, and `0.5` requests slow motion.
+It never scales the physics timestep, motor limits, controller commands,
+simulated duration, or event timestamps. The target is best-effort—when model,
+contact, rendering, or hardware throughput is the limit, ModSim runs as fast as
+it can without skipping physics steps. `--publish-hz` remains a wall-clock UI
+refresh limit; event deltas remain contiguous and lossless at every speed.
+
+`--undock-at` is optional for `dock`. The `dock_undock` demonstration supplies a
 release time automatically unless `--undock-at` overrides it. After
 `UndockCommitted`, the edge is removed and the moving module retracts at the
 requested speed.
 
 ## Named demonstrations
 
-All named demonstrations run through the same generic
+The kinematic named demonstrations run through the generic
 `ScriptedReconfigurationScenario` engine. The two-module entries are small
-dock-only or dock-then-undock plan builders; they no longer have a separate
-phase machine. The SMORES-specific connector plan is example content at
+dock-only or dock-then-undock plan builders. The physical SMORES entry instead
+uses a differential-drive controller that sends bounded joint efforts while
+MuJoCo integrates contact and dynamics. Platform dimensions and tuned bootstrap
+parameters live in `examples/scenarios/smores_ep_diff_drive_dock_undock.py`.
+The seven-module SMORES connector plan is example content at
 `examples/scenarios/smores_driver_to_snake.py`, outside the installable
-`modsim.runtime` library. A source checkout loads that plan beside the committed
-SMORES Robot Pack when the named example is selected.
+`modsim.runtime` library. The physical platform configuration is likewise kept
+under `examples/scenarios`. A source checkout loads this example content beside
+the committed SMORES Robot Pack when either named example is selected. The pack itself may be
+opened from `examples/robot_packs`, copied, exported, or staged under `.modsim`;
+scenario discovery is anchored to the source checkout rather than to the pack's
+current directory.
 
 ### `dock` and `dock_undock`
 
-The connector-pair presets create exactly two modules. `dock` approaches and
+The connector-pair demonstrations create exactly two modules. `dock` approaches and
 commits one connection. `dock_undock` follows the same path, then releases the
 connection and retracts the moving module.
+
+### `smores_diff_drive_dock_undock`
+
+This is the first dynamics-based SMORES-EP locomotion demonstration. MuJoCo
+settles two free modules under gravity on the ground, actively brakes the fixed
+module, holds both pan/tilt joints, and drives the moving module's two tire
+joints toward the fixed module's rear `bottom` connector. Its front `pan`
+connector latches only after the measured frames satisfy the ordinary connector
+acceptance rules. After a one-second connected hold and an 80 ms face-release
+delay, the fixed weld is disabled and the moving module reverses through wheel
+effort. No root-pose writes occur after the one-time initial placement.
+
+```bash
+modsim runtime examples/robot_packs/smores_ep \
+  --backend mujoco \
+  --demo smores_diff_drive_dock_undock \
+  --model-view smores_topology
+```
+
+Gravity, the ground plane, a 0.05 m initial root height, a 0.02 m connector gap,
+a 0.002 s solver step, and a 12 s display duration are defaults for this demo.
+Its tire/skid contacts, friction, drivetrain damping/armature, effort limits,
+and feedback gains are provisional simulation bootstrap values. The latch is
+still an ideal fixed weld; magnetic attraction and electrical face-state
+dynamics are not yet modelled. The controller therefore continues inside the
+pack's broader 6 mm acceptance region to a 1 mm near-contact gate before
+latching. This tuned path requires `0 < --dt <= 0.005` and a positive retract
+speed. It starts from a deterministic heading-aligned pose; general navigation
+and recovery from arbitrary lateral/yaw offsets remain outside this slice.
 
 ### `smores_driver_to_snake`
 
@@ -146,8 +198,52 @@ the pack's `pan` connector and retains `bottom`, `left`, and `right`.
 ModSim executes those four pairs sequentially in Table III order using
 deterministic kinematic component staging. That ordering and motion staging are
 the demonstration's reproducible presentation, not a claim that ModSim has
-implemented the paper's autonomous planner, path planner, wheel control, or
-physical SMORES locomotion.
+implemented the paper's autonomous planner or path planner, or that this
+seven-module presentation uses physical SMORES locomotion.
+
+### `smores_physical_driver_to_snake`
+
+This demonstration executes the same Table III connector replacements through
+MuJoCo contact dynamics and SMORES wheel efforts:
+
+```bash
+modsim runtime examples/robot_packs/smores_ep \
+  --backend mujoco \
+  --demo smores_physical_driver_to_snake \
+  --model-view smores_topology \
+  --speed 4
+```
+
+The initial seven-module Driver tree is staged upright once at simulation time
+zero and settles under gravity. After that boundary the scenario cannot write
+module root poses or velocities and does not apply root wrenches. It submits one
+bounded all-module effort batch each controller step: stationary wheels are
+braked, pan/tilt joints are held, and the moving component's left/right wheels
+receive differential-drive targets. Actions one and two move individual leaf
+modules; actions three and four move connected three-module components.
+
+Every replacement follows the ordinary runtime lifecycle: an 80 ms release
+delay, weld removal, wheel-driven clearance/navigation, measured-frame final
+approach, compatibility and acceptance evaluation, fixed-weld commit, and a
+short connected hold. Active pan-face roll is aligned through its articulated
+joint before capture. The graph and event table therefore show four physical
+`6 → 5 → 6` transitions and the same final chain as the scripted demo.
+
+The CLI allocates a 210-second simulated display run; the current reference
+trace reaches the final connected hold in about 177 simulated seconds. At 4×,
+those correspond nominally to 52.5 and about 44 wall-clock seconds. The physics
+trajectory is unchanged from 1×, and the native viewer retains the completed
+configuration until Stop or close. Actual throughput can be lower than the
+requested factor on a compute- or render-limited machine.
+
+The 2019 paper specifies the endpoint topologies and connector replacements,
+not an end-to-end hardware trajectory for this Driver-to-Snake task. ModSim's
+collision-clearance corridors and feedback tuning are deterministic authored
+example data. They use the published differential-drive/unicycle control model
+as a basis, but this remains a physics realization rather than autonomous
+planning or a replay of measured robot motion. Tire/skid contact, motor effort,
+support geometry, magnetic capture, and the post-capture ideal weld retain the
+provisional limitations described for the two-module physical demo.
 
 ## Reproducible SMORES-EP workflows
 
@@ -241,7 +337,24 @@ module then retracts so the released bodies visibly separate. The final state
 has two modules, two assemblies, no active connection, one successful dock,
 and one successful undock.
 
-For the same lifecycle without Qt or a native viewer, run:
+### Two modules: physical differential-drive dock and undock
+
+```bash
+modsim runtime examples/robot_packs/smores_ep \
+  --backend mujoco \
+  --demo smores_diff_drive_dock_undock \
+  --model-view smores_topology
+```
+
+Unlike the preceding scripted demonstration, this path enables gravity and the
+ground by default and moves through the left/right wheel joints. The graph still
+follows `0 → 1 → 0` edges, while the native viewer shows tire contact, a physical
+approach, the held connection, release, and reverse separation. Expected final
+metrics are one successful dock, one successful undock, zero failures, two
+assemblies, and no active connection. Keep `--dt` at or below 0.005 s.
+
+For a fully non-GUI version of the scripted lifecycle (not the wheel-driven
+physics controller), run:
 
 ```bash
 modsim run examples/robot_packs/smores_ep \
@@ -361,8 +474,10 @@ same simulation.
 
 ## Window lifetime and logging
 
-The scenario is paced to wall clock while both windows are open. When its
-configured duration ends, the final state remains visible for inspection.
+The scenario is paced to the requested wall-clock real-time factor while both
+windows are open. The factor is fixed for one launch and applies equally to the
+native-viewer process and `--no-viewer` worker path. When the configured
+simulated duration ends, the final state remains visible for inspection.
 Closing the Runtime Inspector requests a cooperative child shutdown and closes
 the native viewer. Closing the native viewer first ends the simulation while
 leaving the last complete graph and event log visible in the Runtime Inspector.
@@ -385,12 +500,14 @@ the launch fails with an installation-oriented message instead of a raw Cocoa
 or GLFW traceback. If only the MuJoCo native window is unavailable, use
 `--no-viewer`; the Qt semantic window still needs a display or Xvfb.
 
-The first inspector has one graph renderer, one event table, one generic
+The first inspector has one graph renderer, one event table, a generic scripted
 scenario engine with small connector-pair plan builders, one external
-seven-module example plan, and a Stop control. General scenes, autonomous
-reconfiguration planning, pause/restart controls, live joint commands, metric
-plots, docking-lifecycle panels, additional model-view renderers, and a
-combined authoring/runtime shell remain later increments.
+seven-module example plan, one physical SMORES differential-drive controller,
+and a Stop control. General scenes, autonomous reconfiguration planning,
+pause/restart controls, interactive/manual joint controls, position/velocity
+backend command modes, metric plots, docking-lifecycle panels, additional
+model-view renderers, and a combined authoring/runtime shell remain later
+increments.
 
 Runtime Inspector launches use the same repository-local, truncated Studio log
 described in `studio.md`. Worker or child startup, validation, backend,

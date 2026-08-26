@@ -4,17 +4,19 @@ ModSim is a Python-first, backend-agnostic framework for modular and multi-robot
 systems. Robot Packs describe hardware and docking semantics; ModSim owns the
 canonical world state and event log; backend adapters own physics.
 
-The pre-alpha project currently supports seven core workflows:
+The pre-alpha project currently supports eight core workflows:
 
 - import a local URDF into a self-contained Robot Pack;
 - author and validate Robot Packs with strict split-YAML schemas;
 - edit packs in the PySide6/PyVista Studio application;
 - run docking and undocking through a backend-neutral runtime;
-- simulate fixed connections with the optional MuJoCo adapter;
+- simulate fixed connections and bounded joint-effort commands with MuJoCo;
+- run physical SMORES-EP differential-drive docking and seven-module
+  reconfiguration on a ground plane;
 - generate immutable model-view snapshots; and
 - inspect live topology, events, status, and metrics in the Runtime Inspector.
 
-Isaac Sim integration, actuator and joint-command execution, autonomous
+Isaac Sim integration, actuator/transmission catalogs, autonomous
 reconfiguration planning, and non-fixed MuJoCo connections are not yet
 implemented. The `simulation` profile checks structural readiness; it does not
 launch a simulator.
@@ -103,12 +105,12 @@ single authoritative process owns the runtime. With MuJoCo, a separate native
 3D viewer opens by default; `--no-viewer` suppresses it while retaining the Qt
 inspector. Use `modsim run` for a fully non-GUI execution.
 
-The larger `examples/robot_packs/smores_ep` pack includes the `dock`,
-`dock_undock`, and `smores_driver_to_snake` demonstrations. Its geometry and
-connector values are example data, not certified hardware specifications. The
-platform-specific Driver-to-Snake plan lives in
-`examples/scenarios/smores_driver_to_snake.py`; all three demonstrations use
-the same generic runtime scenario engine.
+The larger `examples/robot_packs/smores_ep` pack includes `dock`,
+`dock_undock`, `smores_diff_drive_dock_undock`,
+`smores_driver_to_snake`, and `smores_physical_driver_to_snake`. The physical
+demonstrations use measured joint feedback and bounded MuJoCo effort actuators;
+their platform-specific controller parameters and routes live under
+`examples/scenarios/`.
 
 See [Runtime Inspector](docs/runtime_inspector.md) for the execution boundary,
 controls, and named demonstrations.
@@ -145,7 +147,47 @@ modsim runtime examples/robot_packs/smores_ep \
   --no-gravity
 ```
 
-Run the same pair through docking, undocking, and visible retraction:
+Run the physical two-module demonstration first when evaluating SMORES
+locomotion and docking:
+
+```bash
+modsim runtime examples/robot_packs/smores_ep \
+  --backend mujoco \
+  --demo smores_diff_drive_dock_undock \
+  --model-view smores_topology
+```
+
+That command supplies the physics defaults: MuJoCo, gravity, the ground plane,
+a 5 cm initial root height, a 2 cm connector gap, a 2 ms solver step, and a
+12-second run. The moving module drives its `pan`/TOP face into the target's
+rear `bottom` face through the left/right wheel joints. The graph follows
+`0 → 1 → 0` edges while the event log records candidate, dock, merge, undock,
+and split events. After an 80 ms release delay, the moving module reverses away
+under wheel effort. Both windows retain the final state until Stop or close.
+The generic connector acceptance region remains 6 mm, but this physical
+controller continues driving until the measured face-frame separation is at
+most 1 mm before creating the ideal weld, avoiding a visibly floating latch.
+
+The pack-local MJCF uses Fusion-derived 40 mm tire radius and 67.2 mm track
+geometry. The published wheel-speed cap is 90°/s; the controller clips to that
+limit. Tire friction, actuator effort limits and gains, joint damping/armature,
+and the small rear support skid are explicitly provisional simulation
+parameters, not measured hardware constants. Locomotion and contact are
+dynamic, but EP-face magnetic attraction is not yet modeled: once measured
+acceptance and the 1 mm near-contact gate succeed, the latch is represented by
+an ideal fixed weld. Keep `--dt` at or below 0.005 s for this tuned model. See the
+[SMORES-EP project](https://www.modlabupenn.org/smores-ep/),
+the [assembly controller paper](https://www.modlabupenn.org/wp-content/uploads/2022/03/liu_smores_assembly_2020.pdf),
+and the [EP-face characterization](https://www.modlabupenn.org/wp-content/uploads/tosun2016epface.pdf)
+for the hardware/control basis.
+
+This first dynamics slice starts the two modules in a deterministic, already
+heading-aligned approach. It demonstrates differential-drive actuation and
+contact, not yet robust navigation or recovery from arbitrary lateral/yaw
+errors.
+
+Run the older kinematic pair through docking, undocking, and visible
+retraction:
 
 ```bash
 modsim runtime examples/robot_packs/smores_ep \
@@ -182,6 +224,40 @@ connections, performs four `6 → 5 → 6` edge transitions, and ends in the cha
 [Runtime Inspector examples](docs/runtime_inspector.md#reproducible-smores-ep-workflows)
 for expected events, metrics, connector substitutions, viewer behavior, and a
 fully headless two-module alternative.
+
+Run the corresponding wheel-driven physics realization with gravity and the
+ground enabled by its demo defaults:
+
+```bash
+modsim runtime examples/robot_packs/smores_ep \
+  --backend mujoco \
+  --demo smores_physical_driver_to_snake \
+  --model-view smores_topology \
+  --speed 4
+```
+
+The initial Driver tree is placed upright once at simulation time zero. Each
+published connector replacement then releases the existing weld, drives either
+one module or its connected three-module component through an authored route,
+and commits the replacement only after measured connector acceptance. No root
+pose, root velocity, or external wrench is injected after initialization. The
+viewer therefore shows wheel/contact dynamics throughout all four
+`6 → 5 → 6` graph transitions.
+
+The command reserves 210 simulated seconds. `--speed 4` requests four simulated
+seconds per wall-clock second without changing the physics timestep, motor
+limits, controller targets, or event timestamps. The tuned reference run still
+completes at about 177 simulated seconds—nominally about 44 seconds of wall time
+at 4×—and the full display budget is nominally 52.5 seconds. Omit `--speed` for
+real-time pacing, or choose any positive factor such as `2`, `3`, or `0.5` for
+slow motion. Pacing is best-effort when the CPU/GPU cannot keep up. Both windows
+hold the final chain until Stop or close.
+
+This is a ModSim physics realization of the topology plan in Liu, Whitzer, and
+Yim's [2019 Driver-to-Snake example](https://www.modlabupenn.org/wp-content/uploads/2019/08/chao_smores_reconfiguration_2019.pdf),
+not a reproduction of published hardware trajectories or an autonomous path
+planner. The collision-clearance routes, contact parameters, control gains,
+and ideal post-capture weld are provisional simulation choices.
 
 ## Python API
 

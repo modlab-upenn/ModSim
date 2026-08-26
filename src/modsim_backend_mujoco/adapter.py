@@ -21,14 +21,17 @@ from modsim.backends.base import (
     ConnectionOutcome,
     ConnectionRequest,
 )
+from modsim.core.entities import JointCommand
 from modsim.core.ids import (
     ConnectorInstanceId,
     ConstraintHandle,
+    JointInstanceId,
     ModuleInstanceId,
     split_connector_instance_id,
+    split_joint_instance_id,
 )
 from modsim.core.scene import SceneSpec
-from modsim.core.snapshot import BackendStateSnapshot, BodyState
+from modsim.core.snapshot import BackendStateSnapshot, BodyState, JointState
 from modsim.core.transforms import (
     ZERO_VEC3,
     Quat,
@@ -37,14 +40,16 @@ from modsim.core.transforms import (
     quat_conjugate,
     quat_rotate,
 )
-from modsim.robot_packs.schema import PhysicalConstraintType, RobotPack
-from modsim_backend_mujoco.scene import DEFAULT_GRAVITY, CompiledScene, build_scene
+from modsim.robot_packs.schema import ControlMode, PhysicalConstraintType, RobotPack
+from modsim_backend_mujoco.scene import DEFAULT_GRAVITY, GROUND_GEOM, CompiledScene, build_scene
 from modsim_backend_mujoco.welds import (
     ANCHOR,
     RELPOSE_POSITION,
     RELPOSE_ROTATION,
     RIGID_TORQUE_SCALE,
     TORQUE_SCALE,
+    ContactExclusionPool,
+    ContactExclusionPoolExhaustedError,
     WeldPool,
     WeldPoolExhaustedError,
     body_relative_transform,
@@ -58,6 +63,7 @@ class MuJoCoBackendAdapter:
 
     __slots__ = (
         "_compiled",
+        "_contact_exclusions",
         "_data",
         "_gravity",
         "_ground",
@@ -86,6 +92,7 @@ class MuJoCoBackendAdapter:
         self._data: mujoco.MjData | None = None
         self._scene: SceneSpec | None = None
         self._welds = WeldPool()
+        self._contact_exclusions = ContactExclusionPool()
 
     # ------------------------------------------------------------------
     # BackendAdapter protocol
@@ -106,9 +113,8 @@ class MuJoCoBackendAdapter:
             supports_constraint_forces=False,
             supports_contact_forces=True,
             supports_module_pose_write=True,
-            # The imported model may contain joints, but ModSim does not yet
-            # expose a joint-command API or populate actuator handles.
-            supports_joint_commands=False,
+            supports_joint_commands=True,
+            supported_joint_control_modes=frozenset({ControlMode.EFFORT}),
             supports_external_viewer=True,
         )
 
@@ -139,6 +145,7 @@ class MuJoCoBackendAdapter:
         self._scene = scene
         self._data = mujoco.MjData(compiled.model)
         self._welds = WeldPool.over(compiled.weld_pool)
+        self._contact_exclusions = ContactExclusionPool.over(compiled.contact_exclusion_pool)
         mujoco.mj_forward(compiled.model, self._data)
         return compiled.handles
 
@@ -157,7 +164,15 @@ class MuJoCoBackendAdapter:
             return
         steps = max(1, math.floor(dt_s / model.opt.timestep + 0.5))
         for _ in range(steps):
-            mujoco.mj_step(model, data)
+            if self._require_compiled().anisotropic_ground_geoms:
+                # MuJoCo's plane collision frame is world-aligned. Split the
+                # step so tire contacts can rotate tangent one onto the axle
+                # before the solver consumes anisotropic pair friction.
+                mujoco.mj_step1(model, data)
+                self._align_anisotropic_ground_contacts(model, data)
+                mujoco.mj_step2(model, data)
+            else:
+                mujoco.mj_step(model, data)
 
     def snapshot(self) -> BackendStateSnapshot:
         """Read link poses, world twists, and connector site frames."""
@@ -188,11 +203,71 @@ class MuJoCoBackendAdapter:
                 rotation=_mat_to_quat(data.site_xmat[site_id]),
             )
 
+        joint_states: dict[ModuleInstanceId, dict[str, JointState]] = {}
+        for (module_id, joint_id), native_joint_id in compiled.joint_ids.items():
+            qpos_address = int(model.jnt_qposadr[native_joint_id])
+            dof_address = int(model.jnt_dofadr[native_joint_id])
+            actuator_id = compiled.actuator_ids.get((module_id, joint_id))
+            effort = 0.0 if actuator_id is None else float(data.actuator_force[actuator_id])
+            joint_states.setdefault(module_id, {})[joint_id] = JointState(
+                position=float(data.qpos[qpos_address]),
+                velocity=float(data.qvel[dof_address]),
+                effort=effort,
+            )
+
         return BackendStateSnapshot(
             time_s=float(data.time),
             link_states=link_states,
+            joint_states=joint_states,
             connector_frames=connector_frames,
         )
+
+    def set_joint_commands(self, commands: tuple[JointCommand, ...]) -> None:
+        """Set a validated batch of persistent effort commands atomically."""
+        _, data = self._require_loaded()
+        compiled = self._require_compiled()
+        updates: list[tuple[int, float]] = []
+        for command in commands:
+            if command.mode is not ControlMode.EFFORT:
+                raise BackendError(
+                    "the MuJoCo backend currently supports only effort joint commands; "
+                    f"received '{command.mode.value}' for '{command.joint}'"
+                )
+            module_id, joint_id = _split_joint(command.joint)
+            try:
+                actuator_id = compiled.actuator_ids[(module_id, joint_id)]
+            except KeyError as error:
+                raise BackendError(
+                    f"joint '{command.joint}' has no MuJoCo effort actuator"
+                ) from error
+            updates.append((actuator_id, command.value))
+
+        # Resolve the entire batch before mutating ctrl so an invalid later
+        # target cannot leave an earlier one applied.
+        for actuator_id, value in updates:
+            data.ctrl[actuator_id] = value
+
+    def clear_joint_commands(
+        self,
+        joints: tuple[JointInstanceId, ...] | None = None,
+    ) -> None:
+        """Set selected persistent effort targets, or every target, to zero."""
+        _, data = self._require_loaded()
+        compiled = self._require_compiled()
+        if joints is None:
+            actuator_ids = tuple(compiled.actuator_ids.values())
+        else:
+            resolved: list[int] = []
+            for joint in joints:
+                module_id, joint_id = _split_joint(joint)
+                try:
+                    resolved.append(compiled.actuator_ids[(module_id, joint_id)])
+                except KeyError as error:
+                    raise BackendError(f"joint '{joint}' has no MuJoCo effort actuator") from error
+            actuator_ids = tuple(resolved)
+
+        for actuator_id in actuator_ids:
+            data.ctrl[actuator_id] = 0.0
 
     def create_physical_connection(self, request: ConnectionRequest) -> ConnectionOutcome:
         """Claim a reserved weld slot and activate it for this connector pair.
@@ -223,26 +298,39 @@ class MuJoCoBackendAdapter:
             slot = self._welds.claim(handle)
         except WeldPoolExhaustedError as error:
             return ConnectionOutcome.refused(str(error))
+        try:
+            self._contact_exclusions.claim(handle, body_a, body_b)
+        except (ContactExclusionPoolExhaustedError, ValueError) as error:
+            self._welds.release(handle)
+            return ConnectionOutcome.refused(str(error))
 
-        if request.snap_to_nominal:
-            self._snap_to_nominal(request, body_a, body_b)
-
-        relative = body_relative_transform(
-            request.connector_a_local,
-            request.connector_b_local,
-            request.relative_transform,
-        )
         equality = slot.equality_id
-        model.eq_type[equality] = mujoco.mjtEq.mjEQ_WELD
-        model.eq_objtype[equality] = mujoco.mjtObj.mjOBJ_BODY
-        model.eq_obj1id[equality] = body_a
-        model.eq_obj2id[equality] = body_b
-        model.eq_data[equality, ANCHOR] = 0.0
-        model.eq_data[equality, RELPOSE_POSITION] = relative.translation
-        model.eq_data[equality, RELPOSE_ROTATION] = relative.rotation
-        model.eq_data[equality, TORQUE_SCALE] = RIGID_TORQUE_SCALE
-        data.eq_active[equality] = 1
-        mujoco.mj_forward(model, data)
+        try:
+            if request.snap_to_nominal:
+                self._snap_to_nominal(request, body_a, body_b)
+
+            relative = body_relative_transform(
+                request.connector_a_local,
+                request.connector_b_local,
+                request.relative_transform,
+            )
+            model.eq_type[equality] = mujoco.mjtEq.mjEQ_WELD
+            model.eq_objtype[equality] = mujoco.mjtObj.mjOBJ_BODY
+            model.eq_obj1id[equality] = body_a
+            model.eq_obj2id[equality] = body_b
+            model.eq_data[equality, ANCHOR] = 0.0
+            model.eq_data[equality, RELPOSE_POSITION] = relative.translation
+            model.eq_data[equality, RELPOSE_ROTATION] = relative.rotation
+            model.eq_data[equality, TORQUE_SCALE] = RIGID_TORQUE_SCALE
+            self._sync_contact_exclusions(model)
+            data.eq_active[equality] = 1
+            mujoco.mj_forward(model, data)
+        except Exception:
+            data.eq_active[equality] = 0
+            self._contact_exclusions.release(handle)
+            self._welds.release(handle)
+            self._sync_contact_exclusions(model)
+            raise
         return ConnectionOutcome.accepted(handle)
 
     def remove_physical_connection(self, handle: ConstraintHandle) -> bool:
@@ -252,12 +340,15 @@ class MuJoCoBackendAdapter:
         if slot is None:
             return False
         data.eq_active[slot.equality_id] = 0
+        self._contact_exclusions.release(handle)
+        self._sync_contact_exclusions(model)
         mujoco.mj_forward(model, data)
         return True
 
     def shutdown(self) -> None:
         """Release the compiled model and its data."""
         self._welds.clear()
+        self._contact_exclusions.clear()
         self._compiled = None
         self._data = None
         self._scene = None
@@ -446,6 +537,48 @@ class MuJoCoBackendAdapter:
                 dof_count = dof_counts[joint_type]
                 data.qvel[dof_start : dof_start + dof_count] = 0.0
 
+    def _sync_contact_exclusions(self, model: mujoco.MjModel) -> None:
+        """Publish authored and occupied exclusion signatures in search order."""
+        compiled = self._require_compiled()
+        active = self._contact_exclusions.active_signatures
+        inactive_count = self._contact_exclusions.capacity - len(active)
+        signatures = sorted(
+            (*compiled.static_contact_exclusions, *(0 for _ in range(inactive_count)), *active)
+        )
+        if len(signatures) != model.nexclude:
+            raise BackendError("MuJoCo contact-exclusion pool is inconsistent with the model")
+        model.exclude_signature[:] = signatures
+
+    def _align_anisotropic_ground_contacts(
+        self,
+        model: mujoco.MjModel,
+        data: mujoco.MjData,
+    ) -> None:
+        """Align tire pair friction with each wheel's current world-frame axle."""
+        compiled = self._require_compiled()
+        tire_geoms = set(compiled.anisotropic_ground_geoms)
+        ground_id = model.geom(GROUND_GEOM).id
+        for contact in data.contact:
+            first, second = int(contact.geom[0]), int(contact.geom[1])
+            if first == ground_id and second in tire_geoms:
+                tire = second
+            elif second == ground_id and first in tire_geoms:
+                tire = first
+            else:
+                continue
+
+            frame = np.asarray(contact.frame).reshape(3, 3)
+            normal = frame[0]
+            geom_rotation = data.geom_xmat[tire].reshape(3, 3)
+            axle = geom_rotation[:, 2]
+            tangent = axle - normal * float(np.dot(axle, normal))
+            magnitude = float(np.linalg.norm(tangent))
+            if magnitude <= 1e-12:
+                continue
+            tangent /= magnitude
+            frame[1] = tangent
+            frame[2] = np.cross(normal, tangent)
+
 
 def _vec3(values: object) -> Vec3:
     array = np.asarray(values, dtype=float)
@@ -465,3 +598,10 @@ def _mat_to_quat(matrix: object) -> Quat:
 
 def _split(instance: ConnectorInstanceId) -> tuple[ModuleInstanceId, str]:
     return split_connector_instance_id(instance)
+
+
+def _split_joint(instance: JointInstanceId) -> tuple[ModuleInstanceId, str]:
+    try:
+        return split_joint_instance_id(instance)
+    except ValueError as error:
+        raise BackendError(str(error)) from error

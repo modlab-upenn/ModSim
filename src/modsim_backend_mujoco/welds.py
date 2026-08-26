@@ -31,6 +31,20 @@ class WeldPoolExhaustedError(RuntimeError):
     """Raised when every reserved weld slot is already in use."""
 
 
+class ContactExclusionPoolExhaustedError(RuntimeError):
+    """Raised when every reserved collision-exclusion slot is in use."""
+
+
+def collision_signature(body_a: int, body_b: int) -> int:
+    """Return MuJoCo's canonical collision-exclusion body-pair signature."""
+    if body_a == body_b:
+        raise ValueError("a contact exclusion requires two different bodies")
+    first, second = sorted((body_a, body_b))
+    if first < 0 or second >= 1 << 16:
+        raise ValueError("MuJoCo contact exclusions require 16-bit non-negative body ids")
+    return (first << 16) | second
+
+
 def body_relative_transform(
     connector_a_local: Transform,
     connector_b_local: Transform,
@@ -123,4 +137,96 @@ class WeldPool:
         """Release every slot."""
         for slot in self.slots:
             slot.handle = None
+        self._by_handle.clear()
+
+
+@dataclass(slots=True)
+class ContactExclusionSlot:
+    """One reserved exclusion entry and the body pair currently occupying it."""
+
+    reservation_id: int
+    handle: ConstraintHandle | None = None
+    signature: int = 0
+
+    @property
+    def free(self) -> bool:
+        """Whether this slot can be claimed."""
+        return self.handle is None
+
+
+@dataclass(slots=True)
+class ContactExclusionPool:
+    """Allocator over mutable collision-exclusion signatures.
+
+    MuJoCo searches the model's exclusion signatures in sorted order. The pool
+    owns connection-to-signature bookkeeping; the adapter rewrites and sorts
+    the compiled array atomically after every claim or release.
+    """
+
+    slots: tuple[ContactExclusionSlot, ...] = ()
+    _by_handle: dict[ConstraintHandle, ContactExclusionSlot] = field(
+        default_factory=dict[ConstraintHandle, ContactExclusionSlot]
+    )
+
+    @classmethod
+    def over(cls, reservation_ids: tuple[int, ...]) -> ContactExclusionPool:
+        """Build a pool over the given precompiled exclusion reservations."""
+        return cls(
+            slots=tuple(
+                ContactExclusionSlot(reservation_id=identifier) for identifier in reservation_ids
+            )
+        )
+
+    @property
+    def capacity(self) -> int:
+        """Total number of reserved entries."""
+        return len(self.slots)
+
+    @property
+    def in_use(self) -> int:
+        """Number of entries currently suppressing a body pair."""
+        return len(self._by_handle)
+
+    @property
+    def active_signatures(self) -> tuple[int, ...]:
+        """Return occupied signatures, ready for sorting into the model."""
+        return tuple(slot.signature for slot in self.slots if not slot.free)
+
+    def claim(
+        self,
+        handle: ConstraintHandle,
+        body_a: int,
+        body_b: int,
+    ) -> ContactExclusionSlot:
+        """Reserve the lowest free entry for one welded body pair."""
+        if handle in self._by_handle:
+            raise ContactExclusionPoolExhaustedError(
+                f"constraint '{handle}' already holds a contact-exclusion slot"
+            )
+        signature = collision_signature(body_a, body_b)
+        for slot in self.slots:
+            if slot.free:
+                slot.handle = handle
+                slot.signature = signature
+                self._by_handle[handle] = slot
+                return slot
+        raise ContactExclusionPoolExhaustedError(
+            f"all {self.capacity} reserved contact-exclusion slots are in use; "
+            "raise weld_pool_size when constructing the backend"
+        )
+
+    def release(self, handle: ConstraintHandle) -> ContactExclusionSlot | None:
+        """Free the entry held by ``handle``, if any."""
+        slot = self._by_handle.pop(handle, None)
+        if slot is None:
+            return None
+        slot.handle = None
+        slot.signature = 0
+        return slot
+
+    def clear(self) -> None:
+        """Release every entry."""
+        for slot in self.slots:
+            slot.handle = None
+            slot.signature = 0
         self._by_handle.clear()

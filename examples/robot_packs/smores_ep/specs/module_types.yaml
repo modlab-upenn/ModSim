@@ -15,8 +15,17 @@ module_types:
           - 0.0
           - 1.0
           - 0.0
-        control_modes: []
-        limits: null
+        control_modes:
+          - effort
+        limits:
+          lower_position_rad: null
+          upper_position_rad: null
+          lower_position_m: null
+          upper_position_m: null
+          max_velocity_rad_per_s: 1.5707963267948966
+          max_velocity_m_per_s: null
+          max_effort_nm: 0.04
+          max_effort_n: null
       - id: joint_right_wheel
         source_joint_name: joint_right_wheel
         type: continuous
@@ -26,8 +35,17 @@ module_types:
           - 0.0
           - 1.0
           - 0.0
-        control_modes: []
-        limits: null
+        control_modes:
+          - effort
+        limits:
+          lower_position_rad: null
+          upper_position_rad: null
+          lower_position_m: null
+          upper_position_m: null
+          max_velocity_rad_per_s: 1.5707963267948966
+          max_velocity_m_per_s: null
+          max_effort_nm: 0.04
+          max_effort_n: null
       - id: joint_tilt
         source_joint_name: joint_tilt
         type: revolute
@@ -37,15 +55,16 @@ module_types:
           - 0.0
           - 1.0
           - 0.0
-        control_modes: []
+        control_modes:
+          - effort
         limits:
           lower_position_rad: -1.570796
           upper_position_rad: 1.570796
           lower_position_m: null
           upper_position_m: null
-          max_velocity_rad_per_s: 100.0
+          max_velocity_rad_per_s: null
           max_velocity_m_per_s: null
-          max_effort_nm: 100.0
+          max_effort_nm: 0.1
           max_effort_n: null
       - id: joint_pan
         source_joint_name: joint_pan
@@ -56,8 +75,17 @@ module_types:
           - 1.0
           - 0.0
           - 0.0
-        control_modes: []
-        limits: null
+        control_modes:
+          - effort
+        limits:
+          lower_position_rad: null
+          upper_position_rad: null
+          lower_position_m: null
+          upper_position_m: null
+          max_velocity_rad_per_s: null
+          max_velocity_m_per_s: null
+          max_effort_nm: 0.1
+          max_effort_n: null
     connectors:
       - id: bottom
         connector_type: ep_face

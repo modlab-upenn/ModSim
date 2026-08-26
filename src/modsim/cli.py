@@ -48,6 +48,7 @@ from modsim.robot_packs import (
 )
 from modsim.runtime import RuntimeDemo, RuntimeInspectorConfig
 from modsim.runtime.inspection import format_event_detail
+from modsim.runtime.physics_docking import MAX_PHYSICAL_TIMESTEP_S
 from modsim.runtime.reconfiguration import (
     ReconfigurationPlanError,
     ReconfigurationScenarioError,
@@ -164,8 +165,9 @@ def runtime_command(
             "--demo",
             case_sensitive=False,
             help=(
-                "Named scenario: dock, dock_undock, or the seven-module "
-                "smores_driver_to_snake reconfiguration."
+                "Named scenario: dock, dock_undock, physical SMORES differential-drive "
+                "docking, or scripted/physical seven-module Driver-to-Snake "
+                "reconfiguration."
             ),
         ),
     ] = RuntimeDemo.DOCK,
@@ -188,13 +190,16 @@ def runtime_command(
         ),
     ] = None,
     connector_gap_m: Annotated[
-        float,
+        float | None,
         typer.Option(
             "--connector-gap",
             min=0.0,
-            help="Staged separation between connector origins before approach.",
+            help=(
+                "Staged separation between connector origins before approach. "
+                "Defaults to 0.02 m for demos that use pair staging."
+            ),
         ),
-    ] = 0.02,
+    ] = None,
     orientation_rad: Annotated[
         float,
         typer.Option(
@@ -233,20 +238,28 @@ def runtime_command(
         typer.Option("--backend", "-b", help="Physics backend used by the runtime owner."),
     ] = "mujoco",
     gravity: Annotated[
-        bool,
+        bool | None,
         typer.Option(
             "--gravity/--no-gravity",
-            help="Gravity is off by default to isolate the docking demonstration.",
+            help=(
+                "Enable gravity. Defaults on for physical SMORES demos and off for kinematic demos."
+            ),
         ),
-    ] = False,
+    ] = None,
     ground: Annotated[
-        bool,
-        typer.Option("--ground", help="Add a backend ground plane at z = 0."),
-    ] = False,
+        bool | None,
+        typer.Option(
+            "--ground/--no-ground",
+            help=(
+                "Add a ground plane at z = 0. Defaults on for physical SMORES demos "
+                "and off otherwise."
+            ),
+        ),
+    ] = None,
     height_m: Annotated[
-        float,
+        float | None,
         typer.Option("--height", help="Lift demo modules above the scene origin."),
-    ] = 0.0,
+    ] = None,
     view_id: Annotated[
         str | None,
         typer.Option(
@@ -258,6 +271,17 @@ def runtime_command(
         float,
         typer.Option("--publish-hz", help="Maximum inspector refresh frequency."),
     ] = 20.0,
+    real_time_factor: Annotated[
+        float,
+        typer.Option(
+            "--speed",
+            "--real-time-factor",
+            help=(
+                "Wall-clock playback factor (1 = real time, 2 = twice as fast). "
+                "Physics, motors, and simulated duration are unchanged."
+            ),
+        ),
+    ] = 1.0,
     viewer: Annotated[
         bool | None,
         typer.Option(
@@ -276,17 +300,27 @@ def runtime_command(
         else {
             RuntimeDemo.DOCK: 4.0,
             RuntimeDemo.DOCK_UNDOCK: 6.0,
+            RuntimeDemo.SMORES_DIFF_DRIVE_DOCK_UNDOCK: 12.0,
             RuntimeDemo.SMORES_DRIVER_TO_SNAKE: 14.0,
+            RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE: 210.0,
         }[demo]
     )
+    physical_pair = demo is RuntimeDemo.SMORES_DIFF_DRIVE_DOCK_UNDOCK
+    physical_reconfiguration = demo is RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE
+    physical_smores = physical_pair or physical_reconfiguration
+    resolved_gravity = physical_smores if gravity is None else gravity
+    resolved_ground = physical_smores if ground is None else ground
+    resolved_height_m = 0.05 if physical_smores and height_m is None else (height_m or 0.0)
     _require_positive_finite(resolved_duration_s, "--duration")
     _require_positive_finite(dt_s, "--dt")
     _require_positive_finite(approach_m_s, "--approach")
     _require_positive_finite(publish_hz, "--publish-hz")
-    _require_finite(connector_gap_m, "--connector-gap")
+    _require_positive_finite(real_time_factor, "--speed")
+    if connector_gap_m is not None:
+        _require_finite(connector_gap_m, "--connector-gap")
     _require_finite(orientation_rad, "--orientation")
-    _require_finite(height_m, "--height")
-    if connector_gap_m < 0.0:
+    _require_finite(resolved_height_m, "--height")
+    if connector_gap_m is not None and connector_gap_m < 0.0:
         typer.echo("--connector-gap must not be negative.", err=True)
         raise typer.Exit(code=2)
     if retract_m_s is not None:
@@ -327,10 +361,126 @@ def runtime_command(
                 err=True,
             )
             raise typer.Exit(code=2)
-        if gravity or ground:
+        if resolved_gravity or resolved_ground:
             typer.echo(
                 "--demo smores_driver_to_snake currently requires --no-gravity and no "
                 "ground plane; supported locomotion is not implemented yet.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+    if physical_pair:
+        if fixed_connector is not None or moving_connector is not None:
+            typer.echo(
+                "--demo smores_diff_drive_dock_undock uses fixed bottom and moving pan; "
+                "do not supply --fixed-connector or --moving-connector.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if undock_at_s is not None:
+            typer.echo(
+                "--demo smores_diff_drive_dock_undock performs its own release; "
+                "do not supply --undock-at.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if orientation_rad != 0.0:
+            typer.echo(
+                "--demo smores_diff_drive_dock_undock keeps both modules upright; "
+                "do not supply --orientation.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if backend != "mujoco":
+            typer.echo(
+                "--demo smores_diff_drive_dock_undock requires --backend mujoco.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if not resolved_gravity or not resolved_ground:
+            typer.echo(
+                "--demo smores_diff_drive_dock_undock requires gravity and ground; "
+                "do not pass --no-gravity or --no-ground.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if resolved_height_m < 0.04:
+            typer.echo(
+                "--demo smores_diff_drive_dock_undock requires --height >= 0.04.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if dt_s > MAX_PHYSICAL_TIMESTEP_S:
+            typer.echo(
+                "--demo smores_diff_drive_dock_undock requires --dt <= "
+                f"{MAX_PHYSICAL_TIMESTEP_S:g} for its tuned contact/controller model.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if retract_m_s == 0.0:
+            typer.echo(
+                "--demo smores_diff_drive_dock_undock requires --retract > 0.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+    if physical_reconfiguration:
+        if fixed_connector is not None or moving_connector is not None:
+            typer.echo(
+                "--demo smores_physical_driver_to_snake defines its connector actions; "
+                "do not supply --fixed-connector or --moving-connector.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if undock_at_s is not None:
+            typer.echo(
+                "--demo smores_physical_driver_to_snake defines its own releases; "
+                "do not supply --undock-at.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if connector_gap_m is not None:
+            typer.echo(
+                "--demo smores_physical_driver_to_snake defines its initial "
+                "seven-module staging; do not supply --connector-gap.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if retract_m_s is not None:
+            typer.echo(
+                "--demo smores_physical_driver_to_snake defines its wheel-driven "
+                "routes; do not supply --retract.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if orientation_rad != 0.0:
+            typer.echo(
+                "--demo smores_physical_driver_to_snake keeps the staged modules "
+                "upright; do not supply --orientation.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if backend != "mujoco":
+            typer.echo(
+                "--demo smores_physical_driver_to_snake requires --backend mujoco.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if not resolved_gravity or not resolved_ground:
+            typer.echo(
+                "--demo smores_physical_driver_to_snake requires gravity and ground; "
+                "do not pass --no-gravity or --no-ground.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if resolved_height_m < 0.04:
+            typer.echo(
+                "--demo smores_physical_driver_to_snake requires --height >= 0.04.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if dt_s > MAX_PHYSICAL_TIMESTEP_S:
+            typer.echo(
+                "--demo smores_physical_driver_to_snake requires --dt <= "
+                f"{MAX_PHYSICAL_TIMESTEP_S:g} for its tuned contact/controller model.",
                 err=True,
             )
             raise typer.Exit(code=2)
@@ -361,19 +511,24 @@ def runtime_command(
         backend=backend,
         fixed_connector=fixed_connector,
         moving_connector=moving_connector,
-        connector_gap_m=connector_gap_m,
+        connector_gap_m=(
+            None
+            if physical_reconfiguration
+            else (0.02 if connector_gap_m is None else connector_gap_m)
+        ),
         orientation_rad=orientation_rad,
         approach_m_s=approach_m_s,
         retract_m_s=retract_m_s,
         duration_s=resolved_duration_s,
         dt_s=dt_s,
         undock_at_s=undock_at_s,
-        gravity=gravity,
-        ground=ground,
-        height_m=height_m,
+        gravity=resolved_gravity,
+        ground=resolved_ground,
+        height_m=resolved_height_m,
         view_id=view_id,
         publish_hz=publish_hz,
         viewer_enabled=viewer_enabled,
+        real_time_factor=real_time_factor,
     )
     raise typer.Exit(code=runtime_main(config))
 

@@ -21,6 +21,7 @@ from modsim.runtime.inspector_runner import (
     RuntimeInspectorSetupError,
     runtime_frame_signature,
 )
+from modsim.runtime.pacing import wall_clock_deadline_s
 
 _LOGGER = logging.getLogger("modsim.runtime_inspector")
 _INTERRUPTION_POLL_S = 0.01
@@ -96,7 +97,11 @@ class RuntimeInspectorWorker(QObject):
             runner.step()
 
             simulated_elapsed = runner.session.world.time_s - simulated_started
-            target_wall_time = wall_started + min(simulated_elapsed, self._config.duration_s)
+            target_wall_time = wall_clock_deadline_s(
+                wall_started,
+                min(simulated_elapsed, self._config.duration_s),
+                self._config.real_time_factor,
+            )
             if not self._wait_until(target_wall_time):
                 break
 

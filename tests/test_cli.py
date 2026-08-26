@@ -315,6 +315,10 @@ def test_cli_dock_rejects_an_unknown_backend(example_pack_dir: Path) -> None:
         ("runtime", "--duration", "0"),
         ("runtime", "--approach", "nan"),
         ("runtime", "--publish-hz", "0"),
+        ("runtime", "--speed", "0"),
+        ("runtime", "--speed", "-1"),
+        ("runtime", "--speed", "nan"),
+        ("runtime", "--speed", "inf"),
     ),
 )
 def test_cli_rejects_unsafe_time_arguments(
@@ -375,6 +379,8 @@ def test_cli_runtime_launches_the_optional_inspector_with_resolved_viewer_mode(
         "front",
         "--duration",
         "0.1",
+        "--speed",
+        "4",
         *viewer_arguments,
     ]
     if backend is not None:
@@ -389,7 +395,41 @@ def test_cli_runtime_launches_the_optional_inspector_with_resolved_viewer_mode(
     assert config.fixed_connector == "front"
     assert config.moving_connector == "front"
     assert config.duration_s == 0.1
+    assert config.real_time_factor == pytest.approx(4.0)
     assert config.viewer_enabled is expected_viewer_enabled
+
+
+def test_cli_runtime_accepts_the_descriptive_real_time_factor_alias(
+    example_pack_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+    runtime_app = ModuleType("modsim_studio.runtime_app")
+
+    def fake_main(config: object) -> int:
+        captured["config"] = config
+        return 0
+
+    runtime_app.main = fake_main  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "modsim_studio.runtime_app", runtime_app)
+
+    result = runner.invoke(
+        app,
+        [
+            "runtime",
+            str(example_pack_dir),
+            "--backend",
+            "mock",
+            "--no-viewer",
+            "--real-time-factor",
+            "0.5",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    config = captured["config"]
+    assert isinstance(config, RuntimeInspectorConfig)
+    assert config.real_time_factor == pytest.approx(0.5)
 
 
 @pytest.mark.parametrize(
@@ -433,6 +473,153 @@ def test_cli_runtime_demo_selects_a_reproducible_default_duration(
     assert isinstance(config, RuntimeInspectorConfig)
     assert config.demo is demo
     assert config.duration_s == expected_duration_s
+    assert config.connector_gap_m == pytest.approx(0.02)
+
+
+@pytest.mark.parametrize(
+    ("demo", "expected_duration_s"),
+    (
+        (RuntimeDemo.SMORES_DIFF_DRIVE_DOCK_UNDOCK, 12.0),
+        (RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE, 210.0),
+    ),
+)
+def test_cli_runtime_physical_smores_demos_supply_physics_defaults(
+    smores_pack_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    demo: RuntimeDemo,
+    expected_duration_s: float,
+) -> None:
+    captured: dict[str, object] = {}
+    runtime_app = ModuleType("modsim_studio.runtime_app")
+
+    def fake_main(config: object) -> int:
+        captured["config"] = config
+        return 0
+
+    runtime_app.main = fake_main  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "modsim_studio.runtime_app", runtime_app)
+
+    result = runner.invoke(
+        app,
+        [
+            "runtime",
+            str(smores_pack_dir),
+            "--demo",
+            demo.value,
+            "--no-viewer",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    config = captured["config"]
+    assert isinstance(config, RuntimeInspectorConfig)
+    assert config.demo is demo
+    assert config.duration_s == pytest.approx(expected_duration_s)
+    assert config.gravity
+    assert config.ground
+    assert config.height_m == pytest.approx(0.05)
+    if demo is RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE:
+        assert config.connector_gap_m is None
+        assert config.retract_m_s is None
+    else:
+        assert config.connector_gap_m == pytest.approx(0.02)
+    assert config.dt_s == pytest.approx(0.002)
+
+
+def test_cli_runtime_physical_driver_to_snake_rejects_non_mujoco_backend(
+    smores_pack_dir: Path,
+) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "runtime",
+            str(smores_pack_dir),
+            "--demo",
+            RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE.value,
+            "--backend",
+            "mock",
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert "--demo smores_physical_driver_to_snake requires --backend mujoco" in result.output
+
+
+@pytest.mark.parametrize(
+    ("extra_args", "message"),
+    (
+        (("--no-ground",), "requires gravity and ground"),
+        (("--height", "0.03"), "requires --height >= 0.04"),
+        (("--dt", "0.01"), "requires --dt <= 0.005"),
+        (("--undock-at", "1"), "defines its own releases"),
+        (("--connector-gap", "0.02"), "do not supply --connector-gap"),
+        (("--retract", "0.03"), "do not supply --retract"),
+        (("--orientation", "0.1"), "keeps the staged modules upright"),
+    ),
+)
+def test_cli_runtime_physical_driver_to_snake_rejects_unsupported_options(
+    smores_pack_dir: Path,
+    extra_args: tuple[str, ...],
+    message: str,
+) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "runtime",
+            str(smores_pack_dir),
+            "--demo",
+            RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE.value,
+            *extra_args,
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert message in result.output
+
+
+def test_cli_runtime_physical_smores_demo_rejects_disabled_ground(
+    smores_pack_dir: Path,
+) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "runtime",
+            str(smores_pack_dir),
+            "--demo",
+            RuntimeDemo.SMORES_DIFF_DRIVE_DOCK_UNDOCK.value,
+            "--no-ground",
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert "requires gravity and ground" in result.output
+
+
+@pytest.mark.parametrize(
+    ("extra_args", "message"),
+    [
+        (["--dt", "0.01"], "requires --dt <= 0.005"),
+        (["--retract", "0"], "requires --retract > 0"),
+    ],
+)
+def test_cli_runtime_physical_smores_demo_rejects_unsupported_tuning(
+    smores_pack_dir: Path,
+    extra_args: list[str],
+    message: str,
+) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "runtime",
+            str(smores_pack_dir),
+            "--demo",
+            RuntimeDemo.SMORES_DIFF_DRIVE_DOCK_UNDOCK.value,
+            *extra_args,
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert message in result.output
 
 
 def test_cli_runtime_rejects_pair_controls_for_the_smores_reconfiguration(

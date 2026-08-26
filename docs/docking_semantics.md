@@ -262,18 +262,17 @@ docking semantics:
 
 **Done.** Connector frames are materialised as MuJoCo sites and reported in
 `snapshot.connector_frames`, so acceptance is evaluated against frames measured
-by the engine. Docking and undocking execute: a committed connection claims a
-reserved weld, re-points it at the mating bodies, and activates it; release
-returns the slot to the pool. An exhausted pool refuses rather than faking a
-latch.
+by the engine. Docking and undocking execute: a committed connection atomically
+claims a reserved weld and a reserved contact-exclusion entry, re-points both at
+the mating body pair, and activates the weld. Release deactivates the weld and
+returns both entries to their pools. Authored static exclusions remain present,
+and the combined signature array stays sorted for MuJoCo's collision-filter
+lookup. The dynamic exclusion covers the exact two bodies constrained by the
+weld, not every articulated body in their modules or assemblies. Pool
+exhaustion refuses the connection rather than faking a latch.
 
 **Not done**, in the order I would take them:
 
-- **Contact exclusion.** Welded modules interpenetrate at recessed connectors
-  and the solver fights itself. `exclude_signature` is runtime-writable, so an
-  exclude pool reserved the same way as the weld pool is the mechanism. Flush
-  face-to-face mates converge correctly without it, which is why it is not
-  blocking today.
 - **Constraint forces.** Report them in `snapshot.constraint_forces_n` and
   break-force release plus connector-load metrics — already implemented in core
   — start working with no further change.
@@ -293,6 +292,36 @@ cause of a scenario that "won't dock". And an auto-latching pair with no
 `redock_cooldown_s` re-latches in the *same step* it is released, because a
 docking pass evaluates releases before detection and the two halves are still
 touching. Authoring a cooldown is the intended remedy.
+
+### 9.1 Physical differential-drive demonstration
+
+The SMORES-EP two-module physics demonstration is the first controller that
+moves modules through articulated joints instead of writing root poses during
+the approach. It starts two free modules once, settles them under gravity on a
+ground plane, brakes the fixed module's wheels, holds pan/tilt, and drives the
+moving module's left/right tire joints toward `bottom ↔ pan`. Measured connector
+frames still pass through the ordinary compatibility, acceptance, guard, and
+two-phase commit pipeline. A successful latch activates the same ideal fixed
+weld as other MuJoCo demos. A controller-specific 1 mm near-contact gate keeps
+the broad 6 mm acceptance tolerance from creating a visibly floating weld.
+After an 80 ms face-deactivation delay, the weld is released and wheel effort
+reverses the moving module.
+
+The pack-local MJCF supplies simple tire and rear-skid contacts plus provisional
+friction, damping, armature, effort limits, and controller gains. These are
+stable bootstrap values, not identified SMORES-EP motor or tire parameters.
+Magnetic attraction/capture forces and electrical EP-face state are not yet
+modelled. See `runtime_inspector.md` for the command and `backends.md` for the
+joint-command boundary.
+
+The physical Driver-to-Snake demonstration extends the same boundary to seven
+modules. It stages the initial six-edge tree once, then drives the four
+published replacement actions solely through bounded joint efforts. The first
+two actions move leaf modules; the last two allocate a common planar twist over
+the wheels of a connected three-module component. Ordinary undock/dock requests
+remain the only way graph edges and assemblies change. The authored navigation
+routes are deterministic demo inputs, not autonomous planning or published
+hardware trajectories.
 
 ## 10. Mock backend
 
@@ -321,8 +350,8 @@ modsim dock path/to/pack --backend mujoco --no-gravity
 ```
 
 `modsim dock` is a one-shot authoring check: it places modules already in range
-and asks whether they would latch. `modsim run` is the scripted simulation —
-modules approach under physics, latch, and release on a schedule:
+and asks whether they would latch. `modsim run` is the generic scripted
+root-motion simulation; modules approach, latch, and release on a schedule:
 
 ```bash
 modsim run path/to/pack --backend mujoco --count 2 --duration 6 --undock-at 4
@@ -335,7 +364,16 @@ modsim run path/to/pack --undock-at 4 --retract 0        # release without retra
 
 On macOS, `--view` must run under `mjpython` rather than `python`.
 
-### 11.3 Releasing is not separating
+For the physical wheel/contact path, use the Runtime Inspector demonstration:
+
+```bash
+modsim runtime examples/robot_packs/smores_ep \
+  --backend mujoco \
+  --demo smores_diff_drive_dock_undock \
+  --model-view smores_topology
+```
+
+### 11.2 Releasing is not separating
 
 Worth stating plainly, because it surprises everyone once: **removing a
 constraint does not push anything apart.** Two welded modules share a velocity,
@@ -355,7 +393,7 @@ whose connectors are commanded rather than auto-latching. When nothing docks the
 command reports whether the pairs were never within the detection radius, failed
 a criterion, or were blocked by a guard.
 
-### 11.2 From Python
+### 11.3 From Python
 
 ```python
 from pathlib import Path
@@ -387,8 +425,8 @@ ALIGNING and LOAD_BEARING lifecycle transitions driven by the engine
 hinge, ball, and custom physical connections
 compliant connection translation in the MuJoCo adapter
 connector load estimates beyond a single constraint-force magnitude
-MuJoCo equality-constraint force reporting and docked contact exclusion
-joint/actuator command APIs and backend joint-state mappings
-docking controllers, approach planning, or reconfiguration planning
-Studio runtime inspector panels over this state
+MuJoCo equality-constraint force reporting
+position/velocity joint-command implementations and actuator catalogs
+general or autonomous docking, approach, and reconfiguration planning
+richer Studio lifecycle, contact-force, and metric-plot panels
 ```

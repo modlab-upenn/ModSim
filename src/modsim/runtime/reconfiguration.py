@@ -225,9 +225,7 @@ class ScriptedReconfigurationScenario:
     ) -> ScriptedReconfigurationScenario:
         """Validate ``plan``, build its initial tree, and begin the initial hold."""
         resolved_config = config if config is not None else ScriptedReconfigurationConfig()
-        _validate_plan_against_session(session, plan)
-        _require_kinematic_adapter(session)
-        _build_initial_tree(session, plan)
+        initialize_reconfiguration_plan(session, plan)
         scenario = cls(
             session=session,
             plan=plan,
@@ -709,9 +707,34 @@ def _require_kinematic_adapter(session: RuntimeSession) -> SupportsModuleKinemat
     return adapter
 
 
+def initialize_reconfiguration_plan(
+    session: RuntimeSession,
+    plan: ReconfigurationPlan,
+    *,
+    preserve_orientation: bool = False,
+) -> None:
+    """Validate and establish a plan's initial connection forest at time zero.
+
+    This helper is scenario initialization, not a runtime motion command.  It
+    may reposition roots before stepping begins so a demonstration can start
+    from the authored topology.  Physical ground demos set
+    ``preserve_orientation`` to keep mobile modules upright; the legacy
+    scripted scenario retains nominal connector-frame staging.
+    """
+    _validate_plan_against_session(session, plan)
+    _require_kinematic_adapter(session)
+    _build_initial_tree(
+        session,
+        plan,
+        preserve_orientation=preserve_orientation,
+    )
+
+
 def _build_initial_tree(
     session: RuntimeSession,
     plan: ReconfigurationPlan,
+    *,
+    preserve_orientation: bool,
 ) -> None:
     expected: set[ConnectionId] = set()
     for index, pair in enumerate(plan.initial_connections):
@@ -721,6 +744,7 @@ def _build_initial_tree(
                 pair.fixed_connector,
                 pair.moving_connector,
                 gap_m=0.0,
+                preserve_orientation=preserve_orientation,
             )
         except (ReconfigurationPlanError, ReconfigurationScenarioError) as error:
             raise ReconfigurationScenarioError(

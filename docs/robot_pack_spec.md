@@ -20,10 +20,12 @@ backend-neutral docking execution, and fixed dock/undock constraints under the
 mock and optional MuJoCo backends.
 
 Still deferred are the Isaac Sim adapter, capability execution, actuator and
-transmission catalogs, joint commands, validator-level cross-checking of
-authored source names against referenced URDF files, complete backend-mapping
-resolution in MuJoCo, and simulation support for compliant, `hinge`, `ball`,
-and `custom` connections.
+transmission catalogs, position/velocity command implementations,
+validator-level cross-checking of authored source names against referenced
+URDF files, complete backend-mapping resolution in MuJoCo, and simulation
+support for compliant, `hinge`, `ball`, and `custom` connections. The runtime
+now accepts backend-neutral bounded joint commands, and MuJoCo implements the
+`effort` mode used by the first physical SMORES-EP demonstration.
 
 ## Directory layout
 
@@ -268,6 +270,12 @@ Actuator and transmission catalogs are not part of format 0.1; imported
 transmission declarations are not represented rather than being stored as
 unresolvable string references.
 
+`control_modes` declares which command values a runtime is allowed to send to
+that joint; it does not promise that every backend implements every declared
+mode. The current MuJoCo adapter accepts `effort` commands and enforces the
+corresponding unit-bearing joint limit before applying them. Position and
+velocity modes remain schema vocabulary for future adapters/controllers.
+
 ## Connector types
 
 ```yaml
@@ -504,7 +512,10 @@ Then open the draft in Studio or edit its YAML documents to:
 `examples/robot_packs/generic_cube` is the minimal simulator-neutral format
 reference. `examples/robot_packs/smores_ep` is a complete real-platform example
 with an imported URDF, detailed visual meshes, collision proxies, four authored
-connectors, capabilities, mapping, and a runtime model-view recipe.
+connectors, capabilities, mapping, a runtime model-view recipe, and a
+physics-oriented MuJoCo asset with tire/support contacts and effort-controlled
+joints. The latter's contact and actuator parameters are explicitly provisional
+simulation values rather than measured hardware specifications.
 
 Do not add proprietary or redistribution-restricted CAD, URDF, or mesh assets
 to the repository until their distribution terms are confirmed. The included
