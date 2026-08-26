@@ -145,6 +145,119 @@ def test_viewer_scales_wall_deadlines_without_changing_simulated_steps(
     assert viewer.sync_count == 2
 
 
+def test_viewer_sync_is_throttled_without_skipping_physics_steps(
+    example_pack_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loaded = RobotPackLoader().load(example_pack_dir)
+    session = RuntimeSession.create(
+        loaded,
+        SceneSpec.grid("generic_cube", 1, spacing_m=0.1),
+        "mujoco",
+        gravity=(0.0, 0.0, 0.0),
+    )
+    viewer = _PassiveViewer()
+    wall_time = 100.0
+    step_count = 0
+
+    def launch_passive(model: object, data: object) -> _PassiveViewer:
+        del model, data
+        return viewer
+
+    def step_once() -> tuple[()]:
+        nonlocal wall_time, step_count
+        session.step(0.002)
+        wall_time += 0.002
+        step_count += 1
+        return ()
+
+    monkeypatch.setattr(
+        "modsim_backend_mujoco.viewer.mujoco.viewer.launch_passive",
+        launch_passive,
+    )
+    monkeypatch.setattr(
+        "modsim_backend_mujoco.viewer.time.perf_counter",
+        lambda: wall_time,
+    )
+    monkeypatch.setattr(
+        "modsim_backend_mujoco.viewer._wait_until",
+        lambda target_s, stop_requested: True,
+    )
+
+    try:
+        run_with_viewer(
+            session,
+            duration_s=0.02,
+            step_once=step_once,
+            hold=False,
+        )
+    finally:
+        session.shutdown()
+
+    assert step_count == 10
+    assert viewer.sync_count == 2
+
+
+def test_slow_viewer_sync_does_not_trigger_again_on_the_next_physics_step(
+    example_pack_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loaded = RobotPackLoader().load(example_pack_dir)
+    session = RuntimeSession.create(
+        loaded,
+        SceneSpec.grid("generic_cube", 1, spacing_m=0.1),
+        "mujoco",
+        gravity=(0.0, 0.0, 0.0),
+    )
+    wall_time = 100.0
+
+    class _SlowPassiveViewer(_PassiveViewer):
+        def sync(self) -> None:
+            nonlocal wall_time
+            super().sync()
+            wall_time += 0.03
+
+    viewer = _SlowPassiveViewer()
+    step_count = 0
+
+    def launch_passive(model: object, data: object) -> _PassiveViewer:
+        del model, data
+        return viewer
+
+    def step_once() -> tuple[()]:
+        nonlocal wall_time, step_count
+        session.step(0.002)
+        wall_time += 0.002
+        step_count += 1
+        return ()
+
+    monkeypatch.setattr(
+        "modsim_backend_mujoco.viewer.mujoco.viewer.launch_passive",
+        launch_passive,
+    )
+    monkeypatch.setattr(
+        "modsim_backend_mujoco.viewer.time.perf_counter",
+        lambda: wall_time,
+    )
+    monkeypatch.setattr(
+        "modsim_backend_mujoco.viewer._wait_until",
+        lambda target_s, stop_requested: True,
+    )
+
+    try:
+        run_with_viewer(
+            session,
+            duration_s=0.01,
+            step_once=step_once,
+            hold=False,
+        )
+    finally:
+        session.shutdown()
+
+    assert step_count == 5
+    assert viewer.sync_count == 2
+
+
 @pytest.mark.parametrize("real_time_factor", (0.0, -1.0, math.nan, math.inf, -math.inf))
 def test_viewer_rejects_invalid_real_time_factor_before_opening(
     example_pack_dir: Path,

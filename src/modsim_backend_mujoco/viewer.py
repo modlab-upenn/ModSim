@@ -26,6 +26,7 @@ StopPredicate = Callable[[], bool]
 
 
 IDLE_REFRESH_S = 1.0 / 60.0
+VIEWER_REFRESH_S = 1.0 / 30.0
 
 MACOS_HINT = (
     "MuJoCo's passive viewer must own the main thread on macOS, so the script has to "
@@ -95,15 +96,24 @@ def run_with_viewer(
 
             wall_start = time.perf_counter()
             simulated_start = session.world.time_s
+            next_viewer_sync_s = wall_start
+            last_step_was_synced = False
             while (
                 viewer.is_running()
                 and not should_stop()
                 and session.world.time_s - simulated_start < duration_s
             ):
                 collected.extend(step_once())
-                viewer.sync()
-                if after_step is not None:
-                    after_step()
+                now = time.perf_counter()
+                last_step_was_synced = now >= next_viewer_sync_s
+                if last_step_was_synced:
+                    viewer.sync()
+                    if after_step is not None:
+                        after_step()
+                    # Schedule from completion, not from the pre-sync time.
+                    # A costly render must not leave the deadline overdue and
+                    # cause another sync after the very next physics step.
+                    next_viewer_sync_s = time.perf_counter() + VIEWER_REFRESH_S
                 # Pace to wall clock so the run is watchable rather than a flash.
                 simulated_elapsed = session.world.time_s - simulated_start
                 target_wall_time = wall_clock_deadline_s(
@@ -113,6 +123,17 @@ def run_with_viewer(
                 )
                 if not _wait_until(target_wall_time, should_stop):
                     break
+
+            # A short or faster-than-real-time run can finish between display
+            # refreshes. Push its final state before entering the hold loop or
+            # closing the viewer without coupling every physics step to rendering.
+            if (
+                session.world.time_s - simulated_start >= duration_s
+                and not last_step_was_synced
+            ):
+                viewer.sync()
+                if after_step is not None:
+                    after_step()
 
             if (
                 session.world.time_s - simulated_start >= duration_s
