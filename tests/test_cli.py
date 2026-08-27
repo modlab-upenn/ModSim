@@ -28,7 +28,7 @@ def test_cli_help_succeeds() -> None:
     assert result.exit_code == 0
     assert "Robot Packs" in result.stdout
     assert "studio" in result.stdout
-    assert "runtime" in result.stdout
+    assert "run" in result.stdout
 
 
 def test_cli_version_succeeds() -> None:
@@ -306,24 +306,24 @@ def test_cli_dock_rejects_an_unknown_backend(example_pack_dir: Path) -> None:
 @pytest.mark.parametrize(
     ("command", "option", "value"),
     (
-        ("dock", "--dt", "0"),
-        ("dock", "--dt", "nan"),
-        ("run", "--dt", "0"),
-        ("run", "--duration", "0"),
-        ("run", "--duration", "nan"),
-        ("runtime", "--dt", "0"),
-        ("runtime", "--duration", "0"),
-        ("runtime", "--approach", "nan"),
-        ("runtime", "--publish-hz", "0"),
+        (("dock",), "--dt", "0"),
+        (("dock",), "--dt", "nan"),
+        (("run",), "--dt", "0"),
+        (("run",), "--duration", "0"),
+        (("run",), "--duration", "nan"),
+        (("run", "--gui"), "--dt", "0"),
+        (("run", "--gui"), "--duration", "0"),
+        (("run", "--gui"), "--approach", "nan"),
+        (("run", "--gui"), "--publish-hz", "0"),
     ),
 )
 def test_cli_rejects_unsafe_time_arguments(
     example_pack_dir: Path,
-    command: str,
+    command: tuple[str, ...],
     option: str,
     value: str,
 ) -> None:
-    result = runner.invoke(app, [command, str(example_pack_dir), option, value])
+    result = runner.invoke(app, [*command, str(example_pack_dir), option, value])
 
     assert result.exit_code == 2
     assert f"{option} must be a finite number greater than 0" in result.output
@@ -332,7 +332,7 @@ def test_cli_rejects_unsafe_time_arguments(
 def test_cli_runtime_requires_both_selected_connectors(example_pack_dir: Path) -> None:
     result = runner.invoke(
         app,
-        ["runtime", str(example_pack_dir), "--fixed-connector", "front"],
+        ["run", "--gui", str(example_pack_dir), "--fixed-connector", "front"],
     )
 
     assert result.exit_code == 2
@@ -367,7 +367,8 @@ def test_cli_runtime_launches_the_optional_inspector_with_resolved_viewer_mode(
     monkeypatch.setitem(sys.modules, "modsim_studio.runtime_app", runtime_app)
 
     arguments = [
-        "runtime",
+        "run",
+        "--gui",
         str(example_pack_dir),
         "--fixed-connector",
         "front",
@@ -419,7 +420,8 @@ def test_cli_runtime_demo_selects_a_reproducible_default_duration(
     result = runner.invoke(
         app,
         [
-            "runtime",
+            "run",
+            "--gui",
             str(example_pack_dir),
             "--backend",
             "mock",
@@ -441,7 +443,8 @@ def test_cli_runtime_rejects_pair_controls_for_the_smores_reconfiguration(
     result = runner.invoke(
         app,
         [
-            "runtime",
+            "run",
+            "--gui",
             str(example_pack_dir),
             "--backend",
             "mock",
@@ -463,7 +466,7 @@ def test_cli_runtime_rejects_native_viewer_for_non_mujoco_backend(
 ) -> None:
     result = runner.invoke(
         app,
-        ["runtime", str(example_pack_dir), "--backend", "mock", "--viewer"],
+        ["run", "--gui", str(example_pack_dir), "--backend", "mock", "--viewer"],
     )
 
     assert result.exit_code == 2
