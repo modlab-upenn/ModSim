@@ -167,6 +167,7 @@ class ReconfigurationPhase(StrEnum):
     UNDOCKING = "undocking"
     HOLDING_SEPARATED = "holding_separated"
     APPROACHING = "approaching"
+    PIVOTING = "pivoting"
     DOCKING = "docking"
     HOLDING_CONNECTED = "holding_connected"
     COMPLETE = "complete"

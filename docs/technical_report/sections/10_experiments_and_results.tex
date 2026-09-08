@@ -1,0 +1,228 @@
+\section{Experiments, Demonstrations, and Results}
+\label{sec:experiments}
+
+\subsection{Evaluation questions}
+
+The current evidence is organized around five evaluation questions.
+
+\begin{description}[style=nextline]
+  \item[EQ1: Package correctness]
+  Do strict load, validation, mutation, persistence, and import operations reject
+  malformed or unsafe data while preserving valid semantics?
+
+  \item[EQ2: Semantic runtime correctness]
+  Do docking, undocking, assemblies, events, metrics, and graph views remain mutually
+  consistent under success and failure?
+
+  \item[EQ3: Backend realization]
+  Does the same semantic contract execute through the mock and \mujoco{} boundaries,
+  including physical resource refusal and runtime constraint release?
+
+  \item[EQ4: Physical actuation]
+  Can articulated wheel effort, gravity, tire contact, measured connector frames, and
+  runtime welds complete a dock/undock cycle without root motion injection?
+
+  \item[EQ5: Multi-module reconfiguration]
+  Can the physics path execute all four Driver-to-Snake connector replacements,
+  including motion of connected three-module components, while preserving expected
+  topology and bounded state?
+\end{description}
+
+The implementation does not yet answer statistical robustness, hardware fidelity, or
+large-scale performance questions. Those are explicitly deferred to
+\cref{sec:future}.
+
+\subsection{Verification environment and reproducibility}
+
+The current report snapshot is \modsim{} 0.1.0 at commit \code{4a5ca00}. A full
+repository test run under Python 3.12 with the Studio and \mujoco{} dependencies
+installed collected and passed 537 tests in 166.91 seconds. Branch-aware coverage of
+the backend-neutral \code{modsim} package was 86\%. The wall time is reported only as
+the cost of this verification run; it is not a controlled physics benchmark because
+machine load, GUI libraries, coverage instrumentation, and test composition affect it.
+
+Both committed example packs passed fresh simulation-profile structural validation
+with zero errors, warnings, or informational issues:
+
+\begin{lstlisting}[language=bash]
+modsim pack validate examples/robot_packs/generic_cube --profile simulation
+modsim pack validate examples/robot_packs/smores_ep --profile simulation
+\end{lstlisting}
+
+The test suite includes core unit tests, loader and writer fault cases, schema and
+validator cases, mock/\mujoco{} conformance, Studio project and logging tests,
+Runtime Inspector protocol/process/widget tests, and physical end-to-end tests. CI
+separates core Python 3.11/3.12, headless \mujoco{}, Xvfb Studio, and packaging jobs.
+
+\subsection{Experiment matrix}
+
+\begin{table}[htbp]
+\centering
+\caption{Named demonstration matrix. Durations and steps are simulated quantities.}
+\label{tab:demo-matrix}
+\begin{tabularx}{\textwidth}{L{0.24\textwidth}L{0.19\textwidth}L{0.10\textwidth}L{0.18\textwidth}Y}
+\toprule
+Demo & Motion model & Modules & Duration / step & Expected edge history \\
+\midrule
+\code{dock} & kinematic approach & 2 & 4 s / 0.002 s & $0\rightarrow1$ \\
+\code{dock\_undock} & kinematic approach/retract & 2 & 6 s / 0.002 s & $0\rightarrow1\rightarrow0$ \\
+\code{smores\_diff\_drive\_dock\_undock} & wheel/contact physics & 2 & 12 s / 0.002 s & $0\rightarrow1\rightarrow0$ \\
+\code{smores\_driver\_to\_snake} & kinematic component staging & 7 & 14 s / 0.002 s & four $6\rightarrow5\rightarrow6$ \\
+\code{smores\_physical\_driver\_to\_snake} & wheel/contact physics & 7 & 210 s / 0.002 s & four $6\rightarrow5\rightarrow6$ \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Robot Pack and authoring experiments}
+
+Schema tests cover strict scalar types, ID grammar, unique catalogs, connector
+orientation sets, policies, metadata, model-view recipes, and round-trip
+serialization. Loader tests cover duplicate keys, version mismatch, split-document
+issues, missing files, traversal, and symlinks. Writer tests inject failures during
+staging and publication to check rollback and confirm that a reloaded pack is
+semantically equal to the source.
+
+URDF tests cover geometry, origins, axes, limits, multiple visuals/collisions, material
+colors, package and local mesh resolution, draft asset rebasing, unsafe XML constructs,
+and unresolved assets. Studio project tests verify functional mutation, referential
+connector-type removal, connector parent-link validation, metadata persistence,
+mapping cleanup, model-view CRUD, Save, reopen, and Export.
+
+The committed \smoresep{} test loads the real asset tree, verifies zero validation
+issues, confirms all four connector IDs and the corrected rear BOTTOM geometry, and
+optionally compiles and docks two real modules through \mujoco{}.
+
+\subsection{Docking semantic experiments}
+
+The docking suite exercises mutual compatibility, all gender combinations, capture
+shapes, antiparallel axes, discrete roll, tighter pair tolerances, connector-point
+velocity, command policy, cooldown, loop closure, unsupported physical intent,
+backend refusal, deterministic arbitration, release, overload, and assembly evolution.
+
+Event expectations are exact rather than aggregate. A successful first connection
+records candidate detection, dock commit, and assembly merge. A successful release
+records undock commit and assembly split. Tests assert that a backend failure cannot
+create a graph edge, and conformance tests compare committed decisions across installed
+backends with gravity disabled.
+
+\subsection{Two-module physical docking experiment}
+
+The physical pair begins with two upright modules separated by a \SI{20}{mm} connector
+gap. Gravity and the ground are enabled. After settling, the moving module drives its
+PAN/TOP face into the target's rear BOTTOM face. The physical regression forbids any
+post-creation root pose, twist, or wrench call and asserts actual wheel-joint travel.
+
+\begin{table}[htbp]
+\centering
+\caption{Two-module physical docking acceptance criteria and outcomes.}
+\label{tab:pair-results}
+\begin{tabularx}{\textwidth}{L{0.38\textwidth}Y}
+\toprule
+Criterion & Enforced outcome \\
+\midrule
+Lifecycle & Exact dock, merge, undock, split semantic sequence \\
+Topology & $0\rightarrow1\rightarrow0$ active edges; final two singleton assemblies \\
+Failure counters & One dock, one undock, zero failures \\
+Capture geometry & Connector translation at latch no greater than approximately \SI{1.001}{mm} \\
+Release timing & Undock at least \SI{1.08}{s} after dock (hold plus release delay) \\
+Actuation & Both moving wheel positions change by more than \SI{0.2}{rad} \\
+Attitude & TILT below \SI{0.03}{rad}; PAN below \SI{0.01}{rad} in the checked final state \\
+Separation & Mover reverses to root $x<-0.12$ m while retaining supported height \\
+Physics ownership & Root pose/twist/wrench APIs fail the test if used after staging \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The experiment establishes that the end-to-end actuation and connection path works for
+one deterministic, pre-aligned approach. It does not establish arbitrary-pose docking
+robustness.
+
+\subsection{Kinematic Driver-to-Snake demonstration}
+
+The kinematic seven-module demo isolates topology, events, graph behavior, and scenario
+orchestration from contact. It stages the initial tree, executes each connector
+replacement sequentially, and updates the Runtime Inspector. The topology begins with
+seven nodes and six edges, alternates to five and back to six for each action, and ends
+in the chain $1-3-2-4-5-6-7$. Gravity and ground are intentionally disabled.
+
+This demonstration remains useful even after the physics scenario exists. It is faster,
+deterministic, and can distinguish semantic regressions from control/contact regressions.
+
+\subsection{Physical Driver-to-Snake experiment}
+
+The physical experiment begins with the same six-edge tree staged upright at simulation
+time zero. It then disables root motion injection through the regression guard and
+executes all four replacements through effort-controlled wheel motion, ground contact,
+release delays, measured capture, ideal welds, and paired contact exclusions.
+
+\begin{table}[htbp]
+\centering
+\caption{Seven-module physical reconfiguration outcomes.}
+\label{tab:snake-results}
+\begin{tabularx}{\textwidth}{L{0.38\textwidth}Y}
+\toprule
+Measure & Result or enforced invariant \\
+\midrule
+Modules & 7 throughout \\
+Connection history & $[6,5,6,5,6,5,6,5,6]$ \\
+Final topology & Exact chain $1-3-2-4-5-6-7$ with six connector edges \\
+Final assemblies & One assembly of size seven \\
+Dock outcomes & 10 successful: six initial plus four replacements \\
+Undock outcomes & 4 successful \\
+Failures & 0 dock and 0 undock failures \\
+Assembly events & 10 merges and 4 splits \\
+Moving components & $\{1\}$, $\{7\}$, $\{1,2,3\}$, and $\{5,6,7\}$ \\
+Component motion & Each wheel in the two three-module movers travels more than \SI{0.5}{rad} \\
+Released-face clearance & Greater than \SI{20}{mm} for actions 3 and 4 \\
+Completion & Test requires completion by 190 simulated seconds; reference trace about 177 s \\
+Final hold & Stable and event-free through 210 simulated seconds \\
+Wheel bound & No greater than $\pi/2+0.05\,\mathrm{rad/s}$ in the test \\
+Allocation residual & Applied residual no greater than \SI{0.08}{m/s} \\
+Pose health & Finite; unit quaternion; up projection $>\cos(0.15)$; root height 0.025--0.06 m \\
+Physics ownership & Root pose/twist/wrench APIs forbidden after creation \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The semantic event sequence is also exact: six initial
+\code{DockCommitted}/\code{AssemblyMerged} pairs followed by four cycles of
+\code{UndockCommitted}, \code{AssemblySplit}, \code{DockCommitted}, and
+\code{AssemblyMerged}. The final hold verifies that completion does not leave stale
+effort, accumulate new events, or destabilize the chain.
+
+\subsection{Runtime visualization experiment}
+
+Runtime Inspector tests use fake clocks and process hosts to check protocol framing,
+initialization order, frame delivery, stderr handling, event continuity, graceful stop,
+viewer-close behavior, and escalation. Presenter tests verify stable node layout,
+parallel-edge curves, selection behavior, and stale-frame rejection. Qt tests run under
+an offscreen/Xvfb display.
+
+The current viewer-refresh regression executes ten \SI{2}{ms} physics steps while
+synchronizing the native viewer twice, and a second test injects a \SI{30}{ms} sync cost
+without causing an immediate repeated refresh. These are scheduling-correctness tests,
+not graphics benchmarks.
+
+\subsection{Playback speed}
+
+At factor four, the documented approximately 177-s completion has a nominal wall-clock
+target of $177/4\approx44.25$ s, and the 210-s display budget targets 52.5 s. These are
+arithmetic targets, not measured achieved rates. The implementation never changes
+solver step count: the full seven-module run remains 105,000 nominal \SI{2}{ms} steps.
+
+\subsection{Result interpretation}
+
+The experiments support three conclusions.
+
+\begin{enumerate}
+  \item A portable semantic package can drive both mock and physical-runtime workflows
+        without moving connection meaning into backend code.
+  \item Two-phase commit, canonical events, and derived graph views remain coherent
+        through repeated physical dock and release operations.
+  \item The backend-neutral joint command path is sufficient to build a nontrivial
+        seven-module wheel/contact realization, including connected-component motion.
+\end{enumerate}
+
+They do not support claims of route robustness, calibrated hardware accuracy, large-N
+scalability, or guaranteed four-times-real-time execution.
+

@@ -4,6 +4,7 @@
     "tests/test_mujoco_backend.py",
     "tests/test_mujoco_contact_mechanics.py",
     "tests/test_mujoco_docking.py",
+    "tests/test_mujoco_hinges.py",
     "tests/test_mujoco_physical_docking.py",
     "tests/test_mujoco_physical_reconfiguration.py",
     "tests/test_mujoco_runtime_inspector_process.py",

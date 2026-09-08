@@ -20,7 +20,7 @@ from modsim.core.ids import (
 )
 from modsim.core.snapshot import JointState
 from modsim.core.transforms import ZERO_VEC3, Transform, Vec3
-from modsim.robot_packs.schema import ControlMode
+from modsim.robot_packs.schema import ControlMode, PhysicalConstraintType
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,6 +122,10 @@ class ConnectionRuntime:
     constraint_handle: ConstraintHandle
     created_at_s: float
     measured_force_n: float | None = None
+    # Keep new defaulted fields after the original positional surface.  This
+    # preserves callers that passed ``measured_force_n`` positionally before
+    # constraint type became part of canonical runtime state.
+    constraint: PhysicalConstraintType = PhysicalConstraintType.FIXED
 
     @property
     def connectors(self) -> tuple[ConnectorInstanceId, ConnectorInstanceId]:

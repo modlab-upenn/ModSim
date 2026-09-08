@@ -21,6 +21,7 @@ from modsim.core import (
 from modsim.core.entities import JointCommand
 from modsim.core.ids import JointInstanceId
 from modsim.model_views import (
+    CubicLatticeView,
     GraphModelView,
     ModelView,
     ModelViewBuilder,
@@ -50,6 +51,7 @@ __all__ = [
     "BackendCapabilities",
     "BackendStateSnapshot",
     "ConnectorLifecycleState",
+    "CubicLatticeView",
     "DockProposal",
     "DockingManager",
     "DockingMetrics",

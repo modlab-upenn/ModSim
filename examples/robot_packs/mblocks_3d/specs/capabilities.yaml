@@ -1,0 +1,24 @@
+schema_version: '0.1'
+capabilities:
+  dock:
+    name: Passive magnetic capture
+    kind: primitive_action
+    description: Form a face-to-face magnetic bond after geometric capture.
+    required_connector_types:
+      - mblock_magnetic_face
+  release_face_bond:
+    name: Release face bond
+    kind: primitive_action
+    description: Break a simulated face bond as the first stage of a pivot.
+    required_connector_types:
+      - mblock_magnetic_face
+  momentum_pivot:
+    name: Momentum-driven pivot
+    kind: behavior
+    description: >-
+      Pivot about a cube edge using an internal flywheel impulse. This is
+      implemented as a one-plane physics bootstrap with a deterministic
+      face-to-edge-hinge transition and measured target-face capture.
+    required_connector_types:
+      - mblock_magnetic_face
+      - mblock_magnetic_edge_hinge

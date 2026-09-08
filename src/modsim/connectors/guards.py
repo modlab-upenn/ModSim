@@ -18,11 +18,17 @@ from modsim.robot_packs.schema import (
     PhysicalConstraintType,
 )
 
-SUPPORTED_CONSTRAINTS = frozenset({PhysicalConstraintType.FIXED, PhysicalConstraintType.COMPLIANT})
+SUPPORTED_CONSTRAINTS = frozenset(
+    {
+        PhysicalConstraintType.FIXED,
+        PhysicalConstraintType.COMPLIANT,
+        PhysicalConstraintType.HINGE,
+    }
+)
 """Constraint intents the format-0.1 engine can ask a backend to realise.
 
-``hinge``, ``ball``, and ``custom`` may be authored, but their parameters are
-not modelled yet, so committing them would mean guessing at physics.
+``ball`` and ``custom`` may be authored, but their parameters are not modelled
+yet, so committing them would mean guessing at physics.
 """
 
 
@@ -67,6 +73,10 @@ def resolve_physical_connection(
         return None, (
             f"connector types '{type_a.id}' and '{type_b.id}' declare conflicting "
             f"physical connections: '{left.constraint.value}' and '{right.constraint.value}'"
+        )
+    if left.constraint is PhysicalConstraintType.HINGE and left.hinge != right.hinge:
+        return None, (
+            f"connector types '{type_a.id}' and '{type_b.id}' declare conflicting hinge parameters"
         )
     return left, None
 

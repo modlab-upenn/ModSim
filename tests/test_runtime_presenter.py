@@ -25,6 +25,7 @@ from modsim.runtime.reconfiguration import ReconfigurationPhase, Reconfiguration
 from modsim_studio.runtime_presenter import (
     RuntimeEventSequenceError,
     RuntimeInspectorPresenter,
+    RuntimePresentation,
 )
 
 
@@ -132,6 +133,7 @@ def test_initial_layout_is_deterministic_and_ignores_physical_pose_samples() -> 
     presenter = RuntimeInspectorPresenter()
     initial = presenter.apply_frame(frame(view()))
 
+    assert isinstance(initial, RuntimePresentation)
     assert {item.id: item.position for item in initial.nodes} == {
         "alpha": (-1.0, 0.0),
         "beta": (1.0, 0.0),
@@ -146,6 +148,7 @@ def test_initial_layout_is_deterministic_and_ignores_physical_pose_samples() -> 
     )
 
     moved = presenter.apply_frame(frame(view(sample=1, alpha_x=42.0)))
+    assert isinstance(moved, RuntimePresentation)
     assert {item.id: item.position for item in moved.nodes} == {
         "alpha": (-1.0, 0.0),
         "beta": (1.0, 0.0),
@@ -197,12 +200,15 @@ def test_dock_and_undock_preserve_node_layout_and_valid_selection() -> None:
             )
         )
     )
+    assert isinstance(initial, RuntimePresentation)
+    assert isinstance(docked, RuntimePresentation)
     assert docked.selection == selected_node.selection
     assert [item.position for item in docked.nodes] == [item.position for item in initial.nodes]
     assert [item.id for item in docked.edges] == [docked_edge.id]
 
     presenter.select("edge", docked_edge.id)
     released = presenter.apply_frame(frame(view(sample=2, topology=2, docking=2, event_revision=4)))
+    assert isinstance(released, RuntimePresentation)
     assert released.selection is None
     assert released.edges == ()
     assert [item.position for item in released.nodes] == [item.position for item in initial.nodes]
@@ -216,6 +222,7 @@ def test_parallel_connections_receive_distinct_stable_curves() -> None:
         frame(view(topology=2, docking=2, connections=(first, second)))
     )
 
+    assert isinstance(presented, RuntimePresentation)
     paths = {item.id: item.path for item in presented.edges}
     assert paths[first.id] != paths[second.id]
     assert paths[first.id][0] == paths[second.id][0] == (-1.0, 0.0)
@@ -225,6 +232,7 @@ def test_parallel_connections_receive_distinct_stable_curves() -> None:
     repeated = presenter.apply_frame(
         frame(view(sample=1, topology=2, docking=2, connections=(first, second)))
     )
+    assert isinstance(repeated, RuntimePresentation)
     assert {item.id: item.path for item in repeated.edges} == paths
 
 

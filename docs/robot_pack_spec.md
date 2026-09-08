@@ -16,16 +16,18 @@ that is verified by a runtime session and backend-specific tests.
 Implemented now are the strict split-document loader and schema, authoring and
 simulation validation profiles, deterministic new-directory export,
 transactional in-place save, URDF-to-draft-pack import, Studio editor surfaces,
-backend-neutral docking execution, and fixed dock/undock constraints under the
-mock and optional MuJoCo backends.
+backend-neutral fixed/compliant/hinge connection semantics, fixed dock/undock
+execution under the mock backend, and fixed plus hinge constraints under the
+optional MuJoCo backend.
 
 Still deferred are the Isaac Sim adapter, capability execution, actuator and
 transmission catalogs, position/velocity command implementations,
 validator-level cross-checking of authored source names against referenced
 URDF files, complete backend-mapping resolution in MuJoCo, and simulation
-support for compliant, `hinge`, `ball`, and `custom` connections. The runtime
-now accepts backend-neutral bounded joint commands, and MuJoCo implements the
-`effort` mode used by the first physical SMORES-EP demonstration.
+support for compliant, `ball`, and `custom` connections. The runtime now
+accepts backend-neutral bounded joint commands, and MuJoCo implements the
+`effort` mode used by the physical SMORES-EP and one-plane M-Blocks
+demonstrations.
 
 ## Directory layout
 
@@ -100,10 +102,12 @@ All physical values use SI units. Units are carried in field names:
 - stiffness: newtons per metre (`_n_per_m`) or newton-metres per radian
   (`_nm_per_rad`).
 
-`xyz_m` and `rpy_rad` are three-element vectors. Joint, docking, and approach
-axes are three-element unit vectors. Joint axes follow URDF semantics and are
-expressed in the source joint frame. Connector docking and approach axes are
-expressed in the connector's parent-link frame.
+`xyz_m` and `rpy_rad` are three-element vectors. Joint, docking, approach, and
+hinge axes are three-element unit vectors. Joint axes follow URDF semantics and
+are expressed in the source joint frame. Connector docking and approach axes
+are expressed in the connector's parent-link frame. A physical hinge axis is
+instead expressed in **each endpoint connector frame**; the two mating types
+must declare identical hinge geometry.
 
 Physical numeric fields accept YAML numbers, including integer literals, but
 reject booleans and quoted numeric strings.
@@ -339,8 +343,8 @@ Orientation mode is either:
 - `continuous`, with an empty `values_rad` list.
 
 Acceptance shapes are `box`, `sphere`, and `cylinder`. Format 0.1 fully models
-`fixed` and `compliant` connection intent. A compliant connection requires at
-least one positive stiffness:
+`fixed`, `compliant`, and `hinge` connection intent. A compliant connection
+requires at least one positive stiffness:
 
 ```yaml
 physical_connection:
@@ -350,9 +354,30 @@ physical_connection:
     rotational_stiffness_nm_per_rad: 1000.0
 ```
 
-`hinge`, `ball`, and `custom` values may be recorded during authoring, but the
-simulation profile reports them as unsupported because their required
-parameters are not yet modeled.
+A hinge requires its shared axis and a positive anchor separation:
+
+```yaml
+physical_connection:
+  constraint: hinge
+  compliance: null
+  hinge:
+    axis: [0.0, 1.0, 0.0]
+    anchor_separation_m: 0.04
+```
+
+`axis` is interpreted independently in each connector's local frame. The
+backend constrains two corresponding points centred on the connector origins,
+separated by `anchor_separation_m` along that axis. Two compatible connector
+types must declare the same complete hinge specification; ModSim rejects a
+conflicting pair rather than choosing one side. `hinge` is forbidden for every
+non-hinge constraint, just as `compliance` is forbidden for every
+non-compliant constraint.
+
+The backend-neutral runtime and simulation-validation profile support hinge
+intent. Backend support remains adapter-specific: MuJoCo executes it, while
+the mock backend explicitly refuses it. `ball` and `custom` values may still be
+recorded during authoring, but the simulation profile reports them as
+unsupported because their required parameters are not yet modeled.
 
 ## Capabilities
 
@@ -516,6 +541,14 @@ connectors, capabilities, mapping, a runtime model-view recipe, and a
 physics-oriented MuJoCo asset with tire/support contacts and effort-controlled
 joints. The latter's contact and actuator parameters are explicitly provisional
 simulation values rather than measured hardware specifications.
+
+`examples/robot_packs/mblocks_3d` adds a 50 mm cubic-lattice example with six
+face connectors and eight directed edge-hinge connectors. The hinge ports
+distinguish X-normal and Z-normal approaches at the four XZ corners, allowing
+the same moving cube to repeat +Y-plane quarter turns as its body orientation
+cycles. They support the two-module primitive and composed twelve-module
+one-plane physics route, but are not a complete three-dimensional M-Blocks edge
+catalog; see `docs/mblocks_3d.md` for the implemented fidelity boundary.
 
 Do not add proprietary or redistribution-restricted CAD, URDF, or mesh assets
 to the repository until their distribution terms are confirmed. The included

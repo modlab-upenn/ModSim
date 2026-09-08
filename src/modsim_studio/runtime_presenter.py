@@ -8,13 +8,18 @@ event table without importing Qt, PyQtGraph, MuJoCo, or a live ``WorldState``.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
-from typing import Literal
+from dataclasses import dataclass, replace
+from typing import Literal, TypeAlias
 
-from modsim.model_views import ModuleTopologyGraphView
-from modsim.runtime.inspection import RuntimeEventRow, RuntimeInspectorFrame
+from modsim.model_views import CubicLatticeView, ModuleTopologyGraphView
+from modsim.runtime.inspection import RuntimeEventRow, RuntimeInspectorFrame, RuntimeModelView
+from modsim_studio.runtime_lattice_presenter import (
+    CubicLatticeGeometry,
+    CubicLatticeProjector,
+    LatticeProjection,
+)
 
-SelectionKind = Literal["node", "edge"]
+SelectionKind = Literal["node", "edge", "cell"]
 Point2D = tuple[float, float]
 
 
@@ -71,6 +76,22 @@ class RuntimePresentation:
     status_text: str
 
 
+@dataclass(frozen=True, slots=True)
+class CubicLatticePresentation:
+    """Complete immutable state consumed by the cubic-lattice widget."""
+
+    geometry: CubicLatticeGeometry
+    events: tuple[RuntimeEventRow, ...]
+    selection: GraphSelection | None
+    source_text: str
+    status_text: str
+    show_snap_cells: bool
+    show_orientation_axes: bool
+
+
+RuntimeInspectorPresentation: TypeAlias = RuntimePresentation | CubicLatticePresentation
+
+
 class RuntimeInspectorPresenter:
     """Accumulate runtime frames while preserving layout and selection.
 
@@ -86,14 +107,19 @@ class RuntimeInspectorPresenter:
         self._event_cursor: int | None = None
         self._selection: GraphSelection | None = None
         self._frame: RuntimeInspectorFrame | None = None
-        self._presentation: RuntimePresentation | None = None
+        self._lattice_projector = CubicLatticeProjector()
+        self._lattice_projection = LatticeProjection.ISOMETRIC
+        self._lattice_layer_z: int | None = None
+        self._show_snap_cells = True
+        self._show_orientation_axes = True
+        self._presentation: RuntimeInspectorPresentation | None = None
 
     @property
-    def presentation(self) -> RuntimePresentation | None:
+    def presentation(self) -> RuntimeInspectorPresentation | None:
         """Return the most recently generated presentation, if any."""
         return self._presentation
 
-    def apply_frame(self, frame: RuntimeInspectorFrame) -> RuntimePresentation:
+    def apply_frame(self, frame: RuntimeInspectorFrame) -> RuntimeInspectorPresentation:
         """Apply one immutable worker frame and return its presentation.
 
         Event deltas are merged before graph freshness is considered.  This
@@ -112,38 +138,95 @@ class RuntimeInspectorPresenter:
             return self._presentation
 
         self._frame = frame
-        self._sync_layout(frame.view)
+        if isinstance(frame.view, ModuleTopologyGraphView):
+            self._sync_layout(frame.view)
+        elif self._lattice_layer_z is not None and self._lattice_layer_z not in {
+            node.cell[2] for node in frame.view.nodes
+        }:
+            self._lattice_layer_z = None
         self._drop_missing_selection(frame.view)
         self._presentation = self._build_presentation(frame)
         return self._presentation
 
-    def select(self, kind: str, entity_id: str) -> RuntimePresentation:
+    def select(self, kind: str, entity_id: str) -> RuntimeInspectorPresentation:
         """Select one visible node or edge by its stable runtime identifier."""
         frame = self._require_frame()
-        if kind not in ("node", "edge"):
-            raise ValueError("selection kind must be 'node' or 'edge'")
-        valid_ids = (
-            {node.id for node in frame.view.nodes}
-            if kind == "node"
-            else {edge.id for edge in frame.view.edges}
-        )
+        if kind not in ("node", "edge", "cell"):
+            raise ValueError("selection kind must be 'node', 'edge', or 'cell'")
+        valid_ids: set[str]
+        if kind == "node":
+            valid_ids = {node.id for node in frame.view.nodes}
+        elif kind == "edge":
+            valid_ids = {edge.id for edge in frame.view.edges}
+        elif isinstance(frame.view, CubicLatticeView):
+            valid_ids = {
+                f"cell:{node.cell[0]},{node.cell[1]},{node.cell[2]}" for node in frame.view.nodes
+            }
+        else:
+            valid_ids = set()
         if entity_id not in valid_ids:
             raise KeyError(f"unknown graph {kind} '{entity_id}'")
         self._selection = GraphSelection(kind=kind, entity_id=entity_id)
         self._presentation = self._build_presentation(frame)
         return self._presentation
 
-    def clear_selection(self) -> RuntimePresentation:
+    def clear_selection(self) -> RuntimeInspectorPresentation:
         """Clear the current graph selection."""
         frame = self._require_frame()
         self._selection = None
         self._presentation = self._build_presentation(frame)
         return self._presentation
 
+    def set_lattice_projection(
+        self,
+        projection: str | LatticeProjection,
+    ) -> CubicLatticePresentation:
+        """Change the spatial projection without advancing runtime state."""
+        frame, view = self._require_lattice_frame()
+        self._lattice_projection = LatticeProjection(projection)
+        presentation = self._build_lattice_presentation(frame, view)
+        self._presentation = presentation
+        return presentation
+
+    def set_lattice_layer(self, layer_z: int | None) -> CubicLatticePresentation:
+        """Show all nearest cells or one integer Z layer."""
+        frame, view = self._require_lattice_frame()
+        if isinstance(layer_z, bool):
+            raise TypeError("lattice layer must be an integer or None")
+        available = {node.cell[2] for node in view.nodes}
+        if layer_z is not None and layer_z not in available:
+            raise KeyError(f"lattice Z layer {layer_z} is not present in this view")
+        self._lattice_layer_z = layer_z
+        presentation = self._build_lattice_presentation(frame, view)
+        self._presentation = presentation
+        return presentation
+
+    def set_lattice_overlays(
+        self,
+        *,
+        show_snap_cells: bool | None = None,
+        show_orientation_axes: bool | None = None,
+    ) -> CubicLatticePresentation:
+        """Toggle lattice diagnostic overlays without changing canonical state."""
+        frame, view = self._require_lattice_frame()
+        if show_snap_cells is not None:
+            self._show_snap_cells = show_snap_cells
+        if show_orientation_axes is not None:
+            self._show_orientation_axes = show_orientation_axes
+        presentation = self._build_lattice_presentation(frame, view)
+        self._presentation = presentation
+        return presentation
+
     def _require_frame(self) -> RuntimeInspectorFrame:
         if self._frame is None:
             raise RuntimePresentationError("no runtime frame has been applied")
         return self._frame
+
+    def _require_lattice_frame(self) -> tuple[RuntimeInspectorFrame, CubicLatticeView]:
+        frame = self._require_frame()
+        if not isinstance(frame.view, CubicLatticeView):
+            raise RuntimePresentationError("the active Runtime Inspector view is not a lattice")
+        return frame, frame.view
 
     def _merge_events(self, frame: RuntimeInspectorFrame) -> None:
         start = frame.event_start_sequence
@@ -187,19 +270,32 @@ class RuntimeInspectorPresenter:
         for ordinal, identifier in enumerate(missing):
             self._positions[identifier] = _added_node_position(identifier, ordinal)
 
-    def _drop_missing_selection(self, view: ModuleTopologyGraphView) -> None:
+    def _drop_missing_selection(self, view: RuntimeModelView) -> None:
         selection = self._selection
         if selection is None:
             return
-        visible = (
-            {node.id for node in view.nodes}
-            if selection.kind == "node"
-            else {edge.id for edge in view.edges}
-        )
+        visible: set[str]
+        if selection.kind == "node":
+            visible = {node.id for node in view.nodes}
+        elif selection.kind == "edge":
+            visible = {edge.id for edge in view.edges}
+        elif isinstance(view, CubicLatticeView):
+            visible = {f"cell:{node.cell[0]},{node.cell[1]},{node.cell[2]}" for node in view.nodes}
+        else:
+            visible = set()
         if selection.entity_id not in visible:
             self._selection = None
 
-    def _build_presentation(self, frame: RuntimeInspectorFrame) -> RuntimePresentation:
+    def _build_presentation(self, frame: RuntimeInspectorFrame) -> RuntimeInspectorPresentation:
+        if isinstance(frame.view, CubicLatticeView):
+            return self._build_lattice_presentation(frame, frame.view)
+        return self._build_topology_presentation(frame, frame.view)
+
+    def _build_topology_presentation(
+        self,
+        frame: RuntimeInspectorFrame,
+        view: ModuleTopologyGraphView,
+    ) -> RuntimePresentation:
         selection = self._selection
         nodes = tuple(
             PresentedModuleNode(
@@ -210,9 +306,9 @@ class RuntimeInspectorPresenter:
                 position=self._positions[node.id],
                 selected=selection == GraphSelection("node", node.id),
             )
-            for node in frame.view.nodes
+            for node in view.nodes
         )
-        edge_paths = _edge_paths(frame.view, self._positions)
+        edge_paths = _edge_paths(view, self._positions)
         edges = tuple(
             PresentedConnectionEdge(
                 id=edge.id,
@@ -223,32 +319,49 @@ class RuntimeInspectorPresenter:
                 path=edge_paths[edge.id],
                 selected=selection == GraphSelection("edge", edge.id),
             )
-            for edge in frame.view.edges
+            for edge in view.edges
         )
         return RuntimePresentation(
             nodes=nodes,
             edges=edges,
             events=tuple(self._events[index] for index in sorted(self._events)),
             selection=selection,
-            source_text=_source_text(frame.view),
+            source_text=_source_text(view),
             status_text=_status_text(frame),
+        )
+
+    def _build_lattice_presentation(
+        self,
+        frame: RuntimeInspectorFrame,
+        view: CubicLatticeView,
+    ) -> CubicLatticePresentation:
+        selection = self._selection
+        geometry = self._lattice_projector.project(
+            view,
+            projection=self._lattice_projection,
+            layer_z=self._lattice_layer_z,
+            selection=(selection.kind, selection.entity_id) if selection is not None else None,
+            show_snap_cells=self._show_snap_cells,
+            show_orientation_axes=self._show_orientation_axes,
+        )
+        return CubicLatticePresentation(
+            geometry=geometry,
+            events=tuple(self._events[index] for index in sorted(self._events)),
+            selection=selection,
+            source_text=_source_text(view),
+            status_text=_status_text(frame),
+            show_snap_cells=self._show_snap_cells,
+            show_orientation_axes=self._show_orientation_axes,
         )
 
     def _presentation_with_events(
         self,
-        presentation: RuntimePresentation,
-    ) -> RuntimePresentation:
+        presentation: RuntimeInspectorPresentation,
+    ) -> RuntimeInspectorPresentation:
         events = tuple(self._events[index] for index in sorted(self._events))
         if events == presentation.events:
             return presentation
-        return RuntimePresentation(
-            nodes=presentation.nodes,
-            edges=presentation.edges,
-            events=events,
-            selection=presentation.selection,
-            source_text=presentation.source_text,
-            status_text=presentation.status_text,
-        )
+        return replace(presentation, events=events)
 
 
 def _initial_layout(node_ids: tuple[str, ...]) -> dict[str, Point2D]:
@@ -346,8 +459,8 @@ def _edge_path(
 
 
 def _source_regresses(
-    incoming: ModuleTopologyGraphView,
-    current: ModuleTopologyGraphView,
+    incoming: RuntimeModelView,
+    current: RuntimeModelView,
 ) -> bool:
     incoming_source = incoming.source
     current_source = current.source
@@ -368,7 +481,7 @@ def _source_regresses(
     return False
 
 
-def _source_text(view: ModuleTopologyGraphView) -> str:
+def _source_text(view: RuntimeModelView) -> str:
     source = view.source
     fields = [f"{source.pack_id}@{source.pack_version}"]
     if source.world_time_s is not None:
@@ -412,10 +525,12 @@ def _status_text(frame: RuntimeInspectorFrame) -> str:
 
 
 __all__ = [
+    "CubicLatticePresentation",
     "GraphSelection",
     "PresentedConnectionEdge",
     "PresentedModuleNode",
     "RuntimeEventSequenceError",
+    "RuntimeInspectorPresentation",
     "RuntimeInspectorPresenter",
     "RuntimePresentation",
     "RuntimePresentationError",

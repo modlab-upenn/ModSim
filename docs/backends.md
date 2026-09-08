@@ -85,9 +85,9 @@ and the engine disagreeing about where a connector is.
 | Joint state | omitted | position, velocity, actuator effort |
 | Joint commands | no | declared scalar effort modes |
 | Connector frames | composed from local pose | measured from sites |
-| Runtime docking | yes | yes, via the weld pool |
-| Constraint forces | injectable, for tests | **not yet reported** |
-| Contact exclusion on dock | not applicable | yes, one reserved body-pair exclusion per active weld |
+| Runtime docking | fixed-style constraints; hinge explicitly refused | fixed welds and two-point hinges |
+| Constraint forces | injectable, for tests | equality-force magnitudes for active welds and hinges |
+| Contact exclusion on dock | not applicable | one reserved body-pair exclusion per active weld; none for hinges |
 
 ### mock
 
@@ -103,6 +103,10 @@ backend before their non-root connectors mean anything.
 It stays in the project permanently as the CI backend and as the reference
 semantics the conformance suite compares against.
 
+The mock explicitly refuses hinge requests. Approximating a hinge as one of
+its rigid welds would erase the required rotational degree of freedom and
+could make a dynamics scenario appear to pass without hinge physics.
+
 ### mujoco
 
 `load` composes one MuJoCo model from per-instance copies of each module's
@@ -114,16 +118,17 @@ mechanical asset:
   rigidly to the world and modules must be able to move;
 - every connector becomes a site at its authored local pose, namespaced as
   `<module>/connector/<connector>`;
-- a pool of inactive weld equality constraints is reserved;
+- pools of inactive weld and two-point hinge equality constraints are reserved;
 - optionally a ground plane, off by default so it cannot intersect a module
   placed at the origin.
 
-Options: `gravity`, `timestep_s`, `weld_pool_size`, `ground`, `ground_height_m`.
+Options: `gravity`, `timestep_s`, `weld_pool_size`, `hinge_pool_size`, `ground`,
+`ground_height_m`.
 MuJoCo's integrator step is a model property, so `step(dt_s)` covers the
 requested interval with whole solver steps and `snapshot().time_s` reports the
 time actually reached.
 
-#### Docking via the weld pool
+#### Docking via reserved constraint pools
 
 MuJoCo fixes model topology at compile time, so docking cannot *create* a
 constraint — it claims one of the reserved welds, re-points it, and activates
@@ -139,6 +144,20 @@ entries on release. The exclusion covers that exact constrained body pair; it
 does not recursively suppress contacts involving other articulated bodies in
 either module or assembly.
 
+A runtime hinge claims a separate slot containing two precompiled
+`mjEQ_CONNECT` equalities. The adapter places their corresponding point anchors
+symmetrically around the measured connector origins, separated by
+`HingeConstraintSpec.anchor_separation_m` along the axis expressed in each
+connector frame. Two constrained points preserve rotation about their common
+line while removing the other five relative degrees of freedom. Hinge release
+deactivates and returns both equalities together. Hinges deliberately retain
+body collision and do not consume a contact-exclusion slot, which is required
+for contact-driven edge pivots.
+
+`weld_pool_size` counts welds; `hinge_pool_size` counts complete hinge slots,
+not individual point constraints. Their automatic minima are eight slots each.
+Exhausting either pool refuses the request through normal two-phase commit.
+
 ModSim commits a relative pose between *connector frames*; a weld constrains
 *bodies*. `modsim_backend_mujoco.welds.body_relative_transform` performs the
 conversion:
@@ -152,6 +171,14 @@ running, which is where a frame-convention error is cheapest to read.
 
 `eq_data` layout is `[0:3]` anchor, `[3:6]` relpose position, `[6:10]` relpose
 quaternion, `[10]` torque scale.
+
+Snapshots expose a scalar force for every active runtime constraint. A weld's
+value is the norm of its three translational equality rows. A hinge's value is
+the norm of the vector sum of its two three-axis point-force rows. Rotational
+rows and the hinge point-force difference represent moments and are not mixed
+into a field expressed in newtons. These solver-reaction conventions enable
+core break-force handling but do not yet constitute a complete connector
+wrench.
 
 Nominal snapping can target a connector on an articulated child body. The
 adapter measures that body's transform relative to the module root, computes
@@ -198,11 +225,13 @@ The adapter translates MuJoCo's error into that instruction rather than letting
 a raw traceback through.
 
 `modsim runtime PACK` launches the complementary views together. Qt owns the
-main process and renders ModSim's 2D logical graph and event log. A companion
-process owns the one authoritative MuJoCo session, native viewer, physics
-stepping, and model-view generation. Immutable inspector frames cross the
-process boundary, so the 3D model, graph, and events always describe the same
-simulation rather than two approximately synchronized runs.
+main process and renders ModSim's selected 2-D semantic model view and event
+log. The built-in choices are a logical topology graph and a cubic-lattice
+projection. A companion process owns the one authoritative MuJoCo session,
+native viewer, physics stepping, and model-view generation. Immutable
+inspector frames cross the process boundary, so the 3-D model, selected
+semantic view, and events always describe the same simulation rather than two
+approximately synchronized runs.
 
 The public command is identical on macOS and Linux. On macOS ModSim
 automatically locates the `mjpython` installed beside the active environment's
@@ -217,10 +246,10 @@ modsim runtime path/to/pack --backend mujoco --no-viewer
 
 The first command opens separate MuJoCo and Runtime Inspector windows. It does
 not embed MuJoCo in Qt. Closing the Runtime Inspector shuts down its companion;
-closing the native viewer first stops the runtime while leaving the final graph
-and events available for inspection. The `--no-viewer` path still opens the Qt
-semantic window and therefore requires a display or Xvfb; use `modsim run`
-without `--view` for a completely non-GUI process.
+closing the native viewer first stops the runtime while leaving the final
+semantic view and events available for inspection. The `--no-viewer` path still
+opens the Qt semantic window and therefore requires a display or Xvfb; use
+`modsim run` without `--view` for a completely non-GUI process.
 
 #### Driving modules
 
@@ -251,6 +280,116 @@ fixed connector's docking axis. This is preferred over the legacy row layout
 for robot packs whose connectors are not aligned with world X.
 
 #### Named Runtime Inspector demonstrations
+
+The M-Blocks traversal uses MuJoCo for detailed mesh rendering, backend state,
+and endpoint face welds while a backend-neutral scenario writes the released
+assembly along authored edge arcs:
+
+```bash
+modsim runtime examples/robot_packs/mblocks_3d \
+  --backend mujoco \
+  --demo mblocks_five_module_pivot
+```
+
+The M-Blocks pack defaults to `mblocks_lattice`, whose Runtime Inspector
+renderer shows measured cubes, integer snap cells, axes, face-labelled
+connections, and off-lattice/occupancy diagnostics in isometric or axis-plane
+projections. Pass `--model-view mblocks_topology` for the connectivity-only
+graph.
+
+During an authored arc, `RuntimeSession.step(...,
+process_connectors=False)` retains session-owned stepping, snapshot ingestion,
+and overload handling while deferring passive connector capture until the exact
+endpoint. Gravity and ground are disabled. This is intentionally kinematic and
+does not claim a flywheel-, magnetic-hinge-, or contact-driven M-Block pivot.
+
+The physical two-module M-Blocks path uses the new hinge pool, internal-joint
+effort, ground contact, and gravity:
+
+```bash
+modsim runtime examples/robot_packs/mblocks_3d \
+  --demo mblocks_momentum_pivot
+```
+
+The demo stages its initial face/edge contacts only at time zero. It then spins
+the moving flywheel, releases the fixed face onto the retained +Y hinge,
+applies a bounded brake pulse, captures the measured target face, and releases
+the hinge. It never writes a module root pose, twist, or wrench after
+initialization. This is a one-plane, deterministic face-to-hinge-to-face
+approximation; continuous magnetic attraction, force-selected bond breakage,
+and the published three-plane carrier remain deferred.
+
+The larger kinematic visualization benchmark remains available as a fast
+reference:
+
+```bash
+modsim runtime examples/robot_packs/mblocks_3d \
+  --backend mujoco \
+  --demo mblocks_twelve_module_line
+```
+
+Eleven cubes form a substrate while the twelfth performs ten authored quarter
+traverses and one final half-turn to complete a 12-cell line. It is inspired by
+the published 2019 line-formation experiments, not their exact unpublished
+move trace, and it is not physical or autonomous.
+
+The corresponding one-plane physics route has its own demo ID:
+
+```bash
+modsim runtime examples/robot_packs/mblocks_3d \
+  --demo mblocks_physical_twelve_module_line \
+  --speed 4
+```
+
+This path reserves 12 weld slots and two hinge slots, commits the complete
+eleven-face initial structure at simulation time zero, and then composes eleven
+`MomentumPivotScenario` primitives. Ten use 6,000 RPM targets for quarter-turn
+surface traverses; the last uses a 9,000 RPM target for the half-turn into the
+line. Every primitive pre-engages the appropriate directed edge hinge,
+releases the old face, commands bounded flywheel effort, captures the measured
+target face, and releases the hinge. The sequence never calls backend root
+pose, twist, or wrench controls after initialization.
+
+MuJoCo therefore remains responsible for gravity, contact, the two-point hinge,
+flywheel reaction torque, and shell motion throughout the route. ModSim remains
+responsible for action order, joint-command bounds, connector transitions,
+canonical events, and the derived lattice view. The CLI defaults to the
+validated 0.0005 s solver/controller step; its 12-second duration is a
+simulated-time budget, and `--speed` only changes wall-clock pacing.
+
+The route is a deterministic one-plane engineering approximation. It does not
+add continuous magnetic attraction, force-selected bond changes, the physical
+three-plane carrier, autonomous planning, or the exact unpublished 2019
+hardware move trace.
+
+The mat-to-staircase benchmark exercises a cyclic topology and coordinated
+two-module motion through matched reference and physics entries:
+
+```bash
+modsim runtime examples/robot_packs/mblocks_3d \
+  --backend mock \
+  --demo mblocks_twelve_module_staircase \
+  --no-viewer
+
+modsim runtime examples/robot_packs/mblocks_3d \
+  --demo mblocks_physical_twelve_module_staircase \
+  --speed 4
+```
+
+`CoordinatedPivotPlan` declares complete tuples of take-off and landing faces
+instead of assuming one edge replacement. Its reference executor writes the
+detached slab along an analytical arc. Its physics executor sends the same
+bounded effort law to both flywheels, retains one two-point hinge, and never
+writes a module root after initialization. MuJoCo integrates gravity, contact,
+constraints, reaction torque, and all root motion. The backend reserves 24
+weld slots because the initial 2×6 mat has 16 fixed bonds and the final
+staircase has 18; only one of its two hinge slots is active at once.
+
+The maintained 0.5 ms MuJoCo regression completes eleven physical pivots near
+9.5 simulated seconds. The exact route and controller targets are ModSim
+engineering choices based on published M-Blocks primitives, not a reproduced
+hardware trace or an autonomous planner. All rotations remain in one +Y plane
+even though the final staircase occupies two Y rows and three Z layers.
 
 The physical SMORES-EP cycle enables real gravity/contact and drives the wheel
 joints rather than a module root:
@@ -331,7 +470,7 @@ wheel targets across connected three-module components. The routes and control
 tuning are ModSim-authored physics-demo inputs, not trajectories supplied by
 the 2019 topology-planning paper and not autonomous reconfiguration planning.
 The MuJoCo adapter remains the authoritative runtime owner, so the 3D viewer,
-graph, event log, and metrics still describe one session.
+semantic view, event log, and metrics still describe one session.
 
 ## Cross-backend conformance
 

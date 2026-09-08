@@ -127,10 +127,7 @@ def run_with_viewer(
             # A short or faster-than-real-time run can finish between display
             # refreshes. Push its final state before entering the hold loop or
             # closing the viewer without coupling every physics step to rendering.
-            if (
-                session.world.time_s - simulated_start >= duration_s
-                and not last_step_was_synced
-            ):
+            if session.world.time_s - simulated_start >= duration_s and not last_step_was_synced:
                 viewer.sync()
                 if after_step is not None:
                     after_step()

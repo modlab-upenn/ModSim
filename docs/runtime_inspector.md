@@ -1,12 +1,13 @@
 # Runtime Inspector
 
 The Runtime Inspector is ModSim Studio's first live runtime visualization. It
-runs a named demonstration and displays ModSim's semantic state:
+runs a named demonstration and displays ModSim's semantic state through the
+selected model-view recipe:
 
-- each module instance is a stable graph node;
-- each committed docking connection is an undirected graph edge;
-- disconnected modules remain visible;
-- parallel connections are drawn as distinct curved edges;
+- the topology renderer represents modules as stable nodes and committed
+  connections as selectable edges;
+- the cubic-lattice renderer represents measured module poses as cubes and
+  their nearest integer cells as diagnostic snap targets;
 - the canonical event log is shown in sequence order; and
 - the header shows backend, scenario phase, module/assembly/connection counts,
   simulation time, and source revision counters.
@@ -14,8 +15,8 @@ runs a named demonstration and displays ModSim's semantic state:
 With the MuJoCo backend, the same command opens MuJoCo's native 3D viewer as a
 companion window by default. The two windows show the same authoritative
 runtime in parallel: MuJoCo renders the physical model while Studio renders the
-generated graph and canonical events. The native viewer is a separate process
-and window, not an embedded widget or a second simulation.
+selected generated view and canonical events. The native viewer is a separate
+process and window, not an embedded widget or a second simulation.
 
 The Runtime Inspector itself remains a standalone Qt window rather than an
 embedded mode in the Robot Pack authoring window. This keeps the authoring
@@ -49,7 +50,7 @@ modsim runtime examples/robot_packs/generic_cube \
 ```
 
 The Runtime Inspector uses MuJoCo by default and opens both the semantic window
-and native viewer. Use `--no-viewer` when only the semantic graph and event log
+and native viewer. Use `--no-viewer` when only the semantic view and event log
 are wanted or the backend should run without its native 3D window. Pass
 `--backend mock` for a fast kinematic UI check; the mock has no native viewer,
 so omitting the viewer option opens only the Runtime Inspector. Explicit
@@ -69,19 +70,36 @@ leave it `None`), `dt_s<=0.005`, and a duration long enough for the cycle (the
 CLI uses 12 s). This keeps `RuntimeInspectorConfig` a literal launch request
 rather than silently rewriting values supplied by API clients.
 
+Likewise, a programmatic `mblocks_momentum_pivot` launch must request MuJoCo,
+gravity, ground, `height_m>=0.025`, `dt_s<=0.0005`, and the scenario-defined
+connectors. The CLI's reference values are a 0.00025 s step, 0.025 m root
+height, five-second duration, and the `mblocks_physics_lattice` view. The
+`mblocks_physical_twelve_module_line` launch has the same backend, gravity,
+ground, height, timestep ceiling, and connector-override requirements; it
+defaults to a 0.0005 s step and 12 simulated seconds and also selects
+`mblocks_physics_lattice`. The
+`mblocks_twelve_module_line` CLI default is a 24-second, gravity-free kinematic
+run using the pack's ordinary `mblocks_lattice` default. The matched staircase
+entries use the grounded lattice origin: `mblocks_twelve_module_staircase` is
+a 28-second gravity-free reference, while
+`mblocks_physical_twelve_module_staircase` uses MuJoCo, gravity, ground, a
+0.0005-second step, and a 12-second budget.
+
 If both connector options are omitted, ModSim selects the first declared
 connector whose type is self-compatible. Supplying explicit connector IDs is
 recommended for real platforms because it makes the scenario intent
 reproducible.
 
-A Robot Pack must declare a default runtime `module_topology_graph` recipe. Use
+A Robot Pack must declare a default runtime model-view recipe. Use
 `--model-view RECIPE_ID` to select a different runtime-enabled recipe. The
-initial inspector renderer accepts only the module-topology graph result.
+inspector currently renders results from the generic `module_topology_graph`
+and `cubic_lattice` builders; another result type is rejected with the recipe
+and unsupported view type in the error.
 
 The useful scenario controls are:
 
 ```text
---demo dock|dock_undock|smores_diff_drive_dock_undock|smores_driver_to_snake|smores_physical_driver_to_snake
+--demo dock|dock_undock|mblocks_five_module_pivot|mblocks_momentum_pivot|mblocks_physical_twelve_module_line|mblocks_physical_twelve_module_staircase|mblocks_twelve_module_line|mblocks_twelve_module_staircase|smores_diff_drive_dock_undock|smores_driver_to_snake|smores_physical_driver_to_snake
 --connector-gap METRES
 --orientation RADIANS
 --approach METRES_PER_SECOND
@@ -110,14 +128,55 @@ release time automatically unless `--undock-at` overrides it. After
 `UndockCommitted`, the edge is removed and the moving module retracts at the
 requested speed.
 
+## Model-view renderers
+
+The topology renderer keeps a logical layout stable while physical poses
+change. Disconnected modules remain visible, parallel connections use separate
+curved paths, and clicking a node or edge selects it by stable runtime ID.
+
+The cubic-lattice renderer is a 2.5-D diagnostic view rather than a second 3-D
+physics viewport. Its default isometric projection draws solid cubes at the
+measured lattice-space poses and dashed ghost cubes at the nearest integer
+cells. A dotted tether exposes any measured-to-snap displacement. Normal cubes
+are coloured by assembly; amber marks a pose outside the recipe's position or
+orientation tolerance, red marks modules and cells involved in an occupancy
+conflict, and yellow marks the current selection. Committed connections remain
+visible as selectable curves and midpoint diamonds, with lattice-face names in
+their hover text.
+
+The projection selector offers **Isometric**, **XY**, **XZ**, and **YZ**. The
+**Z layer** selector shows all occupied layers or only modules snapped to one
+integer Z coordinate; connections whose other endpoint is hidden are hidden as
+well. **Snap cells** and **Local axes** toggle the two diagnostic overlays,
+while **Fit** restores the finite grid to the viewport. Dragging pans and the
+mouse wheel zooms. Labelled global X/Y/Z axes and measured local axes use red,
+green, and blue. Modules, docking markers/curves, and warning cells are
+selectable; module hover text reports its snapped cell, measured coordinates
+in cell units, residuals, and assembly.
+
+All projection, layer, overlay, pan, zoom, and selection state belongs to the
+presenter/widget. None of those actions modifies the canonical `WorldState`,
+the backend, or Robot Pack YAML.
+
 ## Named demonstrations
 
-The kinematic named demonstrations run through the generic
-`ScriptedReconfigurationScenario` engine. The two-module entries are small
+The connector-pair and scripted SMORES demonstrations run through the generic
+`ScriptedReconfigurationScenario` engine. The five- and twelve-module
+M-Blocks visual benchmarks use the backend-neutral `KinematicPivotScenario`,
+which rotates a released assembly through explicitly authored edge arcs. The
+two-module M-Blocks physics entry uses `MomentumPivotScenario`, which commands
+an internal flywheel and transitions fixed face to hinge to target face while
+MuJoCo owns motion. The physical twelve-module entry uses
+`MomentumPivotSequenceScenario` to compose eleven of those primitives without
+taking ownership of root motion. The mat-to-staircase pair instead shares a
+cyclic-capable `CoordinatedPivotPlan`: its reference executor moves a detached
+two-module slab along an authored arc, while its physical executor commands
+both slab flywheels and keeps one temporary hinge. The two generic module entries are small
 dock-only or dock-then-undock plan builders. The physical SMORES entry instead
 uses a differential-drive controller that sends bounded joint efforts while
-MuJoCo integrates contact and dynamics. Platform dimensions and tuned bootstrap
-parameters live in `examples/scenarios/smores_ep_diff_drive_dock_undock.py`.
+MuJoCo integrates contact and dynamics. Platform dimensions and tuned
+bootstrap parameters live in
+`examples/scenarios/smores_ep_diff_drive_dock_undock.py`.
 The seven-module SMORES connector plan is example content at
 `examples/scenarios/smores_driver_to_snake.py`, outside the installable
 `modsim.runtime` library. The physical platform configuration is likewise kept
@@ -132,6 +191,209 @@ current directory.
 The connector-pair demonstrations create exactly two modules. `dock` approaches and
 commits one connection. `dock_undock` follows the same path, then releases the
 connection and retracts the moving module.
+
+### `mblocks_five_module_pivot`
+
+The CAD-derived 3D M-Blocks Robot Pack includes an authored five-module
+traversal:
+
+```bash
+modsim runtime examples/robot_packs/mblocks_3d \
+  --backend mujoco \
+  --demo mblocks_five_module_pivot
+```
+
+Four modules form a fixed horizontal base. A fifth begins above the first and
+crosses to the fourth through three 90-degree, positive-y edge rotations. Each
+replacement publishes a normal `UndockCommitted`/`AssemblySplit` pair before
+the arc and a normal candidate/dock/merge sequence at its endpoint. The
+default lattice renderer shows `block_5` move continuously along each arc,
+with its dashed nearest-cell target and changing local axes, while the
+connection overlay shows three `4 → 3 → 4` edge transitions. It finishes as
+one five-module assembly. The default eight-second display duration is
+sufficient for the authored scenario, which normally completes around 6.0
+simulated seconds. Pass `--model-view mblocks_topology` to use the
+connectivity-only graph instead.
+
+Gravity and the ground plane remain disabled. The scenario writes the released
+module's root pose along each analytical arc while MuJoCo provides mesh
+rendering and endpoint weld constraints. It does not model magnetic edge-hinge
+forces, flywheel spin-up/braking, impact, or passive target-face capture, and
+must not be interpreted as momentum-driven physics. The source-checkout
+scenario data lives in `examples/scenarios/mblocks_five_module_pivot.py`; the
+pack and fidelity gate are documented in the
+[3D M-Blocks integration notes](mblocks_3d.md).
+
+### `mblocks_momentum_pivot`
+
+This is the first momentum-driven M-Blocks physics bootstrap:
+
+```bash
+modsim runtime examples/robot_packs/mblocks_3d \
+  --demo mblocks_momentum_pivot
+```
+
+The CLI supplies MuJoCo, gravity, an infinite ground plane, a 25 mm root
+height, a 0.00025 s solver/controller step, a five-second display duration,
+and the grounded `mblocks_physics_lattice` recipe. The normal `--speed` option
+changes wall-clock pacing only. The native viewer and lattice/event window run
+from the same authoritative session.
+
+At time zero, `moving_block` is staged above `support_block` with its initial
+fixed face and coincident +Y edge magnets engaged. The controller settles,
+spins the one-plane flywheel toward 9,000 RPM using at most 0.03 N m, releases
+the face while retaining a two-point hinge, then applies at most 2.6 N m until
+the wheel crosses zero. MuJoCo integrates the equal-and-opposite shell motion,
+ground/support contact, and the 180-degree edge roll. Once measured target-face
+acceptance is within 1 mm, the fixed target face commits and the transient
+hinge releases. The event table labels each `DockCommitted` event as `fixed` or
+`hinge`; scenario detail shows live flywheel speed, pivot angle, and
+accumulated brake impulse. No root pose, velocity, or external wrench is
+written after initialization.
+
+The controller uses published reference ceilings: 0.150 kg module mass,
+`8.4e-6 kg m^2` flywheel axial inertia, 20,000 RPM maximum speed, 0.03 N m
+spin-up effort, and 2.6 N m mechanical-brake effort. A convergence regression
+at 0.5, 0.25, and 0.1 ms completes at approximately 0.8585, 0.8595, and 0.8596
+simulated seconds. Across those steps, the final moving-root world x coordinate
+is about 0.0502–0.0507 m and the integrated brake impulse is
+0.00763–0.00767 N m s.
+
+This is a deterministic face-to-hinge-to-face approximation of the passive
+magnet mechanism, not continuous magnetic-field fidelity. It models one +Y
+actuation plane and does not implement the published three-detent carrier,
+force-selected face/edge bond changes, or robust capture from arbitrary state.
+Use `0 < --dt <= 0.0005`; the CLI rejects incompatible connector, gravity,
+ground, height, backend, and motion-staging overrides.
+
+### `mblocks_twelve_module_line`
+
+Run the larger lattice/graph demonstration with either MuJoCo rendering or the
+fast mock backend:
+
+```bash
+modsim runtime examples/robot_packs/mblocks_3d \
+  --backend mujoco \
+  --demo mblocks_twelve_module_line
+```
+
+Eleven blocks begin as a connected horizontal substrate and `block_12` begins
+above its first cell. It executes ten authored 90-degree surface traverses and
+one final 180-degree convex roll, finishing as one connected 12-cell line. The
+default 24-second display budget includes holds; the current route completes
+near 21.30 simulated seconds. Each replacement still uses canonical undock,
+split, dock, and merge events, so both the lattice and event log expose all 11
+topology transitions.
+
+The 2019 M-Blocks work physically demonstrated decentralized line formation,
+but does not publish a replayable per-module move sequence. This benchmark is
+therefore paper-inspired, deterministic, and kinematic: it writes the released
+module root pose along analytical arcs with gravity disabled. It is not the
+exact 2019 hardware sequence, momentum-driven execution, or autonomous
+planning.
+
+### `mblocks_physical_twelve_module_line`
+
+Run the physical counterpart through the same lattice/event interface:
+
+```bash
+modsim runtime examples/robot_packs/mblocks_3d \
+  --demo mblocks_physical_twelve_module_line \
+  --speed 4
+```
+
+The CLI selects MuJoCo, gravity, an infinite ground plane, a 25 mm minimum
+root height, a 0.0005 s solver/controller step, a 12-second simulated-time
+budget, and `mblocks_physics_lattice`. It reserves enough runtime constraints
+for the eleven simultaneous fixed face bonds and one transient hinge. The
+native viewer and Runtime Inspector still observe one authoritative session;
+`--speed 4` requests four simulated seconds per wall-clock second without
+changing physics or event time.
+
+Eleven substrate blocks begin in a horizontal face-connected chain and
+`block_12` begins above `block_1`. The scenario commits that complete initial
+tree only at time zero. It then executes ten 90-degree momentum-driven surface
+traverses and one final 180-degree roll. Quarter turns use a 6,000 RPM
+flywheel target; the final half-turn uses 9,000 RPM. Each action pre-engages
+the appropriate two-point +Y edge hinge, spins the internal flywheel, releases
+the old fixed face, applies bounded braking while MuJoCo integrates contact and
+shell motion, captures the measured target face, releases the hinge, and holds
+the new connection before continuing.
+
+No module root pose, velocity, or wrench is written after initialization. The
+lattice view therefore follows backend-measured cube poses, while the event
+table and connection overlay expose each temporary `hinge`, old-face release,
+target `fixed` commit, and hinge release. If an action fails to commit or
+disturbs an unrelated baseline connection, the sequence reports failure and
+does not advance. A successful final state is one 12-cell line with 11 fixed
+connections, no hinge, and one assembly.
+
+The maintained real-MuJoCo full-route regression at the 0.0005 s demo default
+verifies all 11 pivots, that exact final topology, 33 `DockCommitted` and 22
+`UndockCommitted` events, cells `x = 0..11`, and no node outside the grounded
+lattice recipe's 3 mm / 3 degree tolerances. It also installs failing guards on
+backend root pose, twist, and wrench controls after scenario creation; the
+sequence completes without calling them. A separate 0.00025 s three-block
+regression covers the first surface traversal; broader full-route timestep and
+perturbation convergence is not yet characterized.
+
+This is a ModSim-authored, one-plane physics realization of the same endpoint
+plan as the kinematic benchmark. It is not the exact unpublished 2019 hardware
+move sequence, a continuous magnetic-force model, a three-plane carrier, or an
+autonomous planner. The 12-second duration is a configured budget, not a
+published hardware performance result.
+
+### `mblocks_twelve_module_staircase`
+
+This is the deterministic reference for the mat-to-staircase route:
+
+```bash
+modsim runtime examples/robot_packs/mblocks_3d \
+  --backend mock \
+  --demo mblocks_twelve_module_staircase \
+  --no-viewer
+```
+
+Replace `--backend mock --no-viewer` with `--backend mujoco` to show the CAD
+meshes beside the semantic window. Gravity and ground remain disabled because
+the scenario analytically moves both roots in each released slab. The initial
+2×6 mat has 16 fixed connections; the final two-block-deep staircase has 18.
+Eleven positive-Y pivots produce column heights 1, 2, and 3 and finish near
+25.22 simulated seconds inside the default 28-second budget. The event log
+contains the actual multiple-face releases and landings, including assembly
+split/merge transitions.
+
+### `mblocks_physical_twelve_module_staircase`
+
+Run the same topology route through full MuJoCo dynamics:
+
+```bash
+modsim runtime examples/robot_packs/mblocks_3d \
+  --demo mblocks_physical_twelve_module_staircase \
+  --speed 4
+```
+
+The CLI supplies MuJoCo, gravity, the infinite ground plane, a 25 mm minimum
+center height, the grounded lattice recipe, a 0.0005-second step, a 12-second
+budget, 24 weld slots, and two hinge slots. For each action the controller
+pre-engages one edge hinge, spins both moving slab flywheels, releases two or
+four fixed faces, applies bounded brake impulses, waits until all two or four
+landing faces pass measured acceptance, commits them, and releases the hinge.
+It never writes a module pose, twist, or root wrench after initialization.
+
+The maintained real-MuJoCo regression completes all eleven pivots around 9.5
+simulated seconds and ends with 18 fixed connections, one assembly, 53 dock
+commits, and 35 undock commits. Some measured cubes can be amber in the strict
+fixed-world lattice recipe because accumulated physical drift is larger than
+3 mm / 3 degrees; the nearest integer cells and final topology are still
+verified. Quarter turns use 6,000 RPM, ordinary half turns 15,000 RPM, and the
+elevated half turn 19,500 RPM, below the declared 20,000 RPM limit.
+
+No M-Blocks paper publishes this exact planar-mat-to-staircase trace. It is a
+ModSim-designed demonstration based on the 2015 edge-pivot primitives and
+planning model. The result occupies three Z layers, but every active pivot is
+still about +Y; it is not evidence of an implemented three-plane carrier or an
+autonomous planner.
 
 ### `smores_diff_drive_dock_undock`
 
@@ -460,17 +722,18 @@ With `--no-viewer`, the existing worker-thread path owns the same runtime
 responsibilities inside the Qt process. Both paths publish only frozen frames
 containing:
 
-- an immutable `ModuleTopologyGraphView`;
+- an immutable `ModuleTopologyGraphView` or `CubicLatticeView`;
 - a `DockingMetrics` snapshot;
 - a contiguous, lossless event delta; and
 - immutable scenario status.
 
-The Qt-free presenter accumulates event deltas, rejects regressing graph source
-stamps, owns stable layout and selection, and supplies renderer-ready graph
-geometry. PyQtGraph and Qt remain in `modsim_studio`; neither is imported by
-the core package. The companion process does not create a second
-`RuntimeSession`; the graph, events, and native 3D image always describe the
-same simulation.
+The Qt-free presenter accumulates event deltas, rejects regressing model-view
+source stamps, owns selection and renderer controls, and supplies
+renderer-ready 2-D geometry. It keeps a stable logical topology layout or
+projects measured lattice poses according to the active recipe. PyQtGraph and
+Qt remain in `modsim_studio`; neither is imported by the core package. The
+companion process does not create a second `RuntimeSession`; the semantic view,
+events, and native 3D image always describe the same simulation.
 
 ## Window lifetime and logging
 
@@ -480,7 +743,8 @@ native-viewer process and `--no-viewer` worker path. When the configured
 simulated duration ends, the final state remains visible for inspection.
 Closing the Runtime Inspector requests a cooperative child shutdown and closes
 the native viewer. Closing the native viewer first ends the simulation while
-leaving the last complete graph and event log visible in the Runtime Inspector.
+leaving the last complete semantic view and event log visible in the Runtime
+Inspector.
 The **Stop** control follows the same cooperative shutdown path.
 
 The Qt process is the only writer that initializes and truncates the Studio
@@ -500,14 +764,18 @@ the launch fails with an installation-oriented message instead of a raw Cocoa
 or GLFW traceback. If only the MuJoCo native window is unavailable, use
 `--no-viewer`; the Qt semantic window still needs a display or Xvfb.
 
-The first inspector has one graph renderer, one event table, a generic scripted
-scenario engine with small connector-pair plan builders, one external
-seven-module example plan, one physical SMORES differential-drive controller,
-and a Stop control. General scenes, autonomous reconfiguration planning,
-pause/restart controls, interactive/manual joint controls, position/velocity
-backend command modes, metric plots, docking-lifecycle panels, additional
-model-view renderers, and a combined authoring/runtime shell remain later
-increments.
+The inspector has topology and cubic-lattice renderers, one event table, a
+generic scripted scenario engine with small connector-pair plan builders,
+five- and twelve-module kinematic M-Blocks routes, a two-module one-plane
+M-Blocks momentum controller, an eleven-action twelve-module physical M-Blocks
+line sequence, matched reference/physical twelve-module staircase routes, one
+external seven-module SMORES plan, one physical SMORES
+differential-drive controller, and a Stop control. General scenes, autonomous
+reconfiguration planning, continuous magnetic fields, a three-plane M-Blocks
+carrier, pause/restart controls, interactive/manual joint controls,
+position/velocity backend command modes, metric plots, docking-lifecycle
+panels, further model-view renderers, and a combined authoring/runtime shell
+remain later increments.
 
 Runtime Inspector launches use the same repository-local, truncated Studio log
 described in `studio.md`. Worker or child startup, validation, backend,

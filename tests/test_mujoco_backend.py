@@ -834,7 +834,7 @@ def test_a_compliant_connection_is_refused_instead_of_rigidly_welded(
 
     failures = [event for event in events if isinstance(event, DockFailed)]
     assert len(failures) == 1
-    assert "supports only fixed physical connections" in failures[0].detail
+    assert "supports fixed and hinge physical connections" in failures[0].detail
     assert not session.world.connections
     assert adapter.weld_pool.in_use == 0
 

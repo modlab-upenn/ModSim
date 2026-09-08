@@ -12,10 +12,10 @@ from __future__ import annotations
 import logging
 import math
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, cast
 
 from modsim.backends.registry import create_backend
 from modsim.connectors.compatibility import evaluate_compatibility
@@ -40,6 +40,16 @@ from modsim.robot_packs import (
 )
 from modsim.runtime.demos import RuntimeDemo
 from modsim.runtime.inspection import RuntimeInspectorFrame, build_runtime_inspector_frame
+from modsim.runtime.kinematic_pivot import (
+    KinematicPivotConfig,
+    KinematicPivotRoute,
+    KinematicPivotScenario,
+)
+from modsim.runtime.momentum_pivot import (
+    MAX_MOMENTUM_TIMESTEP_S,
+    MomentumPivotConfig,
+    MomentumPivotScenario,
+)
 from modsim.runtime.physical_reconfiguration import (
     DifferentialDriveReconfigurationConfig,
     DifferentialDriveReconfigurationScenario,
@@ -62,6 +72,7 @@ _LOGGER = logging.getLogger("modsim.runtime_inspector")
 _INITIAL_SCENE_SPACING_M = 0.2
 _RECONFIGURATION_SCENE_SPACING_M = 0.12
 _DEFAULT_CONNECTOR_GAP_M = 0.02
+_MBLOCKS_PHYSICS_LATTICE_VIEW_ID = "mblocks_physics_lattice"
 _SMORES_EXAMPLE_SCENARIO = (
     Path(__file__).resolve().parents[3] / "examples" / "scenarios" / "smores_driver_to_snake.py"
 )
@@ -76,6 +87,30 @@ _SMORES_PHYSICAL_RECONFIGURATION_SCENARIO = (
     / "examples"
     / "scenarios"
     / "smores_ep_physical_driver_to_snake.py"
+)
+_MBLOCKS_KINEMATIC_PIVOT_SCENARIO = (
+    Path(__file__).resolve().parents[3] / "examples" / "scenarios" / "mblocks_five_module_pivot.py"
+)
+_MBLOCKS_MOMENTUM_PIVOT_SCENARIO = (
+    Path(__file__).resolve().parents[3]
+    / "examples"
+    / "scenarios"
+    / "mblocks_two_module_momentum_pivot.py"
+)
+_MBLOCKS_TWELVE_MODULE_LINE_SCENARIO = (
+    Path(__file__).resolve().parents[3] / "examples" / "scenarios" / "mblocks_twelve_module_line.py"
+)
+_MBLOCKS_PHYSICAL_TWELVE_MODULE_LINE_SCENARIO = (
+    Path(__file__).resolve().parents[3]
+    / "examples"
+    / "scenarios"
+    / "mblocks_twelve_module_physics.py"
+)
+_MBLOCKS_TWELVE_MODULE_STAIRCASE_SCENARIO = (
+    Path(__file__).resolve().parents[3]
+    / "examples"
+    / "scenarios"
+    / "mblocks_twelve_module_staircase.py"
 )
 
 StatusCallback = Callable[[str], None]
@@ -96,6 +131,15 @@ class RuntimeScenario(Protocol):
     def step(self) -> tuple[Event, ...]:
         """Advance one configured simulation step."""
         ...
+
+
+class _TimedScenarioBuilder(Protocol):
+    def __call__(self, session: RuntimeSession, *, dt_s: float) -> object:
+        """Build one scenario using the runner's fixed timestep."""
+        ...
+
+
+RuntimeScenarioBuilder = Callable[[RuntimeSession], RuntimeScenario]
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,10 +216,25 @@ class RuntimeInspectorRunner:
 
         pack = loaded.pack
         module_type = resolve_runtime_module_type(pack, config.module_type)
-        recipe = resolve_runtime_recipe(pack, config.view_id)
         demo = _resolve_demo(config.demo)
+        requested_view = config.view_id
+        if (
+            demo
+            in {
+                RuntimeDemo.MBLOCKS_MOMENTUM_PIVOT,
+                RuntimeDemo.MBLOCKS_PHYSICAL_TWELVE_MODULE_LINE,
+                RuntimeDemo.MBLOCKS_PHYSICAL_TWELVE_MODULE_STAIRCASE,
+                RuntimeDemo.MBLOCKS_TWELVE_MODULE_STAIRCASE,
+            }
+            and requested_view is None
+        ):
+            requested_view = _MBLOCKS_PHYSICS_LATTICE_VIEW_ID
+        recipe = resolve_runtime_recipe(pack, requested_view)
         release_after_s: float | None = None
         plan: ReconfigurationPlan | None = None
+        pivot_routes: tuple[KinematicPivotRoute, ...] | None = None
+        momentum_config: MomentumPivotConfig | None = None
+        physical_mblocks_builder: RuntimeScenarioBuilder | None = None
         if demo in {
             RuntimeDemo.SMORES_DRIVER_TO_SNAKE,
             RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE,
@@ -196,6 +255,59 @@ class RuntimeInspectorRunner:
                 )
                 for index, module_id in enumerate(plan.module_ids)
             )
+        elif demo in {
+            RuntimeDemo.MBLOCKS_FIVE_MODULE_PIVOT,
+            RuntimeDemo.MBLOCKS_TWELVE_MODULE_LINE,
+        }:
+            if demo is RuntimeDemo.MBLOCKS_FIVE_MODULE_PIVOT:
+                plan, pivot_routes = _load_mblocks_kinematic_pivot_example()
+            else:
+                plan, pivot_routes = _load_mblocks_twelve_module_line_example()
+            fixed_local = moving_local = None
+            scene = SceneSpec.of(
+                ModulePlacement(
+                    instance_id=module_id,
+                    module_type_id=module_type,
+                    pose=Transform.from_translation(
+                        (
+                            index * _RECONFIGURATION_SCENE_SPACING_M,
+                            0.0,
+                            config.height_m,
+                        )
+                    ),
+                )
+                for index, module_id in enumerate(plan.module_ids)
+            )
+        elif demo is RuntimeDemo.MBLOCKS_MOMENTUM_PIVOT:
+            fixed_local = moving_local = None
+            scene, momentum_config = _load_mblocks_momentum_pivot_example(config)
+            if any(placement.module_type_id != module_type for placement in scene.placements):
+                raise RuntimeInspectorSetupError(
+                    "M-Blocks momentum-pivot example does not match the selected module type "
+                    f"'{module_type}'"
+                )
+        elif demo is RuntimeDemo.MBLOCKS_PHYSICAL_TWELVE_MODULE_LINE:
+            fixed_local = moving_local = None
+            scene, physical_mblocks_builder = _load_mblocks_physical_twelve_module_example(config)
+            if any(placement.module_type_id != module_type for placement in scene.placements):
+                raise RuntimeInspectorSetupError(
+                    "M-Blocks physical twelve-module example does not match the selected "
+                    f"module type '{module_type}'"
+                )
+        elif demo in {
+            RuntimeDemo.MBLOCKS_PHYSICAL_TWELVE_MODULE_STAIRCASE,
+            RuntimeDemo.MBLOCKS_TWELVE_MODULE_STAIRCASE,
+        }:
+            fixed_local = moving_local = None
+            scene, physical_mblocks_builder = _load_mblocks_staircase_example(
+                config,
+                physical=demo is RuntimeDemo.MBLOCKS_PHYSICAL_TWELVE_MODULE_STAIRCASE,
+            )
+            if any(placement.module_type_id != module_type for placement in scene.placements):
+                raise RuntimeInspectorSetupError(
+                    "M-Blocks staircase example does not match the selected module type "
+                    f"'{module_type}'"
+                )
         elif demo is RuntimeDemo.SMORES_DIFF_DRIVE_DOCK_UNDOCK:
             fixed_local, moving_local = resolve_runtime_connector_pair(
                 pack,
@@ -237,13 +349,42 @@ class RuntimeInspectorRunner:
         report_status(f"Starting {config.backend} backend…")
         session = _create_session(loaded, scene, config)
         try:
-            if demo is RuntimeDemo.SMORES_DIFF_DRIVE_DOCK_UNDOCK:
+            if demo in {
+                RuntimeDemo.MBLOCKS_FIVE_MODULE_PIVOT,
+                RuntimeDemo.MBLOCKS_TWELVE_MODULE_LINE,
+            }:
+                if plan is None or pivot_routes is None:  # pragma: no cover - branch invariant
+                    raise AssertionError("kinematic pivot runtime demo requires a plan and routes")
+                scenario: RuntimeScenario = KinematicPivotScenario.create(
+                    session,
+                    plan,
+                    pivot_routes,
+                    KinematicPivotConfig(dt_s=config.dt_s),
+                )
+            elif demo is RuntimeDemo.MBLOCKS_MOMENTUM_PIVOT:
+                if momentum_config is None:  # pragma: no cover - branch invariant
+                    raise AssertionError("momentum-pivot runtime demo requires a configuration")
+                scenario = MomentumPivotScenario.create(session, momentum_config)
+            elif demo is RuntimeDemo.MBLOCKS_PHYSICAL_TWELVE_MODULE_LINE:
+                if physical_mblocks_builder is None:  # pragma: no cover - branch invariant
+                    raise AssertionError(
+                        "physical twelve-module runtime demo requires a scenario builder"
+                    )
+                scenario = physical_mblocks_builder(session)
+            elif demo in {
+                RuntimeDemo.MBLOCKS_PHYSICAL_TWELVE_MODULE_STAIRCASE,
+                RuntimeDemo.MBLOCKS_TWELVE_MODULE_STAIRCASE,
+            }:
+                if physical_mblocks_builder is None:  # pragma: no cover - branch invariant
+                    raise AssertionError("staircase runtime demo requires a scenario builder")
+                scenario = physical_mblocks_builder(session)
+            elif demo is RuntimeDemo.SMORES_DIFF_DRIVE_DOCK_UNDOCK:
                 physical_config = _load_smores_physics_config(
                     scene.instance_ids[0],
                     scene.instance_ids[1],
                     config,
                 )
-                scenario: RuntimeScenario = DifferentialDriveDockingScenario.create(
+                scenario = DifferentialDriveDockingScenario.create(
                     session,
                     physical_config,
                 )
@@ -281,6 +422,8 @@ class RuntimeInspectorRunner:
             if demo in {
                 RuntimeDemo.SMORES_DRIVER_TO_SNAKE,
                 RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE,
+                RuntimeDemo.MBLOCKS_FIVE_MODULE_PIVOT,
+                RuntimeDemo.MBLOCKS_TWELVE_MODULE_LINE,
             }:
                 assert plan is not None
                 if demo is RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE:
@@ -290,6 +433,17 @@ class RuntimeInspectorRunner:
                     )
                 else:
                     report_status(f"Running {plan.name} with {len(plan.module_ids)} modules")
+            elif demo is RuntimeDemo.MBLOCKS_MOMENTUM_PIVOT:
+                assert momentum_config is not None
+                report_status(f"Running {momentum_config.plan_name} with 2 modules")
+            elif demo in {
+                RuntimeDemo.MBLOCKS_PHYSICAL_TWELVE_MODULE_LINE,
+                RuntimeDemo.MBLOCKS_PHYSICAL_TWELVE_MODULE_STAIRCASE,
+                RuntimeDemo.MBLOCKS_TWELVE_MODULE_STAIRCASE,
+            }:
+                report_status(
+                    f"Running {scenario.status.plan_name} with {len(scene.instance_ids)} modules"
+                )
             else:
                 assert fixed_local is not None and moving_local is not None
                 report_status(f"Running {module_type}: {fixed_local} ↔ {moving_local}")
@@ -382,6 +536,124 @@ def validate_runtime_inspector_config(config: RuntimeInspectorConfig) -> None:
             raise RuntimeInspectorSetupError(
                 "smores_driver_to_snake currently requires gravity and ground disabled; "
                 "the scripted topology demo does not yet model supported locomotion"
+            )
+    elif demo in {
+        RuntimeDemo.MBLOCKS_FIVE_MODULE_PIVOT,
+        RuntimeDemo.MBLOCKS_TWELVE_MODULE_LINE,
+        RuntimeDemo.MBLOCKS_TWELVE_MODULE_STAIRCASE,
+    }:
+        demo_name = demo.value
+        if config.fixed_connector is not None or config.moving_connector is not None:
+            raise RuntimeInspectorSetupError(
+                f"{demo_name} defines its connector actions; do not supply fixed_connector "
+                "or moving_connector"
+            )
+        if config.undock_at_s is not None:
+            raise RuntimeInspectorSetupError(
+                f"{demo_name} defines its own releases; do not supply undock_at_s"
+            )
+        if config.connector_gap_m is not None:
+            raise RuntimeInspectorSetupError(
+                f"{demo_name} defines exact edge-pivot routes; leave connector_gap_m unspecified"
+            )
+        if config.retract_m_s is not None:
+            raise RuntimeInspectorSetupError(
+                f"{demo_name} defines exact edge-pivot routes; leave retract_m_s unspecified"
+            )
+        if config.orientation_rad != 0.0:
+            raise RuntimeInspectorSetupError(
+                f"{demo_name} defines its face orientations; orientation_rad must be zero"
+            )
+        if config.gravity or config.ground:
+            raise RuntimeInspectorSetupError(
+                f"{demo_name} is explicitly kinematic and requires gravity and ground disabled"
+            )
+    elif demo is RuntimeDemo.MBLOCKS_MOMENTUM_PIVOT:
+        if config.backend != "mujoco":
+            raise RuntimeInspectorSetupError(
+                "mblocks_momentum_pivot requires the MuJoCo backend's joint, hinge, "
+                "contact, and gravity dynamics"
+            )
+        if config.fixed_connector is not None or config.moving_connector is not None:
+            raise RuntimeInspectorSetupError(
+                "mblocks_momentum_pivot defines its face and edge connector transitions; "
+                "do not supply fixed_connector or moving_connector"
+            )
+        if config.undock_at_s is not None:
+            raise RuntimeInspectorSetupError(
+                "mblocks_momentum_pivot controls its own releases; do not supply undock_at_s"
+            )
+        if config.connector_gap_m is not None:
+            raise RuntimeInspectorSetupError(
+                "mblocks_momentum_pivot defines its initial face-connected scene; leave "
+                "connector_gap_m unspecified"
+            )
+        if config.retract_m_s is not None:
+            raise RuntimeInspectorSetupError(
+                "mblocks_momentum_pivot is flywheel-driven; leave retract_m_s unspecified"
+            )
+        if config.orientation_rad != 0.0:
+            raise RuntimeInspectorSetupError(
+                "mblocks_momentum_pivot defines its cube orientation; orientation_rad must be zero"
+            )
+        if not config.gravity or not config.ground:
+            raise RuntimeInspectorSetupError(
+                "mblocks_momentum_pivot requires gravity and the ground plane; enable both options"
+            )
+        if config.height_m < 0.025:
+            raise RuntimeInspectorSetupError(
+                "mblocks_momentum_pivot requires height_m >= 0.025 so the support cube "
+                "starts on or above the ground"
+            )
+        if config.dt_s > MAX_MOMENTUM_TIMESTEP_S:
+            raise RuntimeInspectorSetupError(
+                "mblocks_momentum_pivot requires dt_s <= "
+                f"{MAX_MOMENTUM_TIMESTEP_S:g} for the flywheel brake impulse"
+            )
+    elif demo in {
+        RuntimeDemo.MBLOCKS_PHYSICAL_TWELVE_MODULE_LINE,
+        RuntimeDemo.MBLOCKS_PHYSICAL_TWELVE_MODULE_STAIRCASE,
+    }:
+        demo_name = demo.value
+        if config.backend != "mujoco":
+            raise RuntimeInspectorSetupError(
+                f"{demo_name} requires the MuJoCo backend's "
+                "joint, hinge, contact, and gravity dynamics"
+            )
+        if config.fixed_connector is not None or config.moving_connector is not None:
+            raise RuntimeInspectorSetupError(
+                f"{demo_name} defines its connector transitions; "
+                "do not supply fixed_connector or moving_connector"
+            )
+        if config.undock_at_s is not None:
+            raise RuntimeInspectorSetupError(
+                f"{demo_name} controls its own releases; do not supply undock_at_s"
+            )
+        if config.connector_gap_m is not None:
+            raise RuntimeInspectorSetupError(
+                f"{demo_name} defines its initial scene; leave connector_gap_m unspecified"
+            )
+        if config.retract_m_s is not None:
+            raise RuntimeInspectorSetupError(
+                f"{demo_name} is flywheel-driven; leave retract_m_s unspecified"
+            )
+        if config.orientation_rad != 0.0:
+            raise RuntimeInspectorSetupError(
+                f"{demo_name} defines its cube orientations; orientation_rad must be zero"
+            )
+        if not config.gravity or not config.ground:
+            raise RuntimeInspectorSetupError(
+                f"{demo_name} requires gravity and the ground plane; enable both options"
+            )
+        if config.height_m < 0.025:
+            raise RuntimeInspectorSetupError(
+                f"{demo_name} requires height_m >= 0.025 so the "
+                "lowest cube starts on or above the ground"
+            )
+        if config.dt_s > MAX_MOMENTUM_TIMESTEP_S:
+            raise RuntimeInspectorSetupError(
+                f"{demo_name} requires dt_s <= "
+                f"{MAX_MOMENTUM_TIMESTEP_S:g} for its flywheel brake impulses"
             )
     elif demo is RuntimeDemo.SMORES_DIFF_DRIVE_DOCK_UNDOCK:
         if config.backend != "mujoco":
@@ -602,11 +874,29 @@ def _create_session(
             )
         adapter = create_backend(config.backend)
     else:
+        backend_options: dict[str, object] = {
+            "gravity": (0.0, 0.0, -9.81) if config.gravity else (0.0, 0.0, 0.0),
+            "ground": config.ground,
+            "timestep_s": config.dt_s,
+        }
+        demo = _resolve_demo(config.demo)
+        if demo is RuntimeDemo.MBLOCKS_MOMENTUM_PIVOT:
+            backend_options.update(weld_pool_size=2, hinge_pool_size=2)
+        elif demo is RuntimeDemo.MBLOCKS_PHYSICAL_TWELVE_MODULE_LINE:
+            # The route has eleven simultaneous face bonds and one transient
+            # hinge. Avoid deriving 84 inactive slots from all 168 directed
+            # connector instances in this known demonstration scene.
+            backend_options.update(weld_pool_size=12, hinge_pool_size=2)
+        elif demo in {
+            RuntimeDemo.MBLOCKS_PHYSICAL_TWELVE_MODULE_STAIRCASE,
+            RuntimeDemo.MBLOCKS_TWELVE_MODULE_STAIRCASE,
+        }:
+            # The mat begins with 16 cyclic face bonds and finishes with 18;
+            # only one edge hinge is active during a coordinated slab pivot.
+            backend_options.update(weld_pool_size=24, hinge_pool_size=2)
         adapter = create_backend(
             config.backend,
-            gravity=(0.0, 0.0, -9.81) if config.gravity else (0.0, 0.0, 0.0),
-            ground=config.ground,
-            timestep_s=config.dt_s,
+            **backend_options,
         )
     try:
         return RuntimeSession.create(loaded, scene, adapter)
@@ -659,6 +949,313 @@ def _load_smores_example_plan() -> ReconfigurationPlan:
             f"SMORES scenario '{scenario_path}' returned an invalid plan"
         )
     return plan
+
+
+def _load_mblocks_kinematic_pivot_example() -> tuple[
+    ReconfigurationPlan, tuple[KinematicPivotRoute, ...]
+]:
+    """Load the source-checkout five-module M-Blocks kinematic example."""
+    scenario_path = _MBLOCKS_KINEMATIC_PIVOT_SCENARIO
+    if not scenario_path.is_file():
+        raise RuntimeInspectorSetupError(
+            "M-Blocks five-module pivot example content was not found. This demonstration "
+            "requires a ModSim source checkout containing "
+            "'examples/scenarios/mblocks_five_module_pivot.py'."
+        )
+    spec = spec_from_file_location("modsim_example_mblocks_five_module_pivot", scenario_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeInspectorSetupError(
+            f"M-Blocks five-module pivot example is unavailable at '{scenario_path}'"
+        )
+    module = module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except Exception as error:
+        raise RuntimeInspectorSetupError(
+            f"Could not load M-Blocks scenario '{scenario_path}': {error}"
+        ) from error
+    build_plan = getattr(module, "build_plan", None)
+    build_routes = getattr(module, "build_routes", None)
+    if not callable(build_plan) or not callable(build_routes):
+        raise RuntimeInspectorSetupError(
+            f"M-Blocks scenario '{scenario_path}' must define build_plan() and build_routes()"
+        )
+    try:
+        plan = cast(Callable[[], object], build_plan)()
+        route_result = cast(Callable[[], object], build_routes)()
+    except Exception as error:
+        raise RuntimeInspectorSetupError(
+            f"Could not build M-Blocks scenario '{scenario_path}': {error}"
+        ) from error
+    if not isinstance(route_result, tuple):
+        raise RuntimeInspectorSetupError(
+            f"M-Blocks scenario '{scenario_path}' returned invalid routes"
+        )
+    route_values = cast(tuple[object, ...], route_result)
+    if not isinstance(plan, ReconfigurationPlan) or not all(
+        isinstance(route, KinematicPivotRoute) for route in route_values
+    ):
+        raise RuntimeInspectorSetupError(
+            f"M-Blocks scenario '{scenario_path}' returned an invalid plan or routes"
+        )
+    return plan, cast(tuple[KinematicPivotRoute, ...], route_values)
+
+
+def _load_mblocks_twelve_module_line_example() -> tuple[
+    ReconfigurationPlan, tuple[KinematicPivotRoute, ...]
+]:
+    """Load the source-checkout twelve-module M-Blocks line benchmark."""
+    scenario_path = _MBLOCKS_TWELVE_MODULE_LINE_SCENARIO
+    if not scenario_path.is_file():
+        raise RuntimeInspectorSetupError(
+            "M-Blocks twelve-module line example content was not found. This demonstration "
+            "requires a ModSim source checkout containing "
+            "'examples/scenarios/mblocks_twelve_module_line.py'."
+        )
+    spec = spec_from_file_location("modsim_example_mblocks_twelve_module_line", scenario_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeInspectorSetupError(
+            f"M-Blocks twelve-module line example is unavailable at '{scenario_path}'"
+        )
+    module = module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except Exception as error:
+        raise RuntimeInspectorSetupError(
+            f"Could not load M-Blocks twelve-module scenario '{scenario_path}': {error}"
+        ) from error
+    build_plan = getattr(module, "build_plan", None)
+    build_routes = getattr(module, "build_routes", None)
+    if not callable(build_plan) or not callable(build_routes):
+        raise RuntimeInspectorSetupError(
+            f"M-Blocks scenario '{scenario_path}' must define build_plan() and build_routes()"
+        )
+    try:
+        plan = cast(Callable[[], object], build_plan)()
+        route_result = cast(Callable[[], object], build_routes)()
+    except Exception as error:
+        raise RuntimeInspectorSetupError(
+            f"Could not build M-Blocks twelve-module scenario '{scenario_path}': {error}"
+        ) from error
+    if not isinstance(route_result, tuple):
+        raise RuntimeInspectorSetupError(
+            f"M-Blocks scenario '{scenario_path}' returned invalid routes"
+        )
+    route_values = cast(tuple[object, ...], route_result)
+    if not isinstance(plan, ReconfigurationPlan) or not all(
+        isinstance(route, KinematicPivotRoute) for route in route_values
+    ):
+        raise RuntimeInspectorSetupError(
+            f"M-Blocks scenario '{scenario_path}' returned an invalid plan or routes"
+        )
+    return plan, cast(tuple[KinematicPivotRoute, ...], route_values)
+
+
+def _load_mblocks_momentum_pivot_example(
+    config: RuntimeInspectorConfig,
+) -> tuple[SceneSpec, MomentumPivotConfig]:
+    """Load and parameterize the source-checkout physical M-Blocks pivot."""
+    scenario_path = _MBLOCKS_MOMENTUM_PIVOT_SCENARIO
+    if not scenario_path.is_file():
+        raise RuntimeInspectorSetupError(
+            "M-Blocks momentum-pivot example content was not found. This demonstration "
+            "requires a ModSim source checkout containing "
+            "'examples/scenarios/mblocks_two_module_momentum_pivot.py'."
+        )
+    spec = spec_from_file_location("modsim_example_mblocks_momentum_pivot", scenario_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeInspectorSetupError(
+            f"M-Blocks momentum-pivot example is unavailable at '{scenario_path}'"
+        )
+    module = module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except Exception as error:
+        raise RuntimeInspectorSetupError(
+            f"Could not load M-Blocks momentum-pivot scenario '{scenario_path}': {error}"
+        ) from error
+    build_scene = getattr(module, "build_scene", None)
+    build_config = getattr(module, "build_config", None)
+    if not callable(build_scene) or not callable(build_config):
+        raise RuntimeInspectorSetupError(
+            f"M-Blocks scenario '{scenario_path}' must define build_scene() and build_config()"
+        )
+    try:
+        scene = cast(Callable[[], object], build_scene)()
+        momentum_config = cast(Callable[[], object], build_config)()
+    except Exception as error:
+        raise RuntimeInspectorSetupError(
+            f"Could not build M-Blocks momentum-pivot scenario '{scenario_path}': {error}"
+        ) from error
+    if not isinstance(scene, SceneSpec) or not isinstance(momentum_config, MomentumPivotConfig):
+        raise RuntimeInspectorSetupError(
+            f"M-Blocks scenario '{scenario_path}' returned an invalid scene or configuration"
+        )
+
+    minimum_center_height = min(placement.pose.translation[2] for placement in scene.placements)
+    height_offset = config.height_m - minimum_center_height
+    if abs(height_offset) > 1e-12:
+        scene = SceneSpec.of(
+            replace(
+                placement,
+                pose=Transform.from_translation((0.0, 0.0, height_offset)).compose(placement.pose),
+            )
+            for placement in scene.placements
+        )
+    return scene, replace(momentum_config, dt_s=config.dt_s)
+
+
+def _load_mblocks_physical_twelve_module_example(
+    config: RuntimeInspectorConfig,
+) -> tuple[SceneSpec, RuntimeScenarioBuilder]:
+    """Load the source-checkout physical twelve-module M-Blocks example."""
+    scenario_path = _MBLOCKS_PHYSICAL_TWELVE_MODULE_LINE_SCENARIO
+    if not scenario_path.is_file():
+        raise RuntimeInspectorSetupError(
+            "M-Blocks physical twelve-module example content was not found. This "
+            "demonstration requires a ModSim source checkout containing "
+            "'examples/scenarios/mblocks_twelve_module_physics.py'."
+        )
+    spec = spec_from_file_location(
+        "modsim_example_mblocks_physical_twelve_module_line",
+        scenario_path,
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeInspectorSetupError(
+            f"M-Blocks physical twelve-module example is unavailable at '{scenario_path}'"
+        )
+    module = module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except Exception as error:
+        raise RuntimeInspectorSetupError(
+            f"Could not load M-Blocks physical twelve-module scenario '{scenario_path}': {error}"
+        ) from error
+    build_scene = getattr(module, "build_scene", None)
+    build_scenario = getattr(module, "build_scenario", None)
+    if not callable(build_scene) or not callable(build_scenario):
+        raise RuntimeInspectorSetupError(
+            f"M-Blocks scenario '{scenario_path}' must define build_scene() and "
+            "build_scenario(session, *, dt_s)"
+        )
+    try:
+        scene = cast(Callable[[], object], build_scene)()
+    except Exception as error:
+        raise RuntimeInspectorSetupError(
+            f"Could not build M-Blocks physical twelve-module scene '{scenario_path}': {error}"
+        ) from error
+    if not isinstance(scene, SceneSpec):
+        raise RuntimeInspectorSetupError(
+            f"M-Blocks scenario '{scenario_path}' returned an invalid scene"
+        )
+
+    minimum_center_height = min(placement.pose.translation[2] for placement in scene.placements)
+    height_offset = config.height_m - minimum_center_height
+    if abs(height_offset) > 1e-12:
+        scene = SceneSpec.of(
+            replace(
+                placement,
+                pose=Transform.from_translation((0.0, 0.0, height_offset)).compose(placement.pose),
+            )
+            for placement in scene.placements
+        )
+
+    def scenario_builder(session: RuntimeSession) -> RuntimeScenario:
+        try:
+            scenario = build_scenario(session, dt_s=config.dt_s)
+        except Exception as error:
+            raise RuntimeInspectorSetupError(
+                f"Could not build M-Blocks physical twelve-module scenario "
+                f"'{scenario_path}': {error}"
+            ) from error
+        if not isinstance(getattr(scenario, "status", None), ReconfigurationStatus) or not callable(
+            getattr(scenario, "step", None)
+        ):
+            raise RuntimeInspectorSetupError(
+                f"M-Blocks scenario '{scenario_path}' returned an invalid runtime scenario"
+            )
+        return cast(RuntimeScenario, scenario)
+
+    return scene, scenario_builder
+
+
+def _load_mblocks_staircase_example(
+    config: RuntimeInspectorConfig,
+    *,
+    physical: bool,
+) -> tuple[SceneSpec, RuntimeScenarioBuilder]:
+    """Load either executor for the shared twelve-module staircase route."""
+    scenario_path = _MBLOCKS_TWELVE_MODULE_STAIRCASE_SCENARIO
+    if not scenario_path.is_file():
+        raise RuntimeInspectorSetupError(
+            "M-Blocks staircase example content was not found. This demonstration "
+            "requires a ModSim source checkout containing "
+            "'examples/scenarios/mblocks_twelve_module_staircase.py'."
+        )
+    spec = spec_from_file_location(
+        "modsim_example_mblocks_twelve_module_staircase",
+        scenario_path,
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeInspectorSetupError(
+            f"M-Blocks staircase example is unavailable at '{scenario_path}'"
+        )
+    module = module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except Exception as error:
+        raise RuntimeInspectorSetupError(
+            f"Could not load M-Blocks staircase scenario '{scenario_path}': {error}"
+        ) from error
+
+    build_scene = getattr(module, "build_scene", None)
+    builder_name = "build_physical_scenario" if physical else "build_kinematic_scenario"
+    build_scenario = getattr(module, builder_name, None)
+    if not callable(build_scene) or not callable(build_scenario):
+        raise RuntimeInspectorSetupError(
+            f"M-Blocks scenario '{scenario_path}' must define build_scene() and "
+            f"{builder_name}(session, *, dt_s)"
+        )
+    try:
+        scene = cast(Callable[[], object], build_scene)()
+    except Exception as error:
+        raise RuntimeInspectorSetupError(
+            f"Could not build M-Blocks staircase scene '{scenario_path}': {error}"
+        ) from error
+    if not isinstance(scene, SceneSpec):
+        raise RuntimeInspectorSetupError(
+            f"M-Blocks scenario '{scenario_path}' returned an invalid scene"
+        )
+
+    minimum_center_height = min(placement.pose.translation[2] for placement in scene.placements)
+    height_offset = config.height_m - minimum_center_height
+    if abs(height_offset) > 1e-12:
+        scene = SceneSpec.of(
+            replace(
+                placement,
+                pose=Transform.from_translation((0.0, 0.0, height_offset)).compose(placement.pose),
+            )
+            for placement in scene.placements
+        )
+    timed_builder = cast(_TimedScenarioBuilder, build_scenario)
+
+    def scenario_builder(session: RuntimeSession) -> RuntimeScenario:
+        try:
+            scenario = timed_builder(session, dt_s=config.dt_s)
+        except Exception as error:
+            mode = "physical" if physical else "kinematic"
+            raise RuntimeInspectorSetupError(
+                f"Could not build {mode} M-Blocks staircase scenario '{scenario_path}': {error}"
+            ) from error
+        if not isinstance(getattr(scenario, "status", None), ReconfigurationStatus) or not callable(
+            getattr(scenario, "step", None)
+        ):
+            raise RuntimeInspectorSetupError(
+                f"M-Blocks scenario '{scenario_path}' returned an invalid runtime scenario"
+            )
+        return cast(RuntimeScenario, scenario)
+
+    return scene, scenario_builder
 
 
 def _load_smores_physics_config(

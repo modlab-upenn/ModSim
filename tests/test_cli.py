@@ -90,7 +90,10 @@ def test_cli_views_lists_pack_recipes_and_registered_builders(example_pack_dir: 
     payload = json.loads(result.stdout)
     assert payload["pack"] == "generic_cube@0.1.0"
     assert [recipe["id"] for recipe in payload["recipes"]] == ["module_topology"]
-    assert {builder["builder"] for builder in payload["builders"]} == {"module_topology_graph"}
+    assert {builder["builder"] for builder in payload["builders"]} == {
+        "cubic_lattice",
+        "module_topology_graph",
+    }
 
 
 def test_cli_views_generates_exact_json_for_three_isolated_modules(
@@ -158,7 +161,7 @@ def test_cli_views_reports_an_unregistered_builder(copied_pack: Path) -> None:
     assert result.exit_code == 2
     assert "unavailable_builder" in result.output
     assert "is not registered" in result.output
-    assert "available: module_topology_graph" in result.output
+    assert "available: cubic_lattice, module_topology_graph" in result.output
 
 
 def test_cli_views_rejects_a_recipe_not_enabled_for_runtime(copied_pack: Path) -> None:

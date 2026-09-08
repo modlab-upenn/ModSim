@@ -9,8 +9,9 @@ from modsim.backends.mock import MockBackendAdapter
 from modsim.core.events import DockCandidateDetected
 from modsim.core.ids import ConnectorInstanceId
 from modsim.core.scene import SceneSpec
-from modsim.model_views import ModelViewFactory
+from modsim.model_views import CubicLatticeView, ModelViewFactory
 from modsim.robot_packs import RobotPack
+from modsim.robot_packs.schema import ModelViewSpec
 from modsim.runtime.inspection import (
     RuntimeInspectionError,
     RuntimeInspectorFrame,
@@ -133,6 +134,37 @@ def test_inspector_transport_is_json_safe_and_frozen(example_pack: RobotPack) ->
     assert document["scenario"]["phase"] == "approaching"
     with pytest.raises(ValidationError, match="frozen"):
         frame.backend_name = "changed"  # type: ignore[misc]
+
+
+def test_inspector_frame_accepts_a_concrete_cubic_lattice_view(
+    example_pack: RobotPack,
+) -> None:
+    scenario = _docking_scenario(example_pack)
+    recipe = ModelViewSpec.model_validate(
+        {
+            "id": "runtime_lattice",
+            "name": "Runtime Lattice",
+            "builder": "cubic_lattice",
+            "configuration": {
+                "pitch_m": 0.1,
+                "position_tolerance_m": 0.005,
+                "orientation_tolerance_rad": 0.08726646259971647,
+            },
+        }
+    )
+
+    frame = build_runtime_inspector_frame(
+        scenario.session,
+        recipe,
+        ModelViewFactory(),
+        scenario_status=scenario.status,
+    )
+
+    assert isinstance(frame.view, CubicLatticeView)
+    assert frame.view.id == "runtime_lattice"
+    assert frame.view.pitch_m == pytest.approx(0.1)
+    assert [node.cell for node in frame.view.nodes] == [(0, 0, 0), (1, 0, 0)]
+    assert all(not node.off_lattice for node in frame.view.nodes)
 
 
 def test_inspector_frame_rejects_event_cursor_gaps(example_pack: RobotPack) -> None:

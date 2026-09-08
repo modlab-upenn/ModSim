@@ -6,8 +6,9 @@ is a roadmap; when the two differ, this document and the code under
 `src/modsim/runtime` describe what actually runs.
 
 Format 0.1 covers the full semantic pipeline against the mock backend and fixed
-connection execution under the optional MuJoCo adapter. Section 9 records the
-implemented weld-pool bridge and its remaining physics limitations.
+plus hinge connection execution under the optional MuJoCo adapter. Section 9
+records the implemented reserved-constraint bridge and its remaining physics
+limitations.
 
 ## 1. What ModSim owns and what a backend owns
 
@@ -46,6 +47,15 @@ Docking decisions are always made against the state the backend just reported,
 never against a stale snapshot. Requested releases are processed before new
 docks so that a connection cannot break and re-form within one step.
 
+An authored kinematic transit can call
+`RuntimeSession.step(dt, process_connectors=False)`. The session still owns the
+backend step, snapshot ingestion, connector-frame resolution, and overload
+releases, but it defers requested and passive connector processing until a
+later pass. This is used when a route has an explicit docking endpoint and a
+passive connector encountered slightly earlier along the analytical path must
+not latch opportunistically. Ordinary simulation loops use the default
+`process_connectors=True` pipeline above.
+
 ### 2.1 Connector frame resolution
 
 A connector's world frame is resolved in this order:
@@ -62,6 +72,13 @@ what a backend uses to populate that field.
 Docking and approach axes are authored in the **parent-link** frame, not the
 connector frame, so they are rotated by the link's world rotation rather than by
 the connector pose.
+
+This convention does not apply to `physical_connection.hinge.axis`. A hinge
+axis is expressed in **each connector's own frame**, because it describes a
+line belonging to the mating interface rather than an approach direction
+belonging to a link. Compatible hinge types must provide an identical axis and
+`anchor_separation_m`; their connector poses determine the corresponding world
+hinge line.
 
 A connector's velocity includes the lever-arm term:
 
@@ -160,12 +177,14 @@ geometrically valid while the runtime still refuses to latch.
 | `already_engaged` | one connector already holds a connection |
 | `cooldown` | `redock_cooldown_s` has not elapsed |
 | `physical_connection_undefined` | neither type declares a connection, or the two conflict |
-| `physical_connection_unsupported` | `hinge`, `ball`, or `custom` — not modelled in 0.1 |
+| `physical_connection_unsupported` | `ball` or `custom` — parameters not modelled in 0.1 |
 | `command_required` | not both types are auto-latching and no command was issued |
 
 Conflicting `physical_connection` intent is rejected rather than resolved. A pair
 where one end wants a rigid weld and the other wants compliance has no defensible
-default, so it is surfaced as an authoring error.
+default, so it is surfaced as an authoring error. Hinge ends must also declare
+the same complete `HingeConstraintSpec`; a disagreement about axis or anchor
+separation is rejected.
 
 **Loop closure** — docking two modules that already share an assembly — is
 *allowed* but flagged with a warning on the `GuardResult`. Closed kinematic
@@ -188,6 +207,12 @@ constraint exists.
 4. success -> DockCommitted, then AssemblyMerged if two components joined
    failure -> DockFailed with reason BACKEND_REFUSED and the backend's detail
 ```
+
+The resolved physical constraint type travels through this transaction. A
+successful `DockCommitted` records it, `ConnectionRuntime` preserves it, and
+topology/lattice view edges copy it into their immutable DTOs. Event replay and
+generated graphs therefore retain whether an edge was fixed or hinged instead
+of reconstructing that meaning from connector catalogs later.
 
 If the backend reports `supports_runtime_constraints: false`, the attempt is
 refused before it is made. ModSim degrades explicitly rather than silently
@@ -256,34 +281,43 @@ declared break forces governs: a joint is only as strong as its weakest half.
 
 ## 9. The MuJoCo backend
 
-`modsim_backend_mujoco` implements the fixed-connection execution path. See
+`modsim_backend_mujoco` implements fixed and hinge execution. See
 `docs/backends.md` for scene composition, naming, and options. What matters for
 docking semantics:
 
-**Done.** Connector frames are materialised as MuJoCo sites and reported in
-`snapshot.connector_frames`, so acceptance is evaluated against frames measured
-by the engine. Docking and undocking execute: a committed connection atomically
-claims a reserved weld and a reserved contact-exclusion entry, re-points both at
-the mating body pair, and activates the weld. Release deactivates the weld and
-returns both entries to their pools. Authored static exclusions remain present,
-and the combined signature array stays sorted for MuJoCo's collision-filter
-lookup. The dynamic exclusion covers the exact two bodies constrained by the
-weld, not every articulated body in their modules or assemblies. Pool
-exhaustion refuses the connection rather than faking a latch.
+**Fixed connections.** A commit atomically claims one reserved weld and one
+reserved contact-exclusion entry, re-points them at the mating body pair, and
+activates the weld. Release returns both entries to their pools. Authored
+static exclusions remain present, and the combined signature array stays
+sorted for MuJoCo's collision-filter lookup. The dynamic exclusion covers the
+exact two bodies constrained by the weld, not every articulated body in their
+modules or assemblies.
 
-**Not done**, in the order I would take them:
+**Hinge connections.** A commit claims one hinge slot containing two reserved
+`mjEQ_CONNECT` equalities. Their point anchors are centred on each measured
+connector origin and separated by the authored distance along the connector-
+local hinge axis. Constraining two separated corresponding points removes
+translation and all rotation except rotation about their common line. Unlike a
+weld, a hinge does **not** claim a contact exclusion: collision remains active
+so a pivoting M-Block can interact with its support and the ground. The
+`hinge_pool_size` adapter option controls the number of simultaneously active
+hinges; each slot reserves two equality rows. Pool exhaustion refuses the
+connection instead of faking a latch.
 
-- **Constraint forces.** Report them in `snapshot.constraint_forces_n` and
-  break-force release plus connector-load metrics — already implemented in core
-  — start working with no further change.
-- **Compliance.** `constraint: compliant` maps to the weld's `solref`/`solimp`,
-  not to a separate constraint type. The schema's stiffness values are in
-  physical units and `solref` is in time-constant form, so the conversion must be
-  explicit and documented.
-- **Weld chains are soft.** A long chain is measurably less stiff and slower
-  than the equivalent compiled rigid body. An optional `mjSpec` recompile path
-  that fuses a stable assembly into a real kinematic tree is worth adding *after*
-  the weld path works, not instead of it.
+**Constraint forces.** Snapshots now report scalar force magnitudes for every
+active weld and hinge through `constraint_forces_n`. For a weld this is the
+Euclidean norm of its three translational equality rows; rotational rows are
+not mixed into a value whose unit is newtons. For a two-point hinge it is the
+norm of the vector sum of the two three-axis point-force vectors. Their
+difference also represents a moment, which is deliberately not folded into
+this scalar field. These conventions feed the backend-neutral overload path;
+they are constraint-solver reactions, not yet a complete connector wrench.
+
+**Still deferred.** `constraint: compliant` needs an explicit conversion from
+physical stiffness units into MuJoCo `solref`/`solimp`. Long weld chains also
+remain softer than equivalent compiled rigid bodies; an optional `mjSpec`
+recompile/fusion path is a later optimization. Ball/custom constraints and
+full connector wrench telemetry remain unimplemented.
 
 Two things real dynamics exposed that the mock hid. The relative-velocity
 criterion now matters: an approach faster than the connector type's
@@ -323,12 +357,64 @@ remain the only way graph edges and assemblies change. The authored navigation
 routes are deterministic demo inputs, not autonomous planning or published
 hardware trajectories.
 
+### 9.2 M-Blocks face-to-hinge-to-face demonstration
+
+The two-module M-Blocks physics bootstrap exercises both constraint kinds. At
+time zero it stages a fixed face bond and a coincident +Y edge hinge. After
+spin-up, it releases only the face, brakes the moving module's internal
+flywheel, lets MuJoCo integrate the shell around the retained hinge, commits
+the measured target face, then releases the hinge. Core event, connection, and
+assembly state remain canonical throughout.
+
+The twelve-module one-plane route composes that lifecycle rather than adding a
+second docking mechanism. Its complete eleven-face starting tree is committed
+in one docking pass at simulation time zero. For each of ten quarter turns and
+one final half-turn, `MomentumPivotSequenceScenario` activates exactly one
+directed edge hinge while the current fixed face still holds its geometry,
+then delegates spin-up, fixed-face release, braking, measured target capture,
+hinge release, and connected hold to `MomentumPivotScenario`. Capture requires
+both ordinary connector acceptance and the authored pivot-angle/direction gate.
+The target face
+from one action is required to be the directed initial face of the next action.
+Every explicit hinge/face commit and release verifies the complete expected
+topology immediately, so a passive face that latches during the same docking
+pass cannot remain hidden until the end of the action. A failed physical commit
+or topology mismatch terminates the sequence instead of advancing to a
+plausible-looking later state.
+
+Only initialization may establish module root poses. After sequence creation,
+the controller uses joint effort plus ordinary dock/undock requests; MuJoCo
+owns every resulting root motion. A successful complete lifecycle contains 11
+initial fixed commits and, per action, one hinge commit, one fixed-face
+release, one target-face commit, and one hinge release. The canonical end state
+therefore has 11 fixed connections and no active hinge.
+
+Failure is diagnostic rather than transactional: the controller immediately
+zeros flywheel effort and stops advancing, but preserves whatever physical
+constraints and canonical events existed at the failure instant. This lets the
+Runtime Inspector show the failed mechanical state. Session shutdown remains
+the cleanup boundary; automatic rollback or recovery planning is not yet
+implemented.
+
+This deterministic constraint transition approximates the effect of passive
+edge magnets; ModSim does not yet integrate a magnetic force-versus-distance
+field or let loads choose which magnetic contacts break. No module root pose,
+twist, or wrench is written after initialization. All current physical pivots
+remain in the +Y plane; the published carrier's other two planes are not
+modeled. See `mblocks_3d.md` for the reference parameters, commands, and
+fidelity boundary.
+
 ## 10. Mock backend
 
 `MockBackendAdapter` is deliberately kinematic, not dynamic. Bodies move at
 whatever twist they are given; nothing falls and nothing collides. What it does
 model faithfully is the part ModSim depends on: a physical connection makes two
 modules move as one rigid body, and removing it lets them move independently.
+
+The mock explicitly refuses `constraint: hinge`; treating it as a weld would
+hide the rotational degree of freedom and make a physics test misleading. Use
+MuJoCo for hinge execution. The refusal passes through ordinary two-phase
+commit as `DockFailed(BACKEND_REFUSED)`.
 
 Every link of a module reports the module pose, because the mock has no
 articulated kinematics. Modules with internal joints therefore need a real
@@ -422,10 +508,10 @@ print(session.metrics().as_dict())
 an Isaac Sim adapter
 articulated kinematics in the mock backend
 ALIGNING and LOAD_BEARING lifecycle transitions driven by the engine
-hinge, ball, and custom physical connections
+ball and custom physical connections
 compliant connection translation in the MuJoCo adapter
 connector load estimates beyond a single constraint-force magnitude
-MuJoCo equality-constraint force reporting
+constraint moment/wrench reporting beyond scalar equality-force conventions
 position/velocity joint-command implementations and actuator catalogs
 general or autonomous docking, approach, and reconfiguration planning
 richer Studio lifecycle, contact-force, and metric-plot panels

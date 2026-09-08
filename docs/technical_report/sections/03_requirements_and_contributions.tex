@@ -1,0 +1,128 @@
+\section{Requirements, System Model, and Design Principles}
+\label{sec:requirements}
+
+\subsection{Terminology and entities}
+
+The following distinctions are used throughout the report.
+
+\begin{description}[style=nextline]
+  \item[Module type and module instance]
+  A module type is reusable semantic and mechanical data in a \robotpack{}. A module
+  instance is one placed occurrence in a runtime scene.
+
+  \item[Connector type and connector instance]
+  A connector type defines compatibility, gender, capture tolerance, orientation,
+  physical constraint intent, and policy. A connector instance attaches that meaning to
+  a link and local pose on a module type.
+
+  \item[Physical constraint and logical connection]
+  A physical constraint is a backend object such as a \mujoco{} weld. A logical
+  connection is canonical \modsim{} state created only after the physical constraint
+  has been accepted.
+
+  \item[Assembly]
+  An assembly is a connected component of the committed module graph. A disconnected
+  module is an assembly of size one.
+
+  \item[Canonical state and model view]
+  \code{WorldState} is mutable runtime authority. A model view is an immutable,
+  JSON-safe projection generated from that authority for algorithms or interfaces.
+
+  \item[Reconfiguration plan and physical route]
+  A plan names connector removals and additions. A route describes how a mobile module
+  or assembly attempts to realize one plan action through physics.
+\end{description}
+
+\subsection{Functional requirements}
+
+\begin{longtable}{L{0.10\textwidth}L{0.31\textwidth}L{0.47\textwidth}}
+\caption{Primary requirements and their implemented mechanisms.}
+\label{tab:requirements}\\
+\toprule
+ID & Requirement & Implemented mechanism \\
+\midrule
+\endfirsthead
+\toprule
+ID & Requirement & Implemented mechanism \\
+\midrule
+\endhead
+R1 & Portable platform package & Strict split-YAML Robot Pack with relative assets,
+stable identifiers, metadata, mappings, and recipes. \\
+R2 & Early and profile-aware validation & Authoring and simulation-readiness profiles
+with structured issues and cross-reference checks. \\
+R3 & Backend independence & Lazy adapter registry, capability negotiation, and no
+mandatory simulator dependency in core. \\
+R4 & Deterministic docking & Sorted candidates, structured acceptance, guards,
+explicit commands, stable connection identifiers, and deterministic events. \\
+R5 & Physical/logical consistency & Two-phase commit: backend creates the constraint
+before \code{DockCommitted} mutates canonical state. \\
+R6 & Dynamic topology & Event-driven connection changes, assembly recomputation,
+revision counters, and generated topology multigraphs. \\
+R7 & Actuated dynamics & Backend-neutral atomic joint commands with declaration,
+capability, finiteness, and limit validation; MuJoCo effort implementation. \\
+R8 & Inspectable execution & Immutable Runtime Inspector frames, contiguous event
+deltas, graph/status/metrics UI, and native physics viewer from one session. \\
+R9 & Safe authoring & Local assets, path containment, strict schemas, transactional
+updates, canonical writing, and non-overwriting export. \\
+R10 & Extensibility & Registries and typed protocols for backends and model-view
+builders without executable code embedded in Robot Packs. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Non-functional requirements}
+
+\paragraph{Determinism.}
+Stable IDs, sorted iteration, canonical YAML, explicit event sequence numbers, and
+deterministic candidate ordering make failures reproducible. Physical trajectories may
+still depend on solver and floating-point behavior, but semantic arbitration should not
+depend on hash or insertion order.
+
+\paragraph{Dependency isolation.}
+The base package depends only on Pydantic, Rich, ruamel.yaml, and Typer. \mujoco{} and
+Studio reside behind independent optional extras. Importing \code{modsim} must not
+import Qt, VTK, or \mujoco{}.
+
+\paragraph{Fail-closed behavior.}
+Unsupported physical connection types, absent backend capabilities, exhausted weld
+pools, unresolved frames, invalid command modes, and bad cross-references should
+produce actionable errors rather than a simulated success.
+
+\paragraph{Bounded memory.}
+The event log is intentional history, while model-view caches retain only the latest
+result per source and recipe. UI publication is throttled and transfers immutable
+snapshots rather than sharing backend objects.
+
+\paragraph{Auditability.}
+Every committed dock and undock has a canonical event. Runtime logs are local,
+per-launch sidecars. The GUI does not silently persist edits: users explicitly Save or
+Export a canonical pack.
+
+\subsection{Authority rules}
+
+The most important architectural decisions can be expressed as authority rules.
+
+\begin{enumerate}
+  \item A mechanical asset owns detailed geometry and kinematics. Robot Pack YAML
+        should not duplicate an entire link tree.
+  \item A Robot Pack owns portable modular semantics. A backend model should not be the
+        only place a docking face is named or typed.
+  \item \code{WorldState} owns live logical state. A graph widget or backend scene must
+        not become an independent connection database.
+  \item A backend owns integration and the existence of physical constraints. Core
+        code never writes directly into \mujoco{} arrays.
+  \item Events own committed semantic history. Candidates and transient acceptance
+        state may be ephemeral; topology mutations may not.
+  \item Model views own presentation-oriented projections only. They can be rebuilt
+        from the pack and world and are never edited to control canonical state.
+\end{enumerate}
+
+\subsection{Current non-goals}
+
+The first phase intentionally excludes a new physics solver, a CAD system, a general
+autonomous planner, a calibrated magnetic connector model, arbitrary plugin discovery,
+and a web application. The APIs are designed so these can be added without replacing
+the semantic core. This is particularly important for a future high-performance C++
+runtime: Python coordinates authoring and research workflows today, while immutable
+data contracts and narrow backend protocols avoid making Python object identity part of
+the long-term wire model.
+

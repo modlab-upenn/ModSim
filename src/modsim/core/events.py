@@ -21,6 +21,7 @@ from modsim.core.ids import (
     ConstraintHandle,
 )
 from modsim.core.transforms import Transform
+from modsim.robot_packs.schema import PhysicalConstraintType
 
 
 class DockFailureReason(StrEnum):
@@ -65,6 +66,7 @@ class DockCommitted(Event):
     connector_b: ConnectorInstanceId
     constraint_handle: ConstraintHandle
     relative_transform: Transform
+    constraint: PhysicalConstraintType = PhysicalConstraintType.FIXED
     orientation_rad: float = 0.0
     orientation_index: int | None = None
 

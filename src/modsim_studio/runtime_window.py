@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSplitter,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -21,7 +22,12 @@ from PySide6.QtWidgets import (
 from modsim.runtime import RuntimeInspectorConfig, RuntimeInspectorFrame
 from modsim_studio.runtime_events import RuntimeEventLogWidget
 from modsim_studio.runtime_graph import TopologyGraphWidget
-from modsim_studio.runtime_presenter import RuntimeInspectorPresenter, RuntimePresentation
+from modsim_studio.runtime_lattice import CubicLatticeWidget
+from modsim_studio.runtime_presenter import (
+    CubicLatticePresentation,
+    RuntimeInspectorPresentation,
+    RuntimeInspectorPresenter,
+)
 from modsim_studio.runtime_process import (
     RuntimeInspectorProcessController,
     RuntimeInspectorThreadController,
@@ -68,9 +74,13 @@ class RuntimeInspectorWindow(QMainWindow):
         header_layout.addWidget(self.source_label)
 
         self.graph = TopologyGraphWidget()
+        self.lattice = CubicLatticeWidget()
+        self.view_stack = QStackedWidget()
+        self.view_stack.addWidget(self.graph)
+        self.view_stack.addWidget(self.lattice)
         self.events = RuntimeEventLogWidget()
         splitter = QSplitter(Qt.Orientation.Vertical)
-        splitter.addWidget(self.graph)
+        splitter.addWidget(self.view_stack)
         splitter.addWidget(self.events)
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 2)
@@ -94,6 +104,11 @@ class RuntimeInspectorWindow(QMainWindow):
         self._controller.failed.connect(self._runtime_failed)
         self._controller.finished.connect(self._runtime_finished)
         self.graph.entity_selected.connect(self._select_entity)
+        self.lattice.entity_selected.connect(self._select_entity)
+        self.lattice.projection_changed.connect(self._set_lattice_projection)
+        self.lattice.layer_changed.connect(self._set_lattice_layer)
+        self.lattice.snap_cells_changed.connect(self._set_snap_cells_visible)
+        self.lattice.orientation_axes_changed.connect(self._set_orientation_axes_visible)
 
         QTimer.singleShot(0, self.start)
 
@@ -177,8 +192,52 @@ class RuntimeInspectorWindow(QMainWindow):
             return
         self._apply_presentation(presentation)
 
-    def _apply_presentation(self, presentation: RuntimePresentation) -> None:
-        self.graph.set_presentation(presentation)
+    @Slot(str)
+    def _set_lattice_projection(self, projection: str) -> None:
+        try:
+            presentation = self._presenter.set_lattice_projection(projection)
+        except (KeyError, TypeError, ValueError) as error:
+            _LOGGER.warning("Could not change lattice projection: %s", error)
+            return
+        self._apply_presentation(presentation)
+
+    @Slot(object)
+    def _set_lattice_layer(self, layer: object) -> None:
+        if layer is not None and not isinstance(layer, int):
+            _LOGGER.warning("Could not change lattice layer: expected an integer or All")
+            return
+        try:
+            presentation = self._presenter.set_lattice_layer(layer)
+        except (KeyError, TypeError, ValueError) as error:
+            _LOGGER.warning("Could not change lattice layer: %s", error)
+            return
+        self._apply_presentation(presentation)
+
+    @Slot(bool)
+    def _set_snap_cells_visible(self, visible: bool) -> None:
+        try:
+            presentation = self._presenter.set_lattice_overlays(show_snap_cells=visible)
+        except (TypeError, ValueError) as error:
+            _LOGGER.warning("Could not change lattice snap-cell overlay: %s", error)
+            return
+        self._apply_presentation(presentation)
+
+    @Slot(bool)
+    def _set_orientation_axes_visible(self, visible: bool) -> None:
+        try:
+            presentation = self._presenter.set_lattice_overlays(show_orientation_axes=visible)
+        except (TypeError, ValueError) as error:
+            _LOGGER.warning("Could not change lattice orientation overlay: %s", error)
+            return
+        self._apply_presentation(presentation)
+
+    def _apply_presentation(self, presentation: RuntimeInspectorPresentation) -> None:
+        if isinstance(presentation, CubicLatticePresentation):
+            self.lattice.set_presentation(presentation)
+            self.view_stack.setCurrentWidget(self.lattice)
+        else:
+            self.graph.set_presentation(presentation)
+            self.view_stack.setCurrentWidget(self.graph)
         self.events.set_events(presentation.events)
         self.status_label.setText(presentation.status_text)
         self.source_label.setText(presentation.source_text)

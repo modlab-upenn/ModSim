@@ -1,0 +1,213 @@
+\section{Limitations and Future Work}
+\label{sec:future}
+
+\subsection{Current limitations}
+
+The present system is an operational vertical slice, not a complete modular-robot
+simulation product. The most important limitations are grouped below.
+
+\subsubsection{Physical fidelity}
+
+\begin{itemize}
+  \item Tire friction, rear-skid geometry, joint damping/armature, wheel effort limits,
+        and feedback gains are provisional.
+  \item Detailed visual meshes are not calibrated collision hulls.
+  \item EP-Face attraction, magnetic state, electrical switching, and capture forces are
+        absent. Accepted connectors transition to an ideal fixed weld.
+  \item \mujoco{} equality forces are not reported into core, so runtime connector
+        overload and break-force behavior are unverified in physical demos.
+  \item Welded chains are solver constraints, not recompiled rigid assemblies, and can
+        be softer than an equivalent compiled tree.
+  \item The generic \SI{6}{mm} position capture proxy does not reproduce separately
+        measured normal and lateral capture envelopes.
+\end{itemize}
+
+\subsubsection{Control and planning}
+
+\begin{itemize}
+  \item Physical routes are authored and tuned; no autonomous path, obstacle, or
+        reconfiguration planner is integrated.
+  \item Initial two-module pose is heading aligned, and the seven-module Driver tree is
+        staged at time zero.
+  \item Only effort commands are implemented by \mujoco{}. Position/velocity commands
+        and explicit actuator/transmission models are missing.
+  \item Multi-module allocation is a projected rigid-twist heuristic rather than an
+        optimal contact-aware controller.
+  \item No hardware-in-the-loop or hardware trajectory comparison exists.
+\end{itemize}
+
+\subsubsection{Semantic and backend completeness}
+
+\begin{itemize}
+  \item Only fixed runtime connections execute in \mujoco{}; compliant, hinge, ball,
+        and custom connections remain deferred.
+  \item Backend mapping resolution is incomplete, and named-frame-only connectors are
+        unsupported in \mujoco{}.
+  \item Capability definitions are descriptive rather than executable.
+  \item Connector \code{active} is persisted but not yet a runtime enable gate.
+  \item Isaac Sim has no adapter. The mock is kinematic and lacks articulated motion.
+  \item Physical samples are not event sourced, so the semantic log alone cannot replay
+        a continuous trajectory.
+\end{itemize}
+
+\subsubsection{Authoring and visualization}
+
+\begin{itemize}
+  \item Studio lacks 3-D connector picking/gizmos, joint animation, live assemblies,
+        texture support, acceptance overlays, and physics/contact visualization.
+  \item The Runtime Inspector renders only one topology graph plus an event table and
+        summary status. It lacks pause/restart/scrub, manual control, plots, and a
+        general scene editor.
+  \item Only one model-view builder is included; plugin discovery and incremental graph
+        patches are absent.
+  \item Named demos depend on a source-checkout examples tree rather than an installed
+        resource package.
+\end{itemize}
+
+\subsubsection{Publication and governance}
+
+The repository currently lacks an explicit root software license and CITATION metadata.
+The committed mesh metadata records collaborator authorization but is not a public
+redistribution license. These issues must be resolved before presenting the source and
+SMORES assets as an open, reusable research artifact. Release automation and trusted
+package publication are also absent.
+
+\subsection{Phase I: publication-quality validation}
+
+The first future-work phase should improve evidence before adding broad features.
+
+\begin{enumerate}
+  \item \textbf{Calibrate the physical plant.} Identify wheel motor/gear dynamics,
+        current/torque limits, tire longitudinal/lateral friction, mass distribution,
+        inertias, joint friction, and support contact from hardware experiments.
+  \item \textbf{Model EP-Face capture.} Add explicit face state and a validated
+        magnetic/capture force model before the weld transition. Preserve the ideal
+        weld as a selectable fast approximation.
+  \item \textbf{Report constraint loads.} Extract \mujoco{} equality forces and map
+        them to connector normal, shear, bending, and torsion metrics. Exercise
+        overload release against measured thresholds.
+  \item \textbf{Archive raw traces.} Export JSON/CSV or a binary time-series format with
+        configuration, dependency lock hash, events, state, controller targets, contact,
+        and health values.
+  \item \textbf{Run sensitivity experiments.} Vary timestep, lateral/yaw error, gap,
+        friction, mass, effort, and route perturbations. Report success rates and
+        confidence intervals.
+  \item \textbf{Compare hardware and simulation.} Measure approach, wheel response,
+        capture, release, and reconfiguration trajectories on physical modules and
+        quantify error rather than relying on visual similarity.
+  \item \textbf{Close verification gaps.} Add the contact-mechanics test file to the
+        dedicated \mujoco{} CI job and add a pinned report-build job.
+\end{enumerate}
+
+\subsection{Phase II: semantic and backend completeness}
+
+\subsubsection{Backend mappings}
+
+Complete asset, link, joint, connector-frame, and constraint mapping resolution. A
+validator should optionally parse selected mechanical assets and cross-check every
+mapped source name. Named backend frames should become first-class measured connector
+sources.
+
+\subsubsection{Actuator model}
+
+Introduce an actuator/transmission catalog that distinguishes semantic control modes
+from motor models. Implement position and velocity modes, rate limits, gear ratio,
+torque-speed curves, sensor latency/noise, and multi-rate low-level control. This will
+allow the controller period to reflect hardware rather than solver rate.
+
+\subsubsection{Connection types}
+
+Implement compliant constraints by documenting the conversion from physical stiffness
+and damping to solver parameters. Add parameterized hinge and ball connections, then a
+safe extension mechanism for custom constraints. Conformance tests must verify both
+semantic event outcomes and intended degrees of freedom.
+
+\subsubsection{Second dynamic backend}
+
+An Isaac Sim adapter is the natural next cross-backend milestone. It should map pack
+assets and connector frames into USD/PhysX, implement runtime fixed constraints and
+joint effort, and run the same docking and physical scenario conformance suite. The aim
+is not pixel-identical trajectories, but agreement on semantic decisions and stable
+identities under each engine's measured state.
+
+\subsection{Phase III: planning and reusable model views}
+
+The current \code{ReconfigurationPlan} already separates topology actions from routes.
+Future planners can populate it from graph goals. A complete stack would include:
+
+\begin{itemize}
+  \item topology planning and module-to-goal assignment;
+  \item collision-aware single-module and connected-assembly motion planning;
+  \item helper-module actions for faces that cannot be reached through planar
+        differential drive;
+  \item closed-loop route replanning and recovery;
+  \item concurrent action scheduling with conflict detection; and
+  \item capability-aware task planning above reconfiguration.
+\end{itemize}
+
+Model views should expand in parallel:
+
+\begin{itemize}
+  \item a hardware tree with joints and attached connector ports;
+  \item authored and runtime frame graphs;
+  \item a bipartite module/port graph;
+  \item adjacency, incidence, and ownership matrices;
+  \item platform-specific lattice/configuration-coordinate views; and
+  \item a hybrid docking view containing candidates, lifecycle, guards, and active
+        constraints.
+\end{itemize}
+
+All should remain immutable derived DTOs with explicit source revisions. Third-party
+discovery can be layered onto the registry without allowing Robot Packs to execute
+arbitrary code.
+
+\subsection{Phase IV: authoring and runtime UX}
+
+Studio should gain direct connector glyph selection, a transform gizmo, snapping to CAD
+frames/surfaces, visual acceptance volumes, joint configuration/animation, texture
+bundling and rendering, and multi-module assembly preview. Pack validation should link
+issues to both fields and 3-D entities.
+
+The Runtime Inspector should gain pause/resume, restart, checkpoint and replay, timeline
+scrubbing, live connector/acceptance diagnostics, joint controls, time-series metrics,
+force/contact panels, and scenario parameter forms. A combined application shell can
+host authoring and runtime modes while preserving their separate mutable owners.
+
+\subsection{Phase V: scale, language, and deployment}
+
+Python is appropriate for the present research framework, but larger simulations may
+benefit from a C++ stepping/event kernel with Python bindings. The current immutable
+DTOs, stable IDs, and strict protocol provide a migration path. Longer-term work may
+include:
+
+\begin{itemize}
+  \item a C++ runtime for large module counts and deterministic multithreading;
+  \item distributed or multi-rate simulation;
+  \item ROS 2 and hardware-in-the-loop bridges;
+  \item browser clients consuming the versioned immutable frame protocol;
+  \item remote compute with local/web visualization; and
+  \item a curated registry of independently versioned Robot Packs and scenario data.
+\end{itemize}
+
+A browser client need not move physics into the browser. The same separation used by
+the current Qt parent and \mujoco{} child can support server-owned simulation and a
+remote web frontend.
+
+\subsection{Multi-platform evaluation}
+
+The framework's genericity should be demonstrated, not assumed. At least two additional
+platforms should be integrated: one with a different connector gender/constraint model
+and one heterogeneous multi-robot system. Useful tests include non-tree topology,
+parallel edges, loop closure, non-wheel locomotion, and a connector on an articulated
+child link. Only then can claims of platform independence be strengthened beyond
+architectural separation.
+
+\subsection{Desired scientific endpoint}
+
+The long-term result should be a calibrated, cross-backend, reproducible experimental
+platform where a planner can issue one connector-level plan, different engines can
+execute it through their own physics, hardware can consume the same semantic command
+stream, and all produce comparable event/topology traces with quantified physical
+error. The present work establishes the data and control boundaries needed to pursue
+that endpoint.
+

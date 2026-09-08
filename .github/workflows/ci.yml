@@ -68,8 +68,12 @@ jobs:
       - name: Test MuJoCo backend and cross-backend conformance
         run: >-
           uv run --no-sync pytest
+          tests/test_mblocks_example_pack.py
+          tests/test_mblocks_physical_twelve.py
+          tests/test_momentum_pivot.py
           tests/test_mujoco_backend.py
           tests/test_mujoco_docking.py
+          tests/test_mujoco_hinges.py
           tests/test_mujoco_physical_docking.py
           tests/test_mujoco_physical_reconfiguration.py
           tests/test_mujoco_reconfiguration.py

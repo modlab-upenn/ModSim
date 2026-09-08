@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from modsim.model_views import CubicLatticeView
 from modsim.runtime import (
     ReconfigurationPhase,
     ReconfigurationStatus,
@@ -30,6 +31,9 @@ from modsim.runtime.inspection_protocol import (
     decode_runtime_message,
     encode_runtime_message,
 )
+
+_ROOT = Path(__file__).resolve().parents[1]
+_MBLOCKS_PACK_PATH = _ROOT / "examples" / "robot_packs" / "mblocks_3d"
 
 
 def test_protocol_round_trips_every_message_and_nested_path(
@@ -135,6 +139,30 @@ def test_reconfiguration_status_round_trips_as_a_strict_runtime_frame(
     )
     with pytest.raises(RuntimeProtocolError, match="invalid runtime protocol"):
         decode_runtime_message(malformed)
+
+
+def test_protocol_round_trips_a_concrete_cubic_lattice_frame() -> None:
+    runner = RuntimeInspectorRunner.create(
+        RuntimeInspectorConfig(
+            pack_path=_MBLOCKS_PACK_PATH,
+            demo=RuntimeDemo.MBLOCKS_FIVE_MODULE_PIVOT,
+            backend="mock",
+            duration_s=0.01,
+            dt_s=0.01,
+        )
+    )
+    try:
+        frame = runner.frame()
+    finally:
+        runner.shutdown()
+
+    decoded = decode_runtime_message(encode_runtime_message(RuntimeFrame(frame=frame)))
+
+    assert isinstance(decoded, RuntimeFrame)
+    assert isinstance(decoded.frame.view, CubicLatticeView)
+    assert isinstance(frame.view, CubicLatticeView)
+    assert decoded.frame == frame
+    assert decoded.frame.view.orientation_catalog == frame.view.orientation_catalog
 
 
 def test_protocol_framer_preserves_fragmented_message_order() -> None:

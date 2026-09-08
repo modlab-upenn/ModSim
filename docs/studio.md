@@ -57,8 +57,9 @@ The current Studio MVP provides:
 - explicit connector-type creation and reference-safe removal, plus connector
   reassignment to an existing type and an imported URDF body/link;
 - connector-type fields for gender, compatibility, allowed orientations,
-  acceptance tolerances, physical constraints, compliance, load limits, and
-  undocking support, plus optional runtime docking policy;
+  acceptance tolerances, physical constraints, compliance, hinge axis/anchor
+  geometry, load limits, and undocking support, plus optional runtime docking
+  policy;
 - a Model Views catalog for adding, editing, and removing named builder
   recipes, supported modes, default selection hints, and JSON configuration;
 - a separate Runtime Inspector that runs named two-module or seven-module
@@ -191,6 +192,14 @@ explicit policy and restores the documented runtime defaults. Applying any
 other connector-type edit preserves both a declared docking policy and custom
 metadata.
 
+Selecting `hinge` as the physical constraint enables **Hinge axis (x, y, z)**
+and **Hinge anchor separation (m)**. The axis must be a unit vector and is
+expressed in that connector's own frame, not the parent-link frame used by the
+connector's docking and approach axes. Anchor separation must be positive.
+Both compatible hinge types must define the same values. Selecting a different
+constraint disables and removes hinge geometry when the edit is applied; a
+hinge cannot be saved with either required field missing.
+
 To add a connector, select a concrete link row under **Module Types → module →
 Links**. The link's Properties panel contains **Add connector to this link**.
 The dialog requires a schema-valid lower-case identifier, an existing type
@@ -291,8 +300,9 @@ These are current-source limitations, not intended long-term behavior:
   roots, connector parents, source joints, named frames, or backend mapping
   names after the URDF is changed externally.
 - **Viewport coverage is intentionally limited.** Acceptance-region geometry
-  is editable but not rendered. The viewport shows one module type rather than
-  a multi-module assembly, has no joint animation, and does not display
+  and physical hinge axes/anchors are editable but not rendered. The viewport
+  shows one module type rather than a multi-module assembly, has no joint
+  animation, and does not display
   contacts, physics, docking execution, generated model-view previews, or
   runtime state. The separate Runtime Inspector renders the generated logical
   graph and events; its optional MuJoCo companion window renders 3D physics

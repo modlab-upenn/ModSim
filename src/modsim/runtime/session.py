@@ -282,19 +282,28 @@ class RuntimeSession:
     # loop
     # ------------------------------------------------------------------
 
-    def step(self, dt_s: float) -> tuple[Event, ...]:
-        """Advance physics, ingest state, evaluate overloads, then run docking.
+    def step(
+        self,
+        dt_s: float,
+        *,
+        process_connectors: bool = True,
+    ) -> tuple[Event, ...]:
+        """Advance physics, ingest state, and evaluate the runtime lifecycle.
 
         Order matters. Docking decisions are made against the state the backend
         just reported, never against a stale snapshot, and overload releases are
         processed before new docks so a connection cannot break and re-form in
-        the same step.
+        the same step. Authored kinematic transit may set
+        ``process_connectors=False`` to suppress passive capture while still
+        retaining session-owned sampling and overload handling; queued connector
+        commands remain pending until a later connector-processing pass.
         """
         self.adapter.step(dt_s)
         snapshot = self.adapter.snapshot()
         self.world.ingest(snapshot)
         events: list[Event] = list(self._evaluate_overloads(snapshot.constraint_forces_n))
-        events.extend(self.process_docking())
+        if process_connectors:
+            events.extend(self.process_docking())
         return tuple(events)
 
     def _evaluate_overloads(

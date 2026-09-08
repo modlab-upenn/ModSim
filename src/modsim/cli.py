@@ -48,6 +48,7 @@ from modsim.robot_packs import (
 )
 from modsim.runtime import RuntimeDemo, RuntimeInspectorConfig
 from modsim.runtime.inspection import format_event_detail
+from modsim.runtime.momentum_pivot import MAX_MOMENTUM_TIMESTEP_S
 from modsim.runtime.physics_docking import MAX_PHYSICAL_TIMESTEP_S
 from modsim.runtime.reconfiguration import (
     ReconfigurationPlanError,
@@ -166,8 +167,9 @@ def runtime_command(
             case_sensitive=False,
             help=(
                 "Named scenario: dock, dock_undock, physical SMORES differential-drive "
-                "docking, or scripted/physical seven-module Driver-to-Snake "
-                "reconfiguration."
+                "docking, scripted/physical seven-module Driver-to-Snake "
+                "reconfiguration, or the five-module, momentum-pivot, and twelve-module "
+                "M-Blocks demonstrations."
             ),
         ),
     ] = RuntimeDemo.DOCK,
@@ -225,7 +227,13 @@ def runtime_command(
             help="Simulated seconds to display. The selected demo supplies a default.",
         ),
     ] = None,
-    dt_s: Annotated[float, typer.Option("--dt", help="Physics step size in seconds.")] = 0.002,
+    dt_s: Annotated[
+        float | None,
+        typer.Option(
+            "--dt",
+            help="Physics step size in seconds. The selected demo supplies a safe default.",
+        ),
+    ] = None,
     undock_at_s: Annotated[
         float | None,
         typer.Option(
@@ -241,19 +249,14 @@ def runtime_command(
         bool | None,
         typer.Option(
             "--gravity/--no-gravity",
-            help=(
-                "Enable gravity. Defaults on for physical SMORES demos and off for kinematic demos."
-            ),
+            help=("Enable gravity. Defaults on for physical demos and off for kinematic demos."),
         ),
     ] = None,
     ground: Annotated[
         bool | None,
         typer.Option(
             "--ground/--no-ground",
-            help=(
-                "Add a ground plane at z = 0. Defaults on for physical SMORES demos "
-                "and off otherwise."
-            ),
+            help=("Add a ground plane at z = 0. Defaults on for physical demos and off otherwise."),
         ),
     ] = None,
     height_m: Annotated[
@@ -294,6 +297,25 @@ def runtime_command(
     ] = None,
 ) -> None:
     """Open live semantic and optional native 3D views of a runtime demo."""
+    physical_pair = demo is RuntimeDemo.SMORES_DIFF_DRIVE_DOCK_UNDOCK
+    physical_reconfiguration = demo is RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE
+    mblocks_kinematic_pivot = demo is RuntimeDemo.MBLOCKS_FIVE_MODULE_PIVOT
+    mblocks_momentum_pivot = demo is RuntimeDemo.MBLOCKS_MOMENTUM_PIVOT
+    mblocks_twelve_module_line = demo is RuntimeDemo.MBLOCKS_TWELVE_MODULE_LINE
+    mblocks_physical_twelve_module_line = demo is RuntimeDemo.MBLOCKS_PHYSICAL_TWELVE_MODULE_LINE
+    mblocks_twelve_module_staircase = demo is RuntimeDemo.MBLOCKS_TWELVE_MODULE_STAIRCASE
+    mblocks_physical_twelve_module_staircase = (
+        demo is RuntimeDemo.MBLOCKS_PHYSICAL_TWELVE_MODULE_STAIRCASE
+    )
+    mblocks_kinematic = (
+        mblocks_kinematic_pivot or mblocks_twelve_module_line or mblocks_twelve_module_staircase
+    )
+    physical_twelve_module_mblocks = (
+        mblocks_physical_twelve_module_line or mblocks_physical_twelve_module_staircase
+    )
+    physical_mblocks = mblocks_momentum_pivot or physical_twelve_module_mblocks
+    physical_smores = physical_pair or physical_reconfiguration
+    physical_demo = physical_smores or physical_mblocks
     resolved_duration_s = (
         duration_s
         if duration_s is not None
@@ -303,16 +325,34 @@ def runtime_command(
             RuntimeDemo.SMORES_DIFF_DRIVE_DOCK_UNDOCK: 12.0,
             RuntimeDemo.SMORES_DRIVER_TO_SNAKE: 14.0,
             RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE: 210.0,
+            RuntimeDemo.MBLOCKS_FIVE_MODULE_PIVOT: 8.0,
+            RuntimeDemo.MBLOCKS_MOMENTUM_PIVOT: 5.0,
+            RuntimeDemo.MBLOCKS_PHYSICAL_TWELVE_MODULE_LINE: 12.0,
+            RuntimeDemo.MBLOCKS_PHYSICAL_TWELVE_MODULE_STAIRCASE: 12.0,
+            RuntimeDemo.MBLOCKS_TWELVE_MODULE_LINE: 24.0,
+            RuntimeDemo.MBLOCKS_TWELVE_MODULE_STAIRCASE: 28.0,
         }[demo]
     )
-    physical_pair = demo is RuntimeDemo.SMORES_DIFF_DRIVE_DOCK_UNDOCK
-    physical_reconfiguration = demo is RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE
-    physical_smores = physical_pair or physical_reconfiguration
-    resolved_gravity = physical_smores if gravity is None else gravity
-    resolved_ground = physical_smores if ground is None else ground
-    resolved_height_m = 0.05 if physical_smores and height_m is None else (height_m or 0.0)
+    if dt_s is not None:
+        resolved_dt_s = dt_s
+    elif physical_twelve_module_mblocks:
+        resolved_dt_s = MAX_MOMENTUM_TIMESTEP_S
+    elif physical_mblocks:
+        resolved_dt_s = 0.00025
+    else:
+        resolved_dt_s = 0.002
+    resolved_gravity = physical_demo if gravity is None else gravity
+    resolved_ground = physical_demo if ground is None else ground
+    if height_m is None:
+        resolved_height_m = (
+            0.025
+            if physical_mblocks or mblocks_twelve_module_staircase
+            else (0.05 if physical_smores else 0.0)
+        )
+    else:
+        resolved_height_m = height_m
     _require_positive_finite(resolved_duration_s, "--duration")
-    _require_positive_finite(dt_s, "--dt")
+    _require_positive_finite(resolved_dt_s, "--dt")
     _require_positive_finite(approach_m_s, "--approach")
     _require_positive_finite(publish_hz, "--publish-hz")
     _require_positive_finite(real_time_factor, "--speed")
@@ -368,6 +408,167 @@ def runtime_command(
                 err=True,
             )
             raise typer.Exit(code=2)
+    if mblocks_kinematic:
+        demo_name = demo.value
+        if fixed_connector is not None or moving_connector is not None:
+            typer.echo(
+                f"--demo {demo_name} defines its connector actions; "
+                "do not supply --fixed-connector or --moving-connector.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if undock_at_s is not None:
+            typer.echo(
+                f"--demo {demo_name} defines its own releases; do not supply --undock-at.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if connector_gap_m is not None:
+            typer.echo(
+                f"--demo {demo_name} defines exact edge-pivot routes; "
+                "do not supply --connector-gap.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if retract_m_s is not None:
+            typer.echo(
+                f"--demo {demo_name} defines exact edge-pivot routes; do not supply --retract.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if orientation_rad != 0.0:
+            typer.echo(
+                f"--demo {demo_name} defines its face orientations; do not supply --orientation.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if resolved_gravity or resolved_ground:
+            typer.echo(
+                f"--demo {demo_name} is explicitly kinematic; "
+                "do not enable gravity or the ground plane.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+    if mblocks_momentum_pivot:
+        if fixed_connector is not None or moving_connector is not None:
+            typer.echo(
+                "--demo mblocks_momentum_pivot defines its face and edge connector "
+                "transitions; do not supply --fixed-connector or --moving-connector.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if undock_at_s is not None:
+            typer.echo(
+                "--demo mblocks_momentum_pivot controls its own releases; "
+                "do not supply --undock-at.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if connector_gap_m is not None:
+            typer.echo(
+                "--demo mblocks_momentum_pivot defines its initial face-connected scene; "
+                "do not supply --connector-gap.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if retract_m_s is not None:
+            typer.echo(
+                "--demo mblocks_momentum_pivot is flywheel-driven; do not supply --retract.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if orientation_rad != 0.0:
+            typer.echo(
+                "--demo mblocks_momentum_pivot defines its cube orientation; "
+                "do not supply --orientation.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if backend != "mujoco":
+            typer.echo(
+                "--demo mblocks_momentum_pivot requires --backend mujoco.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if not resolved_gravity or not resolved_ground:
+            typer.echo(
+                "--demo mblocks_momentum_pivot requires gravity and ground; "
+                "do not pass --no-gravity or --no-ground.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if resolved_height_m < 0.025:
+            typer.echo(
+                "--demo mblocks_momentum_pivot requires --height >= 0.025.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if resolved_dt_s > MAX_MOMENTUM_TIMESTEP_S:
+            typer.echo(
+                "--demo mblocks_momentum_pivot requires --dt <= "
+                f"{MAX_MOMENTUM_TIMESTEP_S:g} for its flywheel brake impulse.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+    if physical_twelve_module_mblocks:
+        demo_name = demo.value
+        if fixed_connector is not None or moving_connector is not None:
+            typer.echo(
+                f"--demo {demo_name} defines its connector "
+                "transitions; do not supply --fixed-connector or --moving-connector.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if undock_at_s is not None:
+            typer.echo(
+                f"--demo {demo_name} controls its own releases; do not supply --undock-at.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if connector_gap_m is not None:
+            typer.echo(
+                f"--demo {demo_name} defines its initial scene; do not supply --connector-gap.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if retract_m_s is not None:
+            typer.echo(
+                f"--demo {demo_name} is flywheel-driven; do not supply --retract.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if orientation_rad != 0.0:
+            typer.echo(
+                f"--demo {demo_name} defines its cube orientations; do not supply --orientation.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if backend != "mujoco":
+            typer.echo(
+                f"--demo {demo_name} requires --backend mujoco.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if not resolved_gravity or not resolved_ground:
+            typer.echo(
+                f"--demo {demo_name} requires gravity and ground; "
+                "do not pass --no-gravity or --no-ground.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if resolved_height_m < 0.025:
+            typer.echo(
+                f"--demo {demo_name} requires --height >= 0.025.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if resolved_dt_s > MAX_MOMENTUM_TIMESTEP_S:
+            typer.echo(
+                f"--demo {demo_name} requires --dt <= "
+                f"{MAX_MOMENTUM_TIMESTEP_S:g} for its flywheel brake impulses.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
     if physical_pair:
         if fixed_connector is not None or moving_connector is not None:
             typer.echo(
@@ -409,7 +610,7 @@ def runtime_command(
                 err=True,
             )
             raise typer.Exit(code=2)
-        if dt_s > MAX_PHYSICAL_TIMESTEP_S:
+        if resolved_dt_s > MAX_PHYSICAL_TIMESTEP_S:
             typer.echo(
                 "--demo smores_diff_drive_dock_undock requires --dt <= "
                 f"{MAX_PHYSICAL_TIMESTEP_S:g} for its tuned contact/controller model.",
@@ -477,7 +678,7 @@ def runtime_command(
                 err=True,
             )
             raise typer.Exit(code=2)
-        if dt_s > MAX_PHYSICAL_TIMESTEP_S:
+        if resolved_dt_s > MAX_PHYSICAL_TIMESTEP_S:
             typer.echo(
                 "--demo smores_physical_driver_to_snake requires --dt <= "
                 f"{MAX_PHYSICAL_TIMESTEP_S:g} for its tuned contact/controller model.",
@@ -513,14 +714,14 @@ def runtime_command(
         moving_connector=moving_connector,
         connector_gap_m=(
             None
-            if physical_reconfiguration
+            if physical_reconfiguration or mblocks_kinematic or physical_mblocks
             else (0.02 if connector_gap_m is None else connector_gap_m)
         ),
         orientation_rad=orientation_rad,
         approach_m_s=approach_m_s,
         retract_m_s=retract_m_s,
         duration_s=resolved_duration_s,
-        dt_s=dt_s,
+        dt_s=resolved_dt_s,
         undock_at_s=undock_at_s,
         gravity=resolved_gravity,
         ground=resolved_ground,

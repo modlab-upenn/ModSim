@@ -374,6 +374,7 @@ class WorldState:
             orientation_index=event.orientation_index,
             constraint_handle=event.constraint_handle,
             created_at_s=event.time_s,
+            constraint=event.constraint,
         )
         self._connections[connection.id] = connection
         for connector in (first, second):

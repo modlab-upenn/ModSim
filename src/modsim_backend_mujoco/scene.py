@@ -41,6 +41,7 @@ ENVIRONMENT_GEOM_GROUP = 2
 URDF_COLLISION_GEOM_GROUP = 3
 DEFAULT_GRAVITY: Vec3 = (0.0, 0.0, -9.81)
 MIN_WELD_POOL = 8
+MIN_HINGE_POOL = 8
 GROUND_CONTACT_CLASS_SUFFIX = "_ground_contact"
 TIRE_GROUND_CONTACT_CLASS = "tire_ground_contact"
 
@@ -96,6 +97,8 @@ class CompiledScene:
     create constraints; it can only claim one of these. The pool is reserved
     here so docking can activate a slot without recompiling the model.
     """
+    hinge_pool: tuple[tuple[int, int], ...] = ()
+    """Pairs of inactive connect equalities reserved for runtime hinges."""
     contact_exclusion_pool: tuple[int, ...] = ()
     """Ids reserved to suppress collision between each welded body pair."""
     static_contact_exclusions: tuple[int, ...] = ()
@@ -206,6 +209,7 @@ def build_scene(
     gravity: Vec3 = DEFAULT_GRAVITY,
     timestep_s: float | None = None,
     weld_pool_size: int | None = None,
+    hinge_pool_size: int | None = None,
     ground: bool = False,
     ground_height_m: float = 0.0,
 ) -> CompiledScene:
@@ -247,6 +251,7 @@ def build_scene(
     _add_connector_sites(spec, module_types)
     anisotropic_ground_geom_names = _add_ground_contact_pairs(spec) if ground else ()
     pool_names = _reserve_weld_pool(spec, module_types, weld_pool_size)
+    hinge_pool_names = _reserve_hinge_pool(spec, module_types, hinge_pool_size)
     exclusion_pool_names = _reserve_contact_exclusion_pool(
         spec,
         module_types,
@@ -264,6 +269,7 @@ def build_scene(
         scene,
         module_types,
         pool_names,
+        hinge_pool_names,
         exclusion_pool_names,
         anisotropic_ground_geom_names,
     )
@@ -442,6 +448,40 @@ def _reserve_weld_pool(
     return tuple(names)
 
 
+def _reserve_hinge_pool(
+    spec: mujoco.MjSpec,
+    module_types: dict[ModuleInstanceId, ModuleType],
+    requested: int | None,
+) -> tuple[tuple[str, str], ...]:
+    """Pre-allocate two inactive point constraints for every runtime hinge."""
+    connectors = sum(len(module_type.connectors) for module_type in module_types.values())
+    size = requested if requested is not None else max(MIN_HINGE_POOL, connectors // 2)
+    if size < 0:
+        raise MuJoCoSceneError("hinge pool size must not be negative")
+    if not module_types:
+        return ()
+    anchor = next(iter(module_types))
+    anchor_body = body_name(anchor, module_types[anchor].root_link)
+
+    pairs: list[tuple[str, str]] = []
+    for slot_index in range(size):
+        names: list[str] = []
+        for point_index in range(2):
+            equality = spec.add_equality()
+            equality.name = f"modsim_hinge_{slot_index}_{point_index}"
+            equality.type = mujoco.mjtEq.mjEQ_CONNECT
+            equality.objtype = mujoco.mjtObj.mjOBJ_BODY
+            # Placeholder operands are rewritten when the slot is claimed.
+            # Anchoring to world avoids illegal same-body equality operands in
+            # a scene that contains only one module.
+            equality.name1 = anchor_body
+            equality.name2 = WORLD_BODY
+            equality.active = False
+            names.append(equality.name)
+        pairs.append((names[0], names[1]))
+    return tuple(pairs)
+
+
 def _reserve_contact_exclusion_pool(
     spec: mujoco.MjSpec,
     module_types: dict[ModuleInstanceId, ModuleType],
@@ -469,6 +509,7 @@ def _index(
     scene: SceneSpec,
     module_types: dict[ModuleInstanceId, ModuleType],
     pool_names: tuple[str, ...],
+    hinge_pool_names: tuple[tuple[str, str], ...],
     exclusion_pool_names: tuple[str, ...],
     anisotropic_ground_geom_names: tuple[str, ...],
 ) -> CompiledScene:
@@ -530,6 +571,14 @@ def _index(
         if identifier >= 0:
             pool.append(identifier)
 
+    hinge_pool: list[tuple[int, int]] = []
+    for names in hinge_pool_names:
+        identifiers = tuple(
+            mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_EQUALITY, name) for name in names
+        )
+        if all(identifier >= 0 for identifier in identifiers):
+            hinge_pool.append((identifiers[0], identifiers[1]))
+
     exclusion_pool: list[int] = []
     for name in exclusion_pool_names:
         identifier = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_EXCLUDE, name)
@@ -561,6 +610,7 @@ def _index(
         joint_ids=joint_ids,
         actuator_ids=actuator_ids,
         weld_pool=tuple(pool),
+        hinge_pool=tuple(hinge_pool),
         contact_exclusion_pool=tuple(exclusion_pool),
         static_contact_exclusions=static_exclusions,
         anisotropic_ground_geoms=tuple(anisotropic_ground_geoms),

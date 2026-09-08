@@ -50,6 +50,7 @@ from modsim.robot_packs import (
     ConnectorTypeSpec,
     ControlMode,
     DockingPolicySpec,
+    HingeConstraintSpec,
     JointLimits,
     JointSpec,
     JointType,
@@ -1030,9 +1031,34 @@ class MainWindow(QMainWindow):
                 else None
             )
         )
+        hinge_axis = QLineEdit(
+            _vector_text(physical.hinge.axis)
+            if physical is not None and physical.hinge is not None
+            else ""
+        )
+        hinge_anchor_separation = QLineEdit(
+            _optional_number(
+                physical.hinge.anchor_separation_m
+                if physical is not None and physical.hinge is not None
+                else None
+            )
+        )
+
+        def set_constraint_fields_enabled(value: str) -> None:
+            compliant = value == PhysicalConstraintType.COMPLIANT.value
+            hinged = value == PhysicalConstraintType.HINGE.value
+            translational_stiffness.setEnabled(compliant)
+            rotational_stiffness.setEnabled(compliant)
+            hinge_axis.setEnabled(hinged)
+            hinge_anchor_separation.setEnabled(hinged)
+
+        constraint.currentTextChanged.connect(set_constraint_fields_enabled)
+        set_constraint_fields_enabled(constraint.currentText())
         form.addRow("Physical constraint", constraint)
         form.addRow("Translation stiffness (N/m)", translational_stiffness)
         form.addRow("Rotation stiffness (Nm/rad)", rotational_stiffness)
+        form.addRow("Hinge axis (x, y, z)", hinge_axis)
+        form.addRow("Hinge anchor separation (m)", hinge_anchor_separation)
 
         limits = connector_type.limits
         max_normal = QLineEdit(
@@ -1132,13 +1158,26 @@ class MainWindow(QMainWindow):
                     translational_stiffness_n_per_m=compliance_values[0],
                     rotational_stiffness_nm_per_rad=compliance_values[1],
                 )
-                if any(value is not None for value in compliance_values)
+                if constraint_value == PhysicalConstraintType.COMPLIANT.value
                 else None
             )
+            hinge = None
+            if constraint_value == PhysicalConstraintType.HINGE.value:
+                axis = _optional_vector(hinge_axis.text())
+                anchor_separation_m = _optional_float(hinge_anchor_separation.text())
+                if axis is None or anchor_separation_m is None:
+                    raise ValueError(
+                        "hinge constraints require a three-component axis and anchor separation"
+                    )
+                hinge = HingeConstraintSpec(
+                    axis=axis,
+                    anchor_separation_m=anchor_separation_m,
+                )
             physical_connection = (
                 PhysicalConnectionSpec(
                     constraint=PhysicalConstraintType(constraint_value),
                     compliance=compliance,
+                    hinge=hinge,
                 )
                 if constraint_value
                 else None
