@@ -147,16 +147,34 @@ their hover text.
 The projection selector offers **Isometric**, **XY**, **XZ**, and **YZ**. The
 **Z layer** selector shows all occupied layers or only modules snapped to one
 integer Z coordinate; connections whose other endpoint is hidden are hidden as
-well. **Snap cells** and **Local axes** toggle the two diagnostic overlays,
-while **Fit** restores the finite grid to the viewport. Dragging pans and the
-mouse wheel zooms. Labelled global X/Y/Z axes and measured local axes use red,
-green, and blue. Modules, docking markers/curves, and warning cells are
-selectable; module hover text reports its snapped cell, measured coordinates
-in cell units, residuals, and assembly.
+well. **Snap cells** and **Local axes** toggle the two diagnostic overlays, and
+**Fit** restores the finite grid to the viewport. The always-visible
+**Labels: On/Off** button in the Runtime Inspector header, beside **Stop**,
+hides or restores module names and cell coordinates for either renderer.
+Left-drag pans, right-drag orbits the projected cubes, and the mouse wheel
+zooms. The first orbit from a fixed XY,
+XZ, or YZ view switches to the isometric/orbit projection; choosing any fixed
+projection resets the orbit camera. Camera pitch is bounded before the poles
+so the view cannot invert. Labelled global X/Y/Z axes and measured local axes
+use red, green, and blue; the global axis letters and occupancy-conflict badges
+remain visible when module labels are off. Modules, docking markers/curves, and
+warning cells are selectable; module hover text reports its snapped cell,
+measured coordinates in cell units, residuals, and assembly. The topology
+renderer has the same module-label toggle but no 3-D orbit because its node
+layout is an abstract graph.
 
-All projection, layer, overlay, pan, zoom, and selection state belongs to the
-presenter/widget. None of those actions modifies the canonical `WorldState`,
-the backend, or Robot Pack YAML.
+All projection, orbit-camera, layer, overlay, label, pan, zoom, and selection
+state belongs to the presenter/widget. None of those actions modifies the
+canonical `WorldState`, the backend, or Robot Pack YAML.
+
+Changing measured lattice geometry is updated in retained graphics items
+rather than clearing and recreating the whole Qt scene. Frames that arrive in
+one GUI burst are accumulated in order, including every event delta, then only
+the newest accepted geometry is painted. This prevents rendering backlog from
+blocking normal mouse processing while preserving a lossless canonical event
+table. MuJoCo still consumes real CPU/GPU capacity, especially with a small
+physics timestep and high `--speed`; `--publish-hz 10` or `5` is available when
+a machine cannot sustain the default 20 Hz semantic refresh.
 
 ## Named demonstrations
 
@@ -730,10 +748,13 @@ containing:
 The Qt-free presenter accumulates event deltas, rejects regressing model-view
 source stamps, owns selection and renderer controls, and supplies
 renderer-ready 2-D geometry. It keeps a stable logical topology layout or
-projects measured lattice poses according to the active recipe. PyQtGraph and
-Qt remain in `modsim_studio`; neither is imported by the core package. The
-companion process does not create a second `RuntimeSession`; the semantic view,
-events, and native 3D image always describe the same simulation.
+projects measured lattice poses through the active fixed/orbit camera. The Qt
+window batches already-received frame bursts before asking the presenter for
+one paintable result; the presenter consumes every frame's event delta before
+projecting the newest accepted state. PyQtGraph and Qt remain in
+`modsim_studio`; neither is imported by the core package. The companion process
+does not create a second `RuntimeSession`; the semantic view, events, and native
+3D image always describe the same simulation.
 
 ## Window lifetime and logging
 

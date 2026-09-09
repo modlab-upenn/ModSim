@@ -257,6 +257,46 @@ def test_event_deltas_append_deduplicate_and_reject_gaps() -> None:
         presenter.apply_frame(frame(view(sample=2), start=3, stop=3))
 
 
+def test_frame_burst_keeps_all_events_and_projects_latest_state_once() -> None:
+    presenter = RuntimeInspectorPresenter()
+    first = RuntimeEventRow(sequence=0, time_s=0.1, kind="DockCandidateDetected")
+    second = RuntimeEventRow(sequence=1, time_s=0.2, kind="DockCommitted")
+
+    presented = presenter.apply_frames(
+        (
+            frame(
+                view(sample=1, event_revision=1),
+                events=(first,),
+                start=0,
+                stop=1,
+            ),
+            frame(
+                view(sample=2, event_revision=2),
+                events=(second,),
+                start=1,
+                stop=2,
+            ),
+        )
+    )
+
+    assert presented.events == (first, second)
+    assert "sample=2" in presented.source_text
+    with pytest.raises(ValueError, match="at least one"):
+        presenter.apply_frames(())
+
+
+def test_label_visibility_persists_across_topology_frames() -> None:
+    presenter = RuntimeInspectorPresenter()
+    initial = presenter.apply_frame(frame(view()))
+    assert initial.show_labels
+
+    hidden = presenter.set_labels_visible(False)
+    assert not hidden.show_labels
+
+    updated = presenter.apply_frame(frame(view(sample=1)))
+    assert not updated.show_labels
+
+
 def test_regressing_graph_frame_does_not_replace_current_presentation() -> None:
     presenter = RuntimeInspectorPresenter()
     current = presenter.apply_frame(frame(view(sample=5, topology=1)))

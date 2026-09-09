@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import math
 import os
 from collections.abc import Iterator
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -12,17 +14,17 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 pytest.importorskip("pyqtgraph")
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPointF, Qt
 from PySide6.QtWidgets import QApplication
 
-from modsim.runtime.inspection import RuntimeEventRow
+from modsim.runtime.inspection import RuntimeEventRow, RuntimeInspectorFrame
 from modsim.runtime.inspector_runner import RuntimeInspectorConfig
 from modsim_studio.runtime_events import (
     RuntimeEventLogWidget,
     RuntimeEventTableModel,
 )
 from modsim_studio.runtime_graph import TopologyGraphWidget
-from modsim_studio.runtime_lattice import CubicLatticeWidget
+from modsim_studio.runtime_lattice import CubicLatticeWidget, LatticeViewBox
 from modsim_studio.runtime_lattice_presenter import (
     CubicLatticeGeometry,
     LatticeProjection,
@@ -52,7 +54,12 @@ def application() -> Iterator[QApplication]:
     app.processEvents()
 
 
-def presentation(*, selected: bool = False, edge: bool = True) -> RuntimePresentation:
+def presentation(
+    *,
+    selected: bool = False,
+    edge: bool = True,
+    show_labels: bool = True,
+) -> RuntimePresentation:
     selection = GraphSelection("edge", "connection:one") if selected and edge else None
     return RuntimePresentation(
         nodes=(
@@ -88,6 +95,7 @@ def presentation(*, selected: bool = False, edge: bool = True) -> RuntimePresent
         selection=selection,
         source_text="generic_cube@0.1.0 | sample=1",
         status_text="mock | docked",
+        show_labels=show_labels,
     )
 
 
@@ -95,6 +103,7 @@ def lattice_presentation(
     *,
     projection: LatticeProjection = LatticeProjection.ISOMETRIC,
     layer_z: int | None = None,
+    show_labels: bool = True,
 ) -> CubicLatticePresentation:
     """Return representative immutable geometry without a live runtime."""
     geometry = CubicLatticeGeometry(
@@ -208,6 +217,7 @@ def lattice_presentation(
         status_text="mock | pivoting",
         show_snap_cells=True,
         show_orientation_axes=True,
+        show_labels=show_labels,
     )
 
 
@@ -221,6 +231,7 @@ def test_graph_widget_updates_topology_and_selection_without_a_window(
         assert widget.displayed_node_ids == ("alpha", "beta")
         assert widget.displayed_edge_ids == ("connection:one",)
         assert widget.displayed_selection is None
+        assert widget.displayed_label_count == 2
 
         widget.set_presentation(presentation(selected=True))
         application.processEvents()
@@ -231,6 +242,10 @@ def test_graph_widget_updates_topology_and_selection_without_a_window(
         assert widget.displayed_node_ids == ("alpha", "beta")
         assert widget.displayed_edge_ids == ()
         assert widget.displayed_selection is None
+
+        widget.set_presentation(presentation(edge=False, show_labels=False))
+        application.processEvents()
+        assert widget.displayed_label_count == 0
     finally:
         widget.close()
 
@@ -243,10 +258,12 @@ def test_lattice_widget_draws_entities_and_emits_view_controls(
     layers: list[object] = []
     snap_cells: list[bool] = []
     orientation_axes: list[bool] = []
+    orbits: list[tuple[float, float]] = []
     widget.projection_changed.connect(projections.append)
     widget.layer_changed.connect(layers.append)
     widget.snap_cells_changed.connect(snap_cells.append)
     widget.orientation_axes_changed.connect(orientation_axes.append)
+    widget.orbit_requested.connect(lambda azimuth, elevation: orbits.append((azimuth, elevation)))
     try:
         widget.set_presentation(lattice_presentation())
         application.processEvents()
@@ -263,17 +280,97 @@ def test_lattice_widget_draws_entities_and_emits_view_controls(
         )
         assert widget.snap_cells_checkbox.isChecked()
         assert widget.orientation_axes_checkbox.isChecked()
+        assert widget.displayed_label_count == 2
 
         widget.projection_combo.setCurrentIndex(widget.projection_combo.findData("xz"))
         widget.layer_combo.setCurrentIndex(widget.layer_combo.findData(1))
         widget.snap_cells_checkbox.setChecked(False)
         widget.orientation_axes_checkbox.setChecked(False)
+        widget._view_box.orbit_dragged.emit(10.0, -5.0)
         application.processEvents()
 
         assert projections == ["xz"]
         assert layers == [1]
         assert snap_cells == [False]
         assert orientation_axes == [False]
+        assert orbits[0] == pytest.approx((-math.radians(4.0), -math.radians(2.0)))
+
+        widget.set_presentation(
+            lattice_presentation(
+                projection=LatticeProjection.XZ,
+                layer_z=1,
+                show_labels=False,
+            )
+        )
+        application.processEvents()
+        assert widget.displayed_label_count == 0
+        assert set(widget._lattice_axis_labels) == {"x", "y", "z"}
+    finally:
+        widget.close()
+
+
+class _RightDragEvent:
+    def __init__(self, current: QPointF, previous: QPointF) -> None:
+        self._current = current
+        self._previous = previous
+        self.accepted = False
+
+    def button(self) -> Qt.MouseButton:
+        return Qt.MouseButton.RightButton
+
+    def pos(self) -> QPointF:
+        return self._current
+
+    def lastPos(self) -> QPointF:
+        return self._previous
+
+    def accept(self) -> None:
+        self.accepted = True
+
+
+def test_lattice_right_drag_requests_orbit_without_scaling_view() -> None:
+    view_box = LatticeViewBox()
+    requested: list[tuple[float, float]] = []
+    view_box.orbit_dragged.connect(lambda x_value, y_value: requested.append((x_value, y_value)))
+    view_box.setRange(xRange=(-2.0, 2.0), yRange=(-3.0, 3.0), padding=0.0)
+    before = view_box.viewRange()
+    event = _RightDragEvent(QPointF(18.0, 7.0), QPointF(5.0, 11.0))
+
+    view_box.mouseDragEvent(event)
+
+    assert event.accepted
+    assert requested == [(13.0, -4.0)]
+    assert view_box.viewRange() == before
+
+
+def test_lattice_widget_reuses_scene_items_and_preserves_manual_view_range(
+    application: QApplication,
+) -> None:
+    widget = CubicLatticeWidget()
+    try:
+        initial = lattice_presentation()
+        widget.set_presentation(initial)
+        widget._plot_item.setXRange(-8.0, 8.0, padding=0.0)
+        widget._plot_item.setYRange(-6.0, 6.0, padding=0.0)
+        application.processEvents()
+        original_range = widget._plot_item.viewRange()
+        face_item = widget._module_face_items["alpha"][0]
+        grid_item = widget._grid_items[0]
+
+        moved_node = replace(initial.geometry.nodes[0], center=(0.2, 0.1))
+        moved = replace(
+            initial,
+            geometry=replace(
+                initial.geometry,
+                nodes=(moved_node, initial.geometry.nodes[1]),
+            ),
+        )
+        widget.set_presentation(moved)
+        application.processEvents()
+
+        assert widget._module_face_items["alpha"][0] is face_item
+        assert widget._grid_items[0] is grid_item
+        assert widget._plot_item.viewRange() == original_range
     finally:
         widget.close()
 
@@ -357,6 +454,90 @@ def test_runtime_window_keeps_target_speed_visible_across_presentations(
 
         assert window.speed_label.text() == "Target speed: 4x"
         assert window.source_label.text() == "generic_cube@0.1.0 | sample=1"
+    finally:
+        window.close()
+
+
+def test_runtime_window_exposes_one_global_label_toggle(
+    application: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(RuntimeInspectorWindow, "start", lambda _self: None)
+    window = RuntimeInspectorWindow(
+        RuntimeInspectorConfig(
+            pack_path=tmp_path / "pack",
+            backend="mock",
+        )
+    )
+    requested: list[bool] = []
+    try:
+        window.show()
+        application.processEvents()
+        assert window.labels_button.isVisible()
+        assert not window.labels_button.isEnabled()
+        assert window.labels_button.text() == "Labels: On"
+
+        window._apply_presentation(presentation())
+        application.processEvents()
+        assert window.labels_button.isEnabled()
+        assert window.labels_button.isChecked()
+
+        monkeypatch.setattr(
+            window._presenter,
+            "set_labels_visible",
+            lambda visible: requested.append(visible) or presentation(show_labels=visible),
+        )
+        window.labels_button.click()
+        application.processEvents()
+
+        assert requested == [False]
+        assert not window.labels_button.isChecked()
+        assert window.labels_button.text() == "Labels: Off"
+        assert window.graph.displayed_label_count == 0
+
+        window._apply_presentation(lattice_presentation(show_labels=False))
+        application.processEvents()
+        assert window.labels_button.isVisible()
+        assert window.view_stack.currentWidget() is window.lattice
+        assert window.lattice.displayed_label_count == 0
+    finally:
+        window.close()
+
+
+def test_runtime_window_batches_frame_bursts_before_painting(
+    application: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(RuntimeInspectorWindow, "start", lambda _self: None)
+    window = RuntimeInspectorWindow(
+        RuntimeInspectorConfig(
+            pack_path=tmp_path / "pack",
+            backend="mock",
+        )
+    )
+    first = RuntimeInspectorFrame.model_construct()
+    second = RuntimeInspectorFrame.model_construct()
+    received: list[tuple[RuntimeInspectorFrame, ...]] = []
+    monkeypatch.setattr(
+        window._presenter,
+        "apply_frames",
+        lambda frames: received.append(frames) or presentation(),
+    )
+    try:
+        window._receive_frame(first)
+        window._receive_frame(second)
+
+        assert window._pending_frames == [first, second]
+        assert received == []
+
+        window._runtime_finished()
+        application.processEvents()
+
+        assert received == [(first, second)]
+        assert window._pending_frames == []
+        assert window.graph.displayed_node_ids == ("alpha", "beta")
     finally:
         window.close()
 

@@ -74,6 +74,11 @@ class TopologyGraphWidget(QWidget):
         """Return the selected graph entity currently styled by the widget."""
         return self._selection
 
+    @property
+    def displayed_label_count(self) -> int:
+        """Return the number of currently drawn module labels."""
+        return len(self._labels)
+
     def set_presentation(self, presentation: RuntimePresentation) -> None:
         """Draw ``presentation`` unless its visible graph is unchanged."""
         fingerprint = _presentation_fingerprint(presentation)
@@ -135,18 +140,19 @@ class TopologyGraphWidget(QWidget):
         self._node_item.sigClicked.connect(self._nodes_clicked)
         self._plot_item.addItem(self._node_item)
 
-        for node in presentation.nodes:
-            label = pg.TextItem(
-                text=node.label,
-                color="#eef5fb",
-                anchor=(0.5, -0.65),
-                border=None,
-                fill=None,
-            )
-            label.setPos(*node.position)
-            label.setZValue(11)
-            self._plot_item.addItem(label)
-            self._labels.append(label)
+        if presentation.show_labels:
+            for node in presentation.nodes:
+                label = pg.TextItem(
+                    text=node.label,
+                    color="#eef5fb",
+                    anchor=(0.5, -0.65),
+                    border=None,
+                    fill=None,
+                )
+                label.setPos(*node.position)
+                label.setZValue(11)
+                self._plot_item.addItem(label)
+                self._labels.append(label)
 
         if previous_node_ids != self._node_ids:
             self._fit_nodes(tuple(node.position for node in presentation.nodes))
@@ -185,6 +191,7 @@ class TopologyGraphWidget(QWidget):
 
 def _presentation_fingerprint(presentation: RuntimePresentation) -> object:
     return (
+        presentation.show_labels,
         tuple(
             (
                 node.id,

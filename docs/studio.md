@@ -2,11 +2,11 @@
 
 ModSim Studio provides two optional native applications: the Robot Pack Builder
 with its PyVistaQt/VTK authoring viewport, and a lightweight Runtime Inspector
-with a PyQtGraph topology graph and event table. The applications share core
-Robot Pack and model-view contracts but remain separate windows in the current
-slice. A MuJoCo Runtime Inspector launch also opens the backend's native 3D
-viewer as a separate companion window by default; it is not embedded in either
-Studio application.
+with PyQtGraph topology/cubic-lattice views and an event table. The applications
+share core Robot Pack and model-view contracts but remain separate windows in
+the current slice. A MuJoCo Runtime Inspector launch also opens the backend's
+native 3D viewer as a separate companion window by default; it is not embedded
+in either Studio application.
 
 ## Install and launch
 
@@ -63,9 +63,10 @@ The current Studio MVP provides:
 - a Model Views catalog for adding, editing, and removing named builder
   recipes, supported modes, default selection hints, and JSON configuration;
 - a separate Runtime Inspector that runs named two-module or seven-module
-  scenarios, draws the live module-topology graph, retains the ordered
-  canonical event log, and can supervise a native MuJoCo companion window
-  showing that same runtime;
+  scenarios plus larger M-Blocks routes, draws the live module-topology or
+  cubic-lattice view, supports module-label visibility and lattice pan/orbit/
+  zoom controls, retains the ordered canonical event log, and can supervise a
+  native MuJoCo companion window showing that same runtime;
 - a read-only preview of the canonical split-YAML documents;
 - authoring validation with `F6` and stricter structural
   simulation-readiness validation with `F7`;

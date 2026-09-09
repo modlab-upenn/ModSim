@@ -112,6 +112,16 @@ MuJoCo, a separate native 3D viewer opens by default; `--no-viewer` suppresses
 it while retaining the Qt inspector. Use `modsim run` for a fully non-GUI
 execution.
 
+In the cubic-lattice view, left-drag pans, right-drag orbits the projected
+models, and the mouse wheel zooms. Selecting a fixed projection resets the
+orbit camera. The prominent **Labels: On/Off** button beside **Stop** in the
+Runtime Inspector header hides or restores module names and cell coordinates
+without hiding diagnostic axes or changing simulation state. It controls both
+the lattice and topology views. Runtime graphics objects
+are updated in place and burst frames are coalesced before painting so physics
+updates do not unnecessarily starve GUI input; use a lower value such as
+`--publish-hz 10` if the machine is still CPU/GPU limited.
+
 The larger `examples/robot_packs/smores_ep` pack includes `dock`,
 `dock_undock`, `smores_diff_drive_dock_undock`,
 `smores_driver_to_snake`, and `smores_physical_driver_to_snake`. The physical

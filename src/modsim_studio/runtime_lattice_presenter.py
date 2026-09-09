@@ -31,13 +31,16 @@ Segment2D = tuple[Point2D, Point2D]
 AxisName = Literal["x", "y", "z"]
 
 _SQRT_THREE = math.sqrt(3.0)
-_ISO_SCALE = _SQRT_THREE / 2.0
 _MAX_GRID_INTERVALS = 48
 _CUBE_HALF_EXTENT = 0.39
 _SNAP_HALF_EXTENT = 0.48
 _FACE_OFFSET = 0.5
 _ORIENTATION_AXIS_LENGTH = 0.28
 _ZERO_TOLERANCE = 1e-10
+_DEFAULT_AZIMUTH_RAD = math.pi / 4.0
+_DEFAULT_ELEVATION_RAD = math.asin(1.0 / _SQRT_THREE)
+_MAX_ORBIT_ELEVATION_RAD = math.radians(85.0)
+_ORBIT_PROJECTION_SCALE = math.sqrt(3.0 / 2.0)
 
 
 class LatticeProjection(StrEnum):
@@ -47,6 +50,37 @@ class LatticeProjection(StrEnum):
     XY = "xy"
     XZ = "xz"
     YZ = "yz"
+
+
+@dataclass(frozen=True, slots=True)
+class LatticeCamera:
+    """Renderer-owned orbit camera used by the isometric projection."""
+
+    azimuth_rad: float = _DEFAULT_AZIMUTH_RAD
+    elevation_rad: float = _DEFAULT_ELEVATION_RAD
+
+    def __post_init__(self) -> None:
+        if not math.isfinite(self.azimuth_rad) or not math.isfinite(self.elevation_rad):
+            raise ValueError("lattice camera angles must be finite")
+        if abs(self.elevation_rad) > _MAX_ORBIT_ELEVATION_RAD:
+            raise ValueError("lattice camera elevation must stay between -85 and 85 degrees")
+
+    def orbited(self, azimuth_delta_rad: float, elevation_delta_rad: float) -> LatticeCamera:
+        """Return a yawed/pitched camera without permitting a pole flip."""
+        if not math.isfinite(azimuth_delta_rad) or not math.isfinite(elevation_delta_rad):
+            raise ValueError("lattice orbit deltas must be finite")
+        azimuth = math.remainder(self.azimuth_rad + azimuth_delta_rad, 2.0 * math.pi)
+        elevation = min(
+            max(
+                self.elevation_rad + elevation_delta_rad,
+                -_MAX_ORBIT_ELEVATION_RAD,
+            ),
+            _MAX_ORBIT_ELEVATION_RAD,
+        )
+        return LatticeCamera(azimuth_rad=azimuth, elevation_rad=elevation)
+
+
+DEFAULT_LATTICE_CAMERA = LatticeCamera()
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,6 +186,7 @@ class CubicLatticeGeometry:
     nodes: tuple[PresentedLatticeModule, ...]
     edges: tuple[PresentedLatticeConnection, ...]
     bounds: tuple[int, int, int, int, int, int]
+    camera: LatticeCamera = DEFAULT_LATTICE_CAMERA
 
 
 class CubicLatticeProjector:
@@ -175,6 +210,7 @@ class CubicLatticeProjector:
         selection: tuple[str, str] | None = None,
         show_snap_cells: bool = True,
         show_orientation_axes: bool = True,
+        camera: LatticeCamera = DEFAULT_LATTICE_CAMERA,
     ) -> CubicLatticeGeometry:
         """Return deterministic 2-D geometry for one immutable lattice view."""
         key = (view.source.pack_id, view.id)
@@ -206,6 +242,7 @@ class CubicLatticeProjector:
                 cell,
                 tuple(sorted(occupants)),
                 projection,
+                camera,
                 selected=selection == ("cell", _cell_id(cell)),
                 show_outline=show_snap_cells
                 or any(
@@ -229,6 +266,7 @@ class CubicLatticeProjector:
                     quat_multiply(lattice_inverse, node.world_orientation_wxyz)
                 ),
                 projection=projection,
+                camera=camera,
                 selected=selection == ("node", node.id),
                 show_orientation_axes=show_orientation_axes,
             )
@@ -239,18 +277,20 @@ class CubicLatticeProjector:
             measured_by_id,
             visible_ids,
             projection,
+            camera,
             selection,
         )
         return CubicLatticeGeometry(
             projection=projection,
             layer_z=layer_z,
             available_layers_z=available_layers,
-            grid_lines=_grid_lines(bounds, projection, layer_z),
-            lattice_axes=_lattice_axes(bounds, projection, layer_z),
+            grid_lines=_grid_lines(bounds, projection, layer_z, camera),
+            lattice_axes=_lattice_axes(bounds, projection, layer_z, camera),
             cells=cells,
             nodes=nodes,
             edges=edges,
             bounds=bounds,
+            camera=camera,
         )
 
     def _expand_bounds(
@@ -289,14 +329,16 @@ class CubicLatticeProjector:
 def project_lattice_point(
     point: Point3D,
     projection: LatticeProjection,
+    camera: LatticeCamera = DEFAULT_LATTICE_CAMERA,
 ) -> tuple[float, float, float]:
     """Project one lattice-space point to screen x, screen y, and depth."""
     x_value, y_value, z_value = point
     if projection is LatticeProjection.ISOMETRIC:
+        screen_x, screen_y, camera_direction = _camera_basis(camera)
         return (
-            _ISO_SCALE * (x_value - y_value),
-            z_value - 0.5 * (x_value + y_value),
-            (x_value + y_value + z_value) / _SQRT_THREE,
+            _ORBIT_PROJECTION_SCALE * vec_dot(point, screen_x),
+            _ORBIT_PROJECTION_SCALE * vec_dot(point, screen_y),
+            vec_dot(point, camera_direction),
         )
     if projection is LatticeProjection.XY:
         return x_value, y_value, z_value
@@ -309,17 +351,19 @@ def _present_cell(
     cell: tuple[int, int, int],
     occupants: tuple[str, ...],
     projection: LatticeProjection,
+    camera: LatticeCamera,
     *,
     selected: bool,
     show_outline: bool,
     conflict: bool,
 ) -> PresentedLatticeCell:
     coordinate = (float(cell[0]), float(cell[1]), float(cell[2]))
-    center = project_lattice_point(coordinate, projection)[:2]
+    center = project_lattice_point(coordinate, projection, camera)[:2]
     outline = _projected_cube_segments(
         coordinate,
         _IDENTITY_QUATERNION,
         projection,
+        camera,
         _SNAP_HALF_EXTENT,
     )
     return PresentedLatticeCell(
@@ -339,14 +383,15 @@ def _present_module(
     measured_position: Point3D,
     relative_orientation: Quat,
     projection: LatticeProjection,
+    camera: LatticeCamera,
     selected: bool,
     show_orientation_axes: bool,
 ) -> PresentedLatticeModule:
     cell = node.cell
     snap_center = project_lattice_point(
-        (float(cell[0]), float(cell[1]), float(cell[2])), projection
+        (float(cell[0]), float(cell[1]), float(cell[2])), projection, camera
     )[:2]
-    center = project_lattice_point(measured_position, projection)[:2]
+    center = project_lattice_point(measured_position, projection, camera)[:2]
     tether = None if _points_close(center, snap_center) else (center, snap_center)
     return PresentedLatticeModule(
         id=node.id,
@@ -356,9 +401,14 @@ def _present_module(
         cell=cell,
         measured_lattice_position=measured_position,
         center=center,
-        faces=_projected_cube_faces(measured_position, relative_orientation, projection),
+        faces=_projected_cube_faces(
+            measured_position,
+            relative_orientation,
+            projection,
+            camera,
+        ),
         orientation_axes=(
-            _orientation_axes(measured_position, relative_orientation, projection)
+            _orientation_axes(measured_position, relative_orientation, projection, camera)
             if show_orientation_axes
             else ()
         ),
@@ -372,6 +422,7 @@ def _present_module(
             measured_position,
             relative_orientation,
             projection,
+            camera,
             _CUBE_HALF_EXTENT,
         ),
     )
@@ -382,6 +433,7 @@ def _present_connections(
     measured_by_id: dict[str, Point3D],
     visible_ids: set[str],
     projection: LatticeProjection,
+    camera: LatticeCamera,
     selection: tuple[str, str] | None,
 ) -> tuple[PresentedLatticeConnection, ...]:
     visible_edges = tuple(
@@ -409,8 +461,8 @@ def _present_connections(
             _face_vector(edge.target_face),
             _FACE_OFFSET,
         )
-        source = project_lattice_point(source_position, projection)[:2]
-        target = project_lattice_point(target_position, projection)[:2]
+        source = project_lattice_point(source_position, projection, camera)[:2]
+        target = project_lattice_point(target_position, projection, camera)[:2]
         marker = ((source[0] + target[0]) / 2.0, (source[1] + target[1]) / 2.0)
         rank = rank_by_id[edge.id]
         dx = target[0] - source[0]
@@ -444,18 +496,19 @@ def _projected_cube_faces(
     center: Point3D,
     orientation: Quat,
     projection: LatticeProjection,
+    camera: LatticeCamera,
 ) -> tuple[PresentedLatticeFace, ...]:
-    camera = _camera_direction(projection)
+    camera_direction = _camera_direction(projection, camera)
     light = vec_normalize((0.25, -0.4, 1.0))
     faces: list[PresentedLatticeFace] = []
     for vertices, local_normal in _LOCAL_FACES:
         normal = quat_rotate(orientation, local_normal)
-        if vec_dot(normal, camera) <= _ZERO_TOLERANCE:
+        if vec_dot(normal, camera_direction) <= _ZERO_TOLERANCE:
             continue
         transformed = tuple(
             _offset(center, quat_rotate(orientation, vertex), 1.0) for vertex in vertices
         )
-        projected = tuple(project_lattice_point(point, projection) for point in transformed)
+        projected = tuple(project_lattice_point(point, projection, camera) for point in transformed)
         brightness = 0.48 + 0.42 * max(0.0, vec_dot(normal, light))
         faces.append(
             PresentedLatticeFace(
@@ -476,13 +529,14 @@ def _projected_cube_segments(
     center: Point3D,
     orientation: Quat,
     projection: LatticeProjection,
+    camera: LatticeCamera,
     half_extent: float,
 ) -> tuple[Segment2D, ...]:
     corners = tuple(
         _offset(center, quat_rotate(orientation, corner), 1.0)
         for corner in _cube_corners(half_extent)
     )
-    projected = tuple(project_lattice_point(point, projection)[:2] for point in corners)
+    projected = tuple(project_lattice_point(point, projection, camera)[:2] for point in corners)
     return tuple((projected[first], projected[second]) for first, second in _CUBE_EDGES)
 
 
@@ -490,8 +544,9 @@ def _orientation_axes(
     center: Point3D,
     orientation: Quat,
     projection: LatticeProjection,
+    camera: LatticeCamera,
 ) -> tuple[PresentedOrientationAxis, ...]:
-    start = project_lattice_point(center, projection)[:2]
+    start = project_lattice_point(center, projection, camera)[:2]
     result: list[PresentedOrientationAxis] = []
     directions: tuple[tuple[AxisName, Vec3], ...] = (
         ("x", (1.0, 0.0, 0.0)),
@@ -504,7 +559,7 @@ def _orientation_axes(
             PresentedOrientationAxis(
                 axis=axis,
                 start=start,
-                end=project_lattice_point(endpoint, projection)[:2],
+                end=project_lattice_point(endpoint, projection, camera)[:2],
             )
         )
     return tuple(result)
@@ -514,6 +569,7 @@ def _grid_lines(
     bounds: tuple[int, int, int, int, int, int],
     projection: LatticeProjection,
     layer_z: int | None,
+    camera: LatticeCamera,
 ) -> tuple[PresentedGridLine, ...]:
     x_min, x_max, y_min, y_max, z_min, z_max = bounds
     x_values = _bounded_axis_values(x_min, x_max)
@@ -530,6 +586,7 @@ def _grid_lines(
                     (float(x_value), float(y_max), float(floor_z)),
                     "y",
                     projection,
+                    camera,
                     major=x_value == 0,
                 )
             )
@@ -540,6 +597,7 @@ def _grid_lines(
                     (float(x_max), float(y_value), float(floor_z)),
                     "x",
                     projection,
+                    camera,
                     major=y_value == 0,
                 )
             )
@@ -551,6 +609,7 @@ def _grid_lines(
                     (float(x_value), float(y_min), float(z_max)),
                     "z",
                     projection,
+                    camera,
                     major=x_value == 0,
                 )
             )
@@ -561,6 +620,7 @@ def _grid_lines(
                     (float(x_max), float(y_min), float(z_value)),
                     "x",
                     projection,
+                    camera,
                     major=z_value == 0,
                 )
             )
@@ -572,6 +632,7 @@ def _grid_lines(
                     (float(x_min), float(y_value), float(z_max)),
                     "z",
                     projection,
+                    camera,
                     major=y_value == 0,
                 )
             )
@@ -582,6 +643,7 @@ def _grid_lines(
                     (float(x_min), float(y_max), float(z_value)),
                     "y",
                     projection,
+                    camera,
                     major=z_value == 0,
                 )
             )
@@ -601,6 +663,7 @@ def _grid_lines(
                         corners[(index + 1) % 4],
                         "x" if index % 2 == 0 else "y",
                         projection,
+                        camera,
                         major=z_value == 0,
                     )
                 )
@@ -616,6 +679,7 @@ def _grid_lines(
                     (float(x_value), float(y_value), float(z_max)),
                     "z",
                     projection,
+                    camera,
                 )
             )
     return tuple(lines)
@@ -625,6 +689,7 @@ def _lattice_axes(
     bounds: tuple[int, int, int, int, int, int],
     projection: LatticeProjection,
     layer_z: int | None,
+    camera: LatticeCamera,
 ) -> tuple[PresentedLatticeAxis, ...]:
     x_min, _x_max, y_min, _y_max, z_min, _z_max = bounds
     anchor = (float(x_min), float(y_min), float(z_min if layer_z is None else layer_z))
@@ -636,8 +701,12 @@ def _lattice_axes(
     return tuple(
         PresentedLatticeAxis(
             axis=axis,
-            start=project_lattice_point(anchor, projection)[:2],
-            end=project_lattice_point(_offset(anchor, direction, 0.8), projection)[:2],
+            start=project_lattice_point(anchor, projection, camera)[:2],
+            end=project_lattice_point(
+                _offset(anchor, direction, 0.8),
+                projection,
+                camera,
+            )[:2],
         )
         for axis, direction in directions
     )
@@ -648,12 +717,13 @@ def _grid_line(
     end: Point3D,
     axis: AxisName,
     projection: LatticeProjection,
+    camera: LatticeCamera,
     *,
     major: bool = False,
 ) -> PresentedGridLine:
     return PresentedGridLine(
-        start=project_lattice_point(start, projection)[:2],
-        end=project_lattice_point(end, projection)[:2],
+        start=project_lattice_point(start, projection, camera)[:2],
+        end=project_lattice_point(end, projection, camera)[:2],
         axis=axis,
         major=major,
     )
@@ -691,14 +761,34 @@ def _face_vector(face: LatticeFace) -> Vec3:
     }[face]
 
 
-def _camera_direction(projection: LatticeProjection) -> Vec3:
+def _camera_direction(projection: LatticeProjection, camera: LatticeCamera) -> Vec3:
     if projection is LatticeProjection.ISOMETRIC:
-        return vec_normalize((1.0, 1.0, 1.0))
+        return _camera_basis(camera)[2]
     if projection is LatticeProjection.XY:
         return (0.0, 0.0, 1.0)
     if projection is LatticeProjection.XZ:
         return (0.0, 1.0, 0.0)
     return (1.0, 0.0, 0.0)
+
+
+def _camera_basis(camera: LatticeCamera) -> tuple[Vec3, Vec3, Vec3]:
+    """Return right, up, and view-direction unit vectors for one orbit camera."""
+    cosine_azimuth = math.cos(camera.azimuth_rad)
+    sine_azimuth = math.sin(camera.azimuth_rad)
+    cosine_elevation = math.cos(camera.elevation_rad)
+    sine_elevation = math.sin(camera.elevation_rad)
+    right = (sine_azimuth, -cosine_azimuth, 0.0)
+    up = (
+        -sine_elevation * cosine_azimuth,
+        -sine_elevation * sine_azimuth,
+        cosine_elevation,
+    )
+    direction = (
+        cosine_elevation * cosine_azimuth,
+        cosine_elevation * sine_azimuth,
+        sine_elevation,
+    )
+    return right, up, direction
 
 
 def _offset(origin: Point3D, direction: Vec3, scale: float) -> Point3D:
@@ -755,8 +845,10 @@ _LOCAL_FACES: tuple[tuple[tuple[Point3D, Point3D, Point3D, Point3D], Vec3], ...]
 
 
 __all__ = [
+    "DEFAULT_LATTICE_CAMERA",
     "CubicLatticeGeometry",
     "CubicLatticeProjector",
+    "LatticeCamera",
     "LatticeProjection",
     "PresentedGridLine",
     "PresentedLatticeAxis",

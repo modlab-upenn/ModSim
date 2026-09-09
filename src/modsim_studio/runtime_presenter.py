@@ -14,6 +14,7 @@ from typing import Literal, TypeAlias
 from modsim.model_views import CubicLatticeView, ModuleTopologyGraphView
 from modsim.runtime.inspection import RuntimeEventRow, RuntimeInspectorFrame, RuntimeModelView
 from modsim_studio.runtime_lattice_presenter import (
+    DEFAULT_LATTICE_CAMERA,
     CubicLatticeGeometry,
     CubicLatticeProjector,
     LatticeProjection,
@@ -74,6 +75,7 @@ class RuntimePresentation:
     selection: GraphSelection | None
     source_text: str
     status_text: str
+    show_labels: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +89,7 @@ class CubicLatticePresentation:
     status_text: str
     show_snap_cells: bool
     show_orientation_axes: bool
+    show_labels: bool = True
 
 
 RuntimeInspectorPresentation: TypeAlias = RuntimePresentation | CubicLatticePresentation
@@ -109,9 +112,11 @@ class RuntimeInspectorPresenter:
         self._frame: RuntimeInspectorFrame | None = None
         self._lattice_projector = CubicLatticeProjector()
         self._lattice_projection = LatticeProjection.ISOMETRIC
+        self._lattice_camera = DEFAULT_LATTICE_CAMERA
         self._lattice_layer_z: int | None = None
         self._show_snap_cells = True
         self._show_orientation_axes = True
+        self._show_labels = True
         self._presentation: RuntimeInspectorPresentation | None = None
 
     @property
@@ -127,25 +132,38 @@ class RuntimeInspectorPresenter:
         event disappear.  Regressing source stamps never replace the visible
         graph.
         """
-        self._merge_events(frame)
-        if self._frame is not None and _source_regresses(
-            frame.view,
-            self._frame.view,
-        ):
-            if self._presentation is None:  # pragma: no cover - invariant guard
-                raise RuntimePresentationError("presenter has a frame without a presentation")
-            self._presentation = self._presentation_with_events(self._presentation)
-            return self._presentation
+        return self.apply_frames((frame,))
 
-        self._frame = frame
-        if isinstance(frame.view, ModuleTopologyGraphView):
-            self._sync_layout(frame.view)
-        elif self._lattice_layer_z is not None and self._lattice_layer_z not in {
-            node.cell[2] for node in frame.view.nodes
-        }:
-            self._lattice_layer_z = None
-        self._drop_missing_selection(frame.view)
-        self._presentation = self._build_presentation(frame)
+    def apply_frames(
+        self,
+        frames: tuple[RuntimeInspectorFrame, ...],
+    ) -> RuntimeInspectorPresentation:
+        """Accumulate an ordered frame burst and project only its newest usable state."""
+        if not frames:
+            raise ValueError("at least one runtime frame is required")
+        accepted_frame = False
+        for frame in frames:
+            self._merge_events(frame)
+            if self._frame is not None and _source_regresses(frame.view, self._frame.view):
+                continue
+            self._frame = frame
+            accepted_frame = True
+            if isinstance(frame.view, ModuleTopologyGraphView):
+                self._sync_layout(frame.view)
+            elif self._lattice_layer_z is not None and self._lattice_layer_z not in {
+                node.cell[2] for node in frame.view.nodes
+            }:
+                self._lattice_layer_z = None
+            self._drop_missing_selection(frame.view)
+
+        if self._frame is None:  # pragma: no cover - first frame is always accepted
+            raise RuntimePresentationError("presenter did not accept a runtime frame")
+        if accepted_frame:
+            self._presentation = self._build_presentation(self._frame)
+        elif self._presentation is not None:
+            self._presentation = self._presentation_with_events(self._presentation)
+        else:  # pragma: no cover - an accepted frame creates the first presentation
+            raise RuntimePresentationError("presenter has a frame without a presentation")
         return self._presentation
 
     def select(self, kind: str, entity_id: str) -> RuntimeInspectorPresentation:
@@ -184,6 +202,23 @@ class RuntimeInspectorPresenter:
         """Change the spatial projection without advancing runtime state."""
         frame, view = self._require_lattice_frame()
         self._lattice_projection = LatticeProjection(projection)
+        self._lattice_camera = DEFAULT_LATTICE_CAMERA
+        presentation = self._build_lattice_presentation(frame, view)
+        self._presentation = presentation
+        return presentation
+
+    def orbit_lattice(
+        self,
+        azimuth_delta_rad: float,
+        elevation_delta_rad: float,
+    ) -> CubicLatticePresentation:
+        """Orbit the lattice camera without modifying runtime or Robot Pack state."""
+        frame, view = self._require_lattice_frame()
+        self._lattice_projection = LatticeProjection.ISOMETRIC
+        self._lattice_camera = self._lattice_camera.orbited(
+            azimuth_delta_rad,
+            elevation_delta_rad,
+        )
         presentation = self._build_lattice_presentation(frame, view)
         self._presentation = presentation
         return presentation
@@ -216,6 +251,13 @@ class RuntimeInspectorPresenter:
         presentation = self._build_lattice_presentation(frame, view)
         self._presentation = presentation
         return presentation
+
+    def set_labels_visible(self, visible: bool) -> RuntimeInspectorPresentation:
+        """Show or hide module labels without changing canonical state."""
+        frame = self._require_frame()
+        self._show_labels = visible
+        self._presentation = self._build_presentation(frame)
+        return self._presentation
 
     def _require_frame(self) -> RuntimeInspectorFrame:
         if self._frame is None:
@@ -328,6 +370,7 @@ class RuntimeInspectorPresenter:
             selection=selection,
             source_text=_source_text(view),
             status_text=_status_text(frame),
+            show_labels=self._show_labels,
         )
 
     def _build_lattice_presentation(
@@ -343,6 +386,7 @@ class RuntimeInspectorPresenter:
             selection=(selection.kind, selection.entity_id) if selection is not None else None,
             show_snap_cells=self._show_snap_cells,
             show_orientation_axes=self._show_orientation_axes,
+            camera=self._lattice_camera,
         )
         return CubicLatticePresentation(
             geometry=geometry,
@@ -352,6 +396,7 @@ class RuntimeInspectorPresenter:
             status_text=_status_text(frame),
             show_snap_cells=self._show_snap_cells,
             show_orientation_axes=self._show_orientation_axes,
+            show_labels=self._show_labels,
         )
 
     def _presentation_with_events(

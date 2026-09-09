@@ -16,7 +16,9 @@ from modsim.robot_packs import RobotPack, RobotPackLoader
 from modsim.runtime.inspection import RuntimeEventRow, RuntimeInspectorFrame
 from modsim.runtime.metrics import collect_metrics
 from modsim_studio.runtime_lattice_presenter import (
+    DEFAULT_LATTICE_CAMERA,
     CubicLatticeProjector,
+    LatticeCamera,
     LatticeProjection,
     project_lattice_point,
 )
@@ -95,6 +97,23 @@ def test_project_lattice_point_supports_all_spatial_projections(
     expected: tuple[float, float, float],
 ) -> None:
     assert project_lattice_point((1.0, 2.0, 3.0), projection) == pytest.approx(expected)
+
+
+def test_orbit_camera_changes_isometric_projection_and_clamps_pitch() -> None:
+    point = (1.0, 2.0, 3.0)
+    baseline = project_lattice_point(point, LatticeProjection.ISOMETRIC)
+    camera = DEFAULT_LATTICE_CAMERA.orbited(0.3, -0.2)
+
+    assert project_lattice_point(point, LatticeProjection.ISOMETRIC, camera) != pytest.approx(
+        baseline
+    )
+    assert camera.azimuth_rad == pytest.approx(DEFAULT_LATTICE_CAMERA.azimuth_rad + 0.3)
+    assert camera.elevation_rad == pytest.approx(DEFAULT_LATTICE_CAMERA.elevation_rad - 0.2)
+    assert DEFAULT_LATTICE_CAMERA.orbited(0.0, 100.0).elevation_rad == pytest.approx(
+        math.radians(85.0)
+    )
+    with pytest.raises(ValueError, match="finite"):
+        LatticeCamera(azimuth_rad=math.inf)
 
 
 def test_projector_draws_measured_residual_motion_separately_from_snap_cell(
@@ -204,6 +223,28 @@ def test_lattice_presenter_keeps_events_selection_controls_and_overlays_in_sync(
     assert not overlays.show_orientation_axes
     assert all(not cell.outline_segments for cell in overlays.geometry.cells)
     assert all(not node.orientation_axes for node in overlays.geometry.nodes)
+
+    hidden_labels = presenter.set_labels_visible(False)
+    assert isinstance(hidden_labels, CubicLatticePresentation)
+    assert not hidden_labels.show_labels
+
+    orbited = presenter.orbit_lattice(0.2, -0.1)
+    assert orbited.geometry.projection is LatticeProjection.ISOMETRIC
+    assert orbited.geometry.camera != DEFAULT_LATTICE_CAMERA
+    assert orbited.geometry.nodes[1].center != overlays.geometry.nodes[1].center
+    assert orbited.geometry.camera.azimuth_rad == pytest.approx(
+        DEFAULT_LATTICE_CAMERA.azimuth_rad + 0.2
+    )
+    assert not orbited.show_labels
+
+    repeated = presenter.apply_frame(_frame(world, view))
+    assert isinstance(repeated, CubicLatticePresentation)
+    assert repeated.geometry.camera == orbited.geometry.camera
+    assert not repeated.show_labels
+
+    reset = presenter.set_lattice_projection(LatticeProjection.XY)
+    assert reset.geometry.camera == DEFAULT_LATTICE_CAMERA
+    assert reset.geometry.projection is LatticeProjection.XY
 
 
 def test_lattice_controls_reject_a_topology_presentation() -> None:

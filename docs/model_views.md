@@ -188,11 +188,13 @@ The Qt-free presenter keeps renderer settings and selection as client state.
 For topology graphs, module nodes stay in place across physical pose samples,
 docking adds an edge without relaying out the graph, and parallel connections
 use separate curved paths. For cubic lattices, a Qt-free projector derives
-finite 2-D geometry in isometric, XY, XZ, or YZ projection while preserving the
-measured module pose independently of its nearest integer snap cell. An
-undock clears selection only when the selected edge disappears. Event deltas
-are contiguous and deduplicated, so throttling publication does not lose
-canonical events. See `runtime_inspector.md` for the executable workflow.
+finite 2-D geometry in orbitable isometric, XY, XZ, or YZ projection while
+preserving the measured module pose independently of its nearest integer snap
+cell. Orbit-camera state is presentation-only and never enters the model-view
+DTO. An undock clears selection only when the selected edge disappears. Event
+deltas are contiguous and deduplicated, so throttling publication or batching
+GUI paints does not lose canonical events. See `runtime_inspector.md` for the
+executable workflow.
 
 ### Cubic-lattice rendering
 
@@ -204,13 +206,19 @@ X/Y/Z axes and optional measured local axes share red, green, and blue colours.
 Committed face-labelled connections are selectable curves with a midpoint
 marker.
 
-The toolbar switches among isometric, XY, XZ, and YZ projections, filters to
-one occupied integer Z layer or all layers, toggles snap cells and local axes,
-and fits the finite, auto-expanding grid. Modules, connections, and warning
-cells use stable IDs for selection; hover text reports the snapped cell,
-measured position in cell units, pose residuals, assembly, and connector-face
-mapping. These controls change presentation state only and never write to
-`WorldState` or the Robot Pack.
+The lattice toolbar switches among isometric/orbit, XY, XZ, and YZ projections,
+filters to one occupied integer Z layer or all layers, toggles snap cells and
+local axes, and fits the finite, auto-expanding grid. A prominent
+**Labels: On/Off** button in the Runtime Inspector header controls module
+labels for both supported renderers. Left-drag pans, right-drag orbits, and the
+wheel zooms. A fixed projection selection resets the camera; beginning an
+orbit from a fixed view returns to isometric/orbit mode.
+Modules, connections, and warning cells use stable IDs for selection; hover
+text reports the snapped cell, measured position in cell units, pose residuals,
+assembly, and connector-face mapping. Graphics objects are retained and
+updated across live samples, while frame bursts are consumed losslessly and
+painted once. These controls and optimizations change presentation state only
+and never write to `WorldState` or the Robot Pack.
 
 ## Current scope
 

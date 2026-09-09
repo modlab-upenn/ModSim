@@ -34,6 +34,7 @@ from modsim_studio.runtime_process import (
 )
 
 _LOGGER = logging.getLogger("modsim.runtime_inspector")
+_FRAME_BATCH_DELAY_MS = 8
 
 
 class RuntimeInspectorWindow(QMainWindow):
@@ -46,6 +47,11 @@ class RuntimeInspectorWindow(QMainWindow):
         self._started = False
         self._close_pending = False
         self._last_error: str | None = None
+        self._pending_frames: list[RuntimeInspectorFrame] = []
+        self._frame_batch_timer = QTimer(self)
+        self._frame_batch_timer.setSingleShot(True)
+        self._frame_batch_timer.setInterval(_FRAME_BATCH_DELAY_MS)
+        self._frame_batch_timer.timeout.connect(self._flush_pending_frames)
 
         self.setWindowTitle(f"ModSim Runtime Inspector — {config.pack_path.name}")
         self.resize(1180, 820)
@@ -62,12 +68,22 @@ class RuntimeInspectorWindow(QMainWindow):
         self.stop_button = QPushButton("Stop")
         self.stop_button.setEnabled(False)
         self.stop_button.clicked.connect(self.request_stop)
+        self.labels_button = QPushButton("Labels: On")
+        self.labels_button.setCheckable(True)
+        self.labels_button.setChecked(True)
+        self.labels_button.setEnabled(False)
+        self.labels_button.setToolTip(
+            "Show or hide module names and lattice cell coordinates in the Runtime Inspector"
+        )
+        self.labels_button.setAccessibleName("Show runtime module labels")
+        self.labels_button.toggled.connect(self._set_labels_visible)
 
         header = QWidget()
         header_layout = QVBoxLayout(header)
         header_layout.setContentsMargins(8, 8, 8, 4)
         status_row = QHBoxLayout()
         status_row.addWidget(self.status_label, 1)
+        status_row.addWidget(self.labels_button)
         status_row.addWidget(self.stop_button)
         header_layout.addLayout(status_row)
         header_layout.addWidget(self.speed_label)
@@ -109,6 +125,7 @@ class RuntimeInspectorWindow(QMainWindow):
         self.lattice.layer_changed.connect(self._set_lattice_layer)
         self.lattice.snap_cells_changed.connect(self._set_snap_cells_visible)
         self.lattice.orientation_axes_changed.connect(self._set_orientation_axes_visible)
+        self.lattice.orbit_requested.connect(self._orbit_lattice)
 
         QTimer.singleShot(0, self.start)
 
@@ -153,8 +170,18 @@ class RuntimeInspectorWindow(QMainWindow):
                 TypeError(f"worker published unsupported frame type {type(value).__name__}")
             )
             return
+        self._pending_frames.append(value)
+        if not self._frame_batch_timer.isActive():
+            self._frame_batch_timer.start()
+
+    @Slot()
+    def _flush_pending_frames(self) -> None:
+        if not self._pending_frames:
+            return
+        frames = tuple(self._pending_frames)
+        self._pending_frames.clear()
         try:
-            presentation = self._presenter.apply_frame(value)
+            presentation = self._presenter.apply_frames(frames)
         except Exception as error:
             self._presentation_failed(error)
             return
@@ -177,6 +204,9 @@ class RuntimeInspectorWindow(QMainWindow):
 
     @Slot()
     def _runtime_finished(self) -> None:
+        if self._pending_frames:
+            self._frame_batch_timer.stop()
+            self._flush_pending_frames()
         self.stop_button.setEnabled(False)
         if self._last_error is None:
             self.statusBar().showMessage("Runtime finished; results remain available")
@@ -231,7 +261,33 @@ class RuntimeInspectorWindow(QMainWindow):
             return
         self._apply_presentation(presentation)
 
+    @Slot(bool)
+    def _set_labels_visible(self, visible: bool) -> None:
+        try:
+            presentation = self._presenter.set_labels_visible(visible)
+        except (TypeError, ValueError) as error:
+            _LOGGER.warning("Could not change runtime module labels: %s", error)
+            return
+        self._apply_presentation(presentation)
+
+    @Slot(float, float)
+    def _orbit_lattice(self, azimuth_delta_rad: float, elevation_delta_rad: float) -> None:
+        try:
+            presentation = self._presenter.orbit_lattice(
+                azimuth_delta_rad,
+                elevation_delta_rad,
+            )
+        except (TypeError, ValueError) as error:
+            _LOGGER.warning("Could not orbit the lattice view: %s", error)
+            return
+        self._apply_presentation(presentation)
+
     def _apply_presentation(self, presentation: RuntimeInspectorPresentation) -> None:
+        self.labels_button.blockSignals(True)
+        self.labels_button.setChecked(presentation.show_labels)
+        self.labels_button.setText("Labels: On" if presentation.show_labels else "Labels: Off")
+        self.labels_button.blockSignals(False)
+        self.labels_button.setEnabled(True)
         if isinstance(presentation, CubicLatticePresentation):
             self.lattice.set_presentation(presentation)
             self.view_stack.setCurrentWidget(self.lattice)
