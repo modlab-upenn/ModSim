@@ -32,6 +32,7 @@ from modsim_backend_mujoco.adapter import MuJoCoBackendAdapter
 from modsim_backend_mujoco.scene import (
     ENVIRONMENT_GEOM_GROUP,
     GROUND_GEOM,
+    GROUND_RGBA,
     URDF_COLLISION_GEOM_GROUP,
     MuJoCoSceneError,
     actuator_name,
@@ -435,6 +436,7 @@ def test_ground_uses_a_visible_environment_geom_group(loaded_pack: LoadedRobotPa
 
     assert ground >= 0
     assert int(compiled.model.geom_group[ground]) == ENVIRONMENT_GEOM_GROUP
+    assert compiled.model.geom_rgba[ground] == pytest.approx(GROUND_RGBA)
 
 
 def test_smores_provisional_contact_model_settles_upright(

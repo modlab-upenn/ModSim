@@ -24,8 +24,10 @@ from modsim.runtime.inspection_protocol import (
     RuntimeFrame,
     RuntimeHello,
     RuntimeInitialize,
+    RuntimePlaybackState,
     RuntimeProtocolError,
     RuntimeProtocolFramer,
+    RuntimeSetPaused,
     RuntimeStatus,
     RuntimeStop,
     decode_runtime_message,
@@ -55,6 +57,8 @@ def test_protocol_round_trips_every_message_and_nested_path(
     messages = (
         RuntimeHello(),
         RuntimeInitialize(config=config),
+        RuntimeSetPaused(paused=True),
+        RuntimePlaybackState(paused=True),
         RuntimeStop(),
         RuntimeStatus(message="Loading"),
         RuntimeFrame(frame=frame),
@@ -71,7 +75,7 @@ def test_protocol_round_trips_every_message_and_nested_path(
     assert initialize.config.viewer_enabled
     assert initialize.config.real_time_factor == pytest.approx(4.0)
     assert initialize.config.demo is RuntimeDemo.DOCK_UNDOCK
-    transported = decoded[4]
+    transported = next(message for message in decoded if isinstance(message, RuntimeFrame))
     assert isinstance(transported, RuntimeFrame)
     assert transported.frame == frame
 
@@ -169,6 +173,8 @@ def test_protocol_framer_preserves_fragmented_message_order() -> None:
     encoded = b"".join(
         (
             encode_runtime_message(RuntimeHello()),
+            encode_runtime_message(RuntimeSetPaused(paused=True)),
+            encode_runtime_message(RuntimePlaybackState(paused=True)),
             encode_runtime_message(RuntimeStatus(message="Ready")),
             encode_runtime_message(RuntimeFinished(reason=RuntimeFinishedReason.COMPLETED)),
         )
@@ -182,11 +188,28 @@ def test_protocol_framer_preserves_fragmented_message_order() -> None:
     assert first == ()
     assert [type(message) for message in second + third] == [
         RuntimeHello,
+        RuntimeSetPaused,
+        RuntimePlaybackState,
         RuntimeStatus,
         RuntimeFinished,
     ]
     assert framer.buffered_bytes == 0
     assert framer.finish() == ()
+
+
+@pytest.mark.parametrize("kind", ("set_paused", "playback_state"))
+def test_protocol_pause_state_requires_a_strict_boolean(kind: str) -> None:
+    malformed = (
+        RUNTIME_PROTOCOL_PREFIX.encode()
+        + json.dumps(
+            {"protocol_version": 1, "kind": kind, "paused": 1},
+            separators=(",", ":"),
+        ).encode()
+        + b"\n"
+    )
+
+    with pytest.raises(RuntimeProtocolError, match="invalid runtime protocol"):
+        decode_runtime_message(malformed)
 
 
 @pytest.mark.parametrize(

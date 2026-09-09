@@ -34,6 +34,7 @@ class _PassiveViewer:
         self.opt = _ViewerOptions()
         self.sync_count = 0
         self.exited = False
+        self.text_overlays: list[object] = []
 
     def __enter__(self) -> Self:
         return self
@@ -55,6 +56,9 @@ class _PassiveViewer:
 
     def sync(self) -> None:
         self.sync_count += 1
+
+    def set_texts(self, texts: object) -> None:
+        self.text_overlays.append(texts)
 
 
 def test_viewer_starts_with_collision_proxies_hidden(
@@ -92,6 +96,7 @@ def test_viewer_starts_with_collision_proxies_hidden(
     assert viewer.opt.geomgroup[URDF_COLLISION_GEOM_GROUP] == 0
     assert viewer.opt.geomgroup[1] == 1
     assert viewer.opt.geomgroup[ENVIRONMENT_GEOM_GROUP] == 1
+    assert viewer.text_overlays == []
 
 
 def test_viewer_scales_wall_deadlines_without_changing_simulated_steps(
@@ -370,3 +375,312 @@ def test_viewer_cooperative_stop_interrupts_final_state_hold(
     assert viewer.sync_count == 2
     assert viewer.exited
     assert lifecycle == ["complete", "stopped"]
+
+
+def test_viewer_passes_through_key_callback_and_advertises_space_action(
+    example_pack_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loaded = RobotPackLoader().load(example_pack_dir)
+    session = RuntimeSession.create(
+        loaded,
+        SceneSpec.grid("generic_cube", 1, spacing_m=0.1),
+        "mujoco",
+        gravity=(0.0, 0.0, 0.0),
+    )
+    viewer = _PassiveViewer()
+    received_callback: object | None = None
+    lifecycle: list[str] = []
+
+    def key_callback(keycode: int) -> None:
+        del keycode
+
+    def launch_passive(
+        model: object,
+        data: object,
+        *,
+        key_callback: object,
+    ) -> _PassiveViewer:
+        nonlocal received_callback
+        del model, data
+        received_callback = key_callback
+        return viewer
+
+    monkeypatch.setattr(
+        "modsim_backend_mujoco.viewer.mujoco.viewer.launch_passive",
+        launch_passive,
+    )
+
+    try:
+        run_with_viewer(
+            session,
+            duration_s=0.0,
+            step_once=lambda: (),
+            key_callback=key_callback,
+            on_started=lambda: lifecycle.append("started"),
+            on_pause_changed=lambda paused: lifecycle.append(f"pause:{paused}"),
+            hold=False,
+        )
+    finally:
+        session.shutdown()
+
+    assert received_callback is key_callback
+    assert lifecycle == ["started", "pause:False"]
+    assert len(viewer.text_overlays) == 1
+    overlay = viewer.text_overlays[0]
+    assert isinstance(overlay, tuple)
+    assert overlay[2:] == ("ModSim playback", "RUNNING\nSpace: Pause")
+
+
+def test_viewer_pause_keeps_rendering_and_resume_rebases_wall_pacing(
+    example_pack_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loaded = RobotPackLoader().load(example_pack_dir)
+    session = RuntimeSession.create(
+        loaded,
+        SceneSpec.grid("generic_cube", 1, spacing_m=0.1),
+        "mujoco",
+        gravity=(0.0, 0.0, 0.0),
+    )
+    paused = True
+    wall_time = 100.0
+
+    class _ResumingViewer(_PassiveViewer):
+        def sync(self) -> None:
+            nonlocal paused, wall_time
+            super().sync()
+            if paused:
+                # Model a long wall-clock pause ending through a viewer event.
+                wall_time = 130.0
+                paused = False
+
+    viewer = _ResumingViewer()
+    transitions: list[bool] = []
+    step_start_times: list[float] = []
+    wait_deadlines: list[float] = []
+
+    def launch_passive(model: object, data: object) -> _PassiveViewer:
+        del model, data
+        return viewer
+
+    def step_once() -> tuple[()]:
+        step_start_times.append(session.world.time_s)
+        session.step(0.01)
+        return ()
+
+    def record_wait(target_s: float, wake_requested: object) -> bool:
+        del wake_requested
+        wait_deadlines.append(target_s)
+        return True
+
+    monkeypatch.setattr(
+        "modsim_backend_mujoco.viewer.mujoco.viewer.launch_passive",
+        launch_passive,
+    )
+    monkeypatch.setattr(
+        "modsim_backend_mujoco.viewer.time.perf_counter",
+        lambda: wall_time,
+    )
+    monkeypatch.setattr("modsim_backend_mujoco.viewer._wait_until", record_wait)
+
+    try:
+        run_with_viewer(
+            session,
+            duration_s=0.02,
+            step_once=step_once,
+            pause_requested=lambda: paused,
+            on_pause_changed=transitions.append,
+            hold=False,
+        )
+    finally:
+        session.shutdown()
+
+    assert step_start_times == pytest.approx([0.0, 0.01])
+    assert transitions == [False, True, False]
+    assert viewer.sync_count == 3
+    assert wait_deadlines[-2:] == pytest.approx([130.01, 130.02])
+    overlay_text = [overlay[3] for overlay in viewer.text_overlays]  # type: ignore[index]
+    assert overlay_text == ["RUNNING", "PAUSED", "RUNNING"]
+
+
+def test_pause_arriving_during_pacing_is_acknowledged_before_another_step(
+    example_pack_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loaded = RobotPackLoader().load(example_pack_dir)
+    session = RuntimeSession.create(
+        loaded,
+        SceneSpec.grid("generic_cube", 1, spacing_m=0.1),
+        "mujoco",
+        gravity=(0.0, 0.0, 0.0),
+    )
+    paused = False
+    wait_count = 0
+    timeline: list[str] = []
+
+    class _ResumeFromViewer(_PassiveViewer):
+        def sync(self) -> None:
+            nonlocal paused
+            super().sync()
+            if paused:
+                paused = False
+
+    viewer = _ResumeFromViewer()
+
+    def launch_passive(model: object, data: object) -> _PassiveViewer:
+        del model, data
+        return viewer
+
+    def step_once() -> tuple[()]:
+        timeline.append("step")
+        session.step(0.01)
+        return ()
+
+    def pause_changed(value: bool) -> None:
+        timeline.append(f"pause:{value}")
+
+    def interrupt_first_pacing_wait(target_s: float, wake_requested: object) -> bool:
+        nonlocal paused, wait_count
+        del target_s
+        wait_count += 1
+        if wait_count == 1:
+            paused = True
+            assert callable(wake_requested)
+            assert wake_requested()
+            return False
+        return True
+
+    monkeypatch.setattr(
+        "modsim_backend_mujoco.viewer.mujoco.viewer.launch_passive",
+        launch_passive,
+    )
+    monkeypatch.setattr(
+        "modsim_backend_mujoco.viewer._wait_until",
+        interrupt_first_pacing_wait,
+    )
+
+    try:
+        run_with_viewer(
+            session,
+            duration_s=0.02,
+            step_once=step_once,
+            pause_requested=lambda: paused,
+            on_pause_changed=pause_changed,
+            hold=False,
+        )
+    finally:
+        session.shutdown()
+
+    assert timeline == [
+        "pause:False",
+        "step",
+        "pause:True",
+        "pause:False",
+        "step",
+    ]
+
+
+def test_viewer_stop_while_paused_never_advances_runtime(
+    example_pack_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loaded = RobotPackLoader().load(example_pack_dir)
+    session = RuntimeSession.create(
+        loaded,
+        SceneSpec.grid("generic_cube", 1, spacing_m=0.1),
+        "mujoco",
+        gravity=(0.0, 0.0, 0.0),
+    )
+    viewer = _PassiveViewer()
+    stopped = False
+    step_count = 0
+
+    def launch_passive(model: object, data: object) -> _PassiveViewer:
+        del model, data
+        return viewer
+
+    def sync_and_stop() -> None:
+        nonlocal stopped
+        _PassiveViewer.sync(viewer)
+        stopped = True
+
+    def step_once() -> tuple[()]:
+        nonlocal step_count
+        step_count += 1
+        session.step(0.01)
+        return ()
+
+    viewer.sync = sync_and_stop  # type: ignore[method-assign]
+    monkeypatch.setattr(
+        "modsim_backend_mujoco.viewer.mujoco.viewer.launch_passive",
+        launch_passive,
+    )
+
+    try:
+        run_with_viewer(
+            session,
+            duration_s=1.0,
+            step_once=step_once,
+            stop_requested=lambda: stopped,
+            pause_requested=lambda: True,
+            hold=False,
+        )
+    finally:
+        session.shutdown()
+
+    assert step_count == 0
+    assert session.world.time_s == pytest.approx(0.0)
+    assert viewer.sync_count == 1
+    assert viewer.exited
+
+
+def test_viewer_close_while_paused_never_advances_runtime(
+    example_pack_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loaded = RobotPackLoader().load(example_pack_dir)
+    session = RuntimeSession.create(
+        loaded,
+        SceneSpec.grid("generic_cube", 1, spacing_m=0.1),
+        "mujoco",
+        gravity=(0.0, 0.0, 0.0),
+    )
+
+    class _ClosingViewer(_PassiveViewer):
+        def is_running(self) -> bool:
+            return self.sync_count == 0
+
+    viewer = _ClosingViewer()
+    step_count = 0
+
+    def launch_passive(model: object, data: object) -> _PassiveViewer:
+        del model, data
+        return viewer
+
+    def step_once() -> tuple[()]:
+        nonlocal step_count
+        step_count += 1
+        session.step(0.01)
+        return ()
+
+    monkeypatch.setattr(
+        "modsim_backend_mujoco.viewer.mujoco.viewer.launch_passive",
+        launch_passive,
+    )
+
+    try:
+        run_with_viewer(
+            session,
+            duration_s=1.0,
+            step_once=step_once,
+            pause_requested=lambda: True,
+            hold=False,
+        )
+    finally:
+        session.shutdown()
+
+    assert step_count == 0
+    assert session.world.time_s == pytest.approx(0.0)
+    assert viewer.sync_count == 1
+    assert viewer.exited

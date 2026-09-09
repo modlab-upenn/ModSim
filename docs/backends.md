@@ -203,6 +203,19 @@ limits, controller targets, simulated duration, and event timestamps remain
 unchanged. A high requested factor is best-effort when physics or rendering
 throughput cannot keep up.
 
+For `modsim runtime`, MuJoCo's built-in **Run/Pause** item remains disabled by
+design. ModSim uses the passive viewer and retains ownership of physics steps,
+scenario progression, `WorldState`, and events; handing control to a
+viewer-owned simulation loop would bypass that boundary. ModSim instead adds a
+synchronized **Pause**/**Resume** button to the Runtime Inspector, a **Space**
+shortcut in the native window, and a `RUNNING`/`PAUSED` viewer overlay. Both
+inputs change one runtime-owned state at a completed-step boundary. While
+paused, both displayed model states remain frozen but their windows and view
+controls stay interactive. Resume resets wall-clock pacing so no catch-up burst
+occurs, and Stop or window close remains available. The overlay is
+feature-detected for compatibility with older supported MuJoCo releases; pause
+control does not depend on it.
+
 MuJoCo normally discards URDF `<visual>` geometry unless the URDF opts out.
 The ModSim adapter retains it by default, while respecting an explicit
 `discardvisual` setting authored in the URDF. When separate visual geometry is
@@ -211,7 +224,9 @@ native viewer starts that debug group hidden, so detailed meshes in visual
 group 1 are shown without opaque collision proxies covering them. Contacts
 still use the hidden collision geoms; the viewer's **Group 3** toggle reveals
 them when debugging. The ModSim ground belongs to visible environment group 2.
-Hand-authored MJCF geom groups are not rewritten.
+Its pale, near-white blue-gray surface keeps rendered modules and shadows
+legible in screenshots; the color is visual only and does not change ground
+contact or friction. Hand-authored MJCF geom groups are not rewritten.
 
 **On macOS this must run under `mjpython`.** MuJoCo's passive viewer needs to own
 the main thread, so `python` raises. The MuJoCo wheel installs `mjpython`
@@ -232,6 +247,12 @@ native viewer, physics stepping, and model-view generation. Immutable
 inspector frames cross the process boundary, so the 3-D model, selected
 semantic view, and events always describe the same simulation rather than two
 approximately synchronized runs.
+
+Playback requests cross that boundary in the opposite direction. The runtime
+owner publishes the exact frame at a pause boundary and acknowledges the
+resulting state, keeping the Inspector button and native-viewer overlay in
+sync. The `--no-viewer` worker-thread arrangement honors the same Inspector
+control and pause semantics without launching the companion process.
 
 The public command is identical on macOS and Linux. On macOS ModSim
 automatically locates the `mjpython` installed beside the active environment's

@@ -123,6 +123,32 @@ contact, rendering, or hardware throughput is the limit, ModSim runs as fast as
 it can without skipping physics steps. `--publish-hz` remains a wall-clock UI
 refresh limit; event deltas remain contiguous and lossless at every speed.
 
+### Pause and resume
+
+The Runtime Inspector header provides one **Pause**/**Resume** button. With the
+native MuJoCo companion open, pressing **Space** in that window toggles the
+same authoritative playback state; either input is acknowledged back to the
+Inspector, so the button and MuJoCo status overlay stay synchronized.
+
+A pause is applied at the next simulation-step boundary. While paused, ModSim
+does not advance physics, `WorldState` time, scenario logic, connector
+lifecycle processing, or canonical events, and both the native model and
+generated semantic view remain at the same state. Both windows stay responsive
+for camera, pan, zoom, selection, and close actions. Resume establishes a new
+wall-clock pacing epoch, preventing elapsed pause time from producing a burst
+of catch-up steps. **Stop** and either window's close control remain effective
+while paused.
+
+MuJoCo's built-in **Run/Pause** menu item remains disabled. That control belongs
+to a viewer-owned physics loop, whereas ModSim deliberately uses MuJoCo's
+passive viewer and owns every physics and semantic step. The ModSim button,
+**Space** shortcut, and `RUNNING`/`PAUSED` native-viewer overlay provide the
+equivalent synchronized control without transferring runtime ownership. The
+`--no-viewer` worker-thread path exposes the same Inspector button; it simply
+has no native window or keyboard shortcut. The native overlay is
+feature-detected because older supported MuJoCo releases may not expose public
+text overlays; the synchronized controls remain available without it.
+
 `--undock-at` is optional for `dock`. The `dock_undock` demonstration supplies a
 release time automatically unless `--undock-at` overrides it. After
 `UndockCommitted`, the edge is removed and the moving module retracts at the
@@ -756,17 +782,26 @@ projecting the newest accepted state. PyQtGraph and Qt remain in
 does not create a second `RuntimeSession`; the semantic view, events, and native
 3D image always describe the same simulation.
 
+Pause requests from the Inspector and **Space** presses from the native viewer
+converge on one playback state owned by the runtime child. At a pause boundary,
+the owner publishes the exact frozen frame before acknowledging the new state.
+With `--no-viewer`, the worker thread follows the same step-boundary and
+acknowledgement contract without the process boundary.
+
 ## Window lifetime and logging
 
 The scenario is paced to the requested wall-clock real-time factor while both
 windows are open. The factor is fixed for one launch and applies equally to the
-native-viewer process and `--no-viewer` worker path. When the configured
-simulated duration ends, the final state remains visible for inspection.
+native-viewer process and `--no-viewer` worker path. Pausing freezes simulated
+time while the windows continue servicing input; resuming resets the pacing
+origin. When the configured simulated duration ends, the final state remains
+visible for inspection.
 Closing the Runtime Inspector requests a cooperative child shutdown and closes
 the native viewer. Closing the native viewer first ends the simulation while
 leaving the last complete semantic view and event log visible in the Runtime
 Inspector.
-The **Stop** control follows the same cooperative shutdown path.
+The **Stop** control follows the same cooperative shutdown path and remains
+available while playback is paused.
 
 The Qt process is the only writer that initializes and truncates the Studio
 session log. Diagnostics from the native-viewer child are captured and mirrored
@@ -791,9 +826,10 @@ five- and twelve-module kinematic M-Blocks routes, a two-module one-plane
 M-Blocks momentum controller, an eleven-action twelve-module physical M-Blocks
 line sequence, matched reference/physical twelve-module staircase routes, one
 external seven-module SMORES plan, one physical SMORES
-differential-drive controller, and a Stop control. General scenes, autonomous
-reconfiguration planning, continuous magnetic fields, a three-plane M-Blocks
-carrier, pause/restart controls, interactive/manual joint controls,
+differential-drive controller, synchronized Pause/Resume control, and a Stop
+control. General scenes, autonomous reconfiguration planning, continuous
+magnetic fields, a three-plane M-Blocks carrier, restart controls,
+interactive/manual joint controls,
 position/velocity backend command modes, metric plots, docking-lifecycle
 panels, further model-view renderers, and a combined authoring/runtime shell
 remain later increments.

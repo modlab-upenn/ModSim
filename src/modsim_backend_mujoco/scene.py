@@ -37,6 +37,7 @@ WORLD_BODY = "world"
 GROUND_GEOM = "modsim_ground"
 GROUND_HALF_EXTENT_M = 10.0
 GROUND_THICKNESS_M = 0.05
+GROUND_RGBA = (0.90, 0.92, 0.95, 1.0)
 ENVIRONMENT_GEOM_GROUP = 2
 URDF_COLLISION_GEOM_GROUP = 3
 DEFAULT_GRAVITY: Vec3 = (0.0, 0.0, -9.81)
@@ -282,6 +283,7 @@ def _add_ground(spec: mujoco.MjSpec, height_m: float) -> None:
     geom.type = mujoco.mjtGeom.mjGEOM_PLANE
     geom.size = [GROUND_HALF_EXTENT_M, GROUND_HALF_EXTENT_M, GROUND_THICKNESS_M]
     geom.pos = [0.0, 0.0, height_m]
+    geom.rgba = list(GROUND_RGBA)
     geom.group = ENVIRONMENT_GEOM_GROUP
 
 

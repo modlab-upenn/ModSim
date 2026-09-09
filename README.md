@@ -112,6 +112,21 @@ MuJoCo, a separate native 3D viewer opens by default; `--no-viewer` suppresses
 it while retaining the Qt inspector. Use `modsim run` for a fully non-GUI
 execution.
 
+Playback is synchronized across the two runtime windows. Click **Pause** or
+**Resume** in the Runtime Inspector, or press **Space** in the native MuJoCo
+window, to change the same authoritative playback state. A pause takes effect
+at a simulation-step boundary and freezes physics, `WorldState` time, scenario
+progression, events, and both displayed model states. The windows and their
+camera/view controls remain interactive. Resuming starts a fresh wall-clock
+pacing epoch, so time spent paused does not cause a catch-up burst; **Stop**
+and either window's close control continue to work while paused. MuJoCo's own
+**Run/Pause** menu item remains disabled because ModSim uses its passive viewer
+and owns every simulation step; ModSim provides the synchronized button,
+keyboard shortcut, and native-viewer status overlay instead. With
+`--no-viewer`, the Inspector button controls the same worker-thread runtime.
+The native overlay is shown when the installed MuJoCo version supports public
+viewer text overlays; the controls do not depend on it.
+
 In the cubic-lattice view, left-drag pans, right-drag orbits the projected
 models, and the mouse wheel zooms. Selecting a fixed projection resets the
 orbit camera. The prominent **Labels: On/Off** button beside **Stop** in the

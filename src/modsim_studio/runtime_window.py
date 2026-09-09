@@ -47,6 +47,10 @@ class RuntimeInspectorWindow(QMainWindow):
         self._started = False
         self._close_pending = False
         self._last_error: str | None = None
+        self._playback_paused = False
+        self._playback_pending: bool | None = None
+        self._playback_available = False
+        self._shutdown_requested = False
         self._pending_frames: list[RuntimeInspectorFrame] = []
         self._frame_batch_timer = QTimer(self)
         self._frame_batch_timer.setSingleShot(True)
@@ -68,6 +72,13 @@ class RuntimeInspectorWindow(QMainWindow):
         self.stop_button = QPushButton("Stop")
         self.stop_button.setEnabled(False)
         self.stop_button.clicked.connect(self.request_stop)
+        self.pause_button = QPushButton("Pause")
+        self.pause_button.setEnabled(False)
+        self.pause_button.setToolTip(
+            "Pause at the next simulation step boundary. Space in the MuJoCo window "
+            "controls the same runtime."
+        )
+        self.pause_button.clicked.connect(self._toggle_playback)
         self.labels_button = QPushButton("Labels: On")
         self.labels_button.setCheckable(True)
         self.labels_button.setChecked(True)
@@ -83,6 +94,7 @@ class RuntimeInspectorWindow(QMainWindow):
         header_layout.setContentsMargins(8, 8, 8, 4)
         status_row = QHBoxLayout()
         status_row.addWidget(self.status_label, 1)
+        status_row.addWidget(self.pause_button)
         status_row.addWidget(self.labels_button)
         status_row.addWidget(self.stop_button)
         header_layout.addLayout(status_row)
@@ -117,6 +129,7 @@ class RuntimeInspectorWindow(QMainWindow):
         )
         self._controller.frame_ready.connect(self._receive_frame)
         self._controller.status_changed.connect(self._receive_status)
+        self._controller.playback_changed.connect(self._receive_playback_state)
         self._controller.failed.connect(self._runtime_failed)
         self._controller.finished.connect(self._runtime_finished)
         self.graph.entity_selected.connect(self._select_entity)
@@ -154,7 +167,9 @@ class RuntimeInspectorWindow(QMainWindow):
         """Request cooperative interruption without blocking the GUI thread."""
         if not self._controller.is_running():
             return
+        self._shutdown_requested = True
         self.stop_button.setEnabled(False)
+        self.pause_button.setEnabled(False)
         self.status_label.setText("Stopping runtime…")
         self.statusBar().showMessage("Stopping runtime…")
         self._controller.request_interruption()
@@ -192,10 +207,45 @@ class RuntimeInspectorWindow(QMainWindow):
         self.status_label.setText(message)
         self.statusBar().showMessage(message)
 
+    @Slot()
+    def _toggle_playback(self) -> None:
+        if (
+            not self._playback_available
+            or self._playback_pending is not None
+            or not self._controller.is_running()
+        ):
+            return
+        requested = not self._playback_paused
+        self._playback_pending = requested
+        self.pause_button.setEnabled(False)
+        self.pause_button.setText("Pausing…" if requested else "Resuming…")
+        self.statusBar().showMessage(self.pause_button.text())
+        self._controller.set_paused(requested)
+
+    @Slot(bool)
+    def _receive_playback_state(self, paused: bool) -> None:
+        self._playback_paused = paused
+        self._playback_pending = None
+        self._playback_available = True
+        self.pause_button.setText("Resume" if paused else "Pause")
+        self.pause_button.setEnabled(
+            self._controller.is_running()
+            and not self._close_pending
+            and not self._shutdown_requested
+        )
+        self.speed_label.setText(
+            f"Target speed: {self._config.real_time_factor:g}x" + (" · Paused" if paused else "")
+        )
+        state = "paused" if paused else "running"
+        self.statusBar().showMessage(f"Runtime {state}")
+        _LOGGER.info("Runtime playback %s", state)
+
     @Slot(str)
     def _runtime_failed(self, message: str) -> None:
         self._last_error = message
+        self._shutdown_requested = True
         self.stop_button.setEnabled(False)
+        self.pause_button.setEnabled(False)
         self.status_label.setText(message)
         self.statusBar().showMessage("Runtime failed")
         _LOGGER.error("%s", message)
@@ -204,10 +254,12 @@ class RuntimeInspectorWindow(QMainWindow):
 
     @Slot()
     def _runtime_finished(self) -> None:
+        self._shutdown_requested = True
         if self._pending_frames:
             self._frame_batch_timer.stop()
             self._flush_pending_frames()
         self.stop_button.setEnabled(False)
+        self.pause_button.setEnabled(False)
         if self._last_error is None:
             self.statusBar().showMessage("Runtime finished; results remain available")
         if self._close_pending:

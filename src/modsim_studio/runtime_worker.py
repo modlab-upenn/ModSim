@@ -32,6 +32,7 @@ class RuntimeInspectorWorker(QObject):
 
     frame_ready = Signal(object)
     status_changed = Signal(str)
+    playback_changed = Signal(bool)
     failed = Signal(str)
     finished = Signal()
 
@@ -39,10 +40,18 @@ class RuntimeInspectorWorker(QObject):
         super().__init__()
         self._config = config
         self._interruption = ThreadEvent()
+        self._pause_requested = ThreadEvent()
 
     def request_interruption(self) -> None:
         """Request a prompt, cooperative stop from any thread."""
         self._interruption.set()
+
+    def set_paused(self, paused: bool) -> None:
+        """Request a pause state from another thread at the next step boundary."""
+        if paused:
+            self._pause_requested.set()
+        else:
+            self._pause_requested.clear()
 
     @Slot()
     def run(self) -> None:
@@ -85,25 +94,50 @@ class RuntimeInspectorWorker(QObject):
         frame = runner.frame()
         self.frame_ready.emit(frame)
         last_signature = runtime_frame_signature(frame)
+        self.playback_changed.emit(False)
 
-        wall_started = time.monotonic()
-        simulated_started = runner.session.world.time_s
         publish_interval_s = 1.0 / self._config.publish_hz
-        next_publish_at = wall_started + publish_interval_s
+        pacing_wall_started = time.monotonic()
+        pacing_simulated_started = runner.session.world.time_s
+        next_publish_at = pacing_wall_started + publish_interval_s
+        completed_steps = 0
+        was_paused = False
 
-        for _ in range(runner.step_count):
+        while completed_steps < runner.step_count:
             if self._interrupted():
                 break
-            runner.step()
+            if self._pause_requested.is_set():
+                if not was_paused:
+                    paused_frame = runner.frame()
+                    self.frame_ready.emit(paused_frame)
+                    last_signature = runtime_frame_signature(paused_frame)
+                    self.playback_changed.emit(True)
+                    was_paused = True
+                self._interruption.wait(_INTERRUPTION_POLL_S)
+                continue
+            if was_paused:
+                self.playback_changed.emit(False)
+                was_paused = False
+                pacing_wall_started = time.monotonic()
+                pacing_simulated_started = runner.session.world.time_s
+                next_publish_at = pacing_wall_started + publish_interval_s
 
-            simulated_elapsed = runner.session.world.time_s - simulated_started
+            runner.step()
+            completed_steps += 1
+
+            simulated_elapsed = runner.session.world.time_s - pacing_simulated_started
             target_wall_time = wall_clock_deadline_s(
-                wall_started,
+                pacing_wall_started,
                 min(simulated_elapsed, self._config.duration_s),
                 self._config.real_time_factor,
             )
             if not self._wait_until(target_wall_time):
-                break
+                if self._interrupted():
+                    break
+                # A pause can arrive while pacing the step that just
+                # completed. Return to the top of the loop so that pause is
+                # acknowledged without advancing the runtime again.
+                continue
 
             now = time.monotonic()
             if now >= next_publish_at:
@@ -120,6 +154,8 @@ class RuntimeInspectorWorker(QObject):
 
     def _wait_until(self, target_s: float) -> bool:
         while not self._interrupted():
+            if self._pause_requested.is_set():
+                return False
             remaining_s = target_s - time.monotonic()
             if remaining_s <= 0.0:
                 return True

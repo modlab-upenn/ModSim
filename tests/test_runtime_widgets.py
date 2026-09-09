@@ -458,6 +458,56 @@ def test_runtime_window_keeps_target_speed_visible_across_presentations(
         window.close()
 
 
+def test_runtime_window_pause_control_waits_for_authoritative_acknowledgement(
+    application: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(RuntimeInspectorWindow, "start", lambda _self: None)
+    window = RuntimeInspectorWindow(
+        RuntimeInspectorConfig(
+            pack_path=tmp_path / "pack",
+            backend="mock",
+            real_time_factor=3.0,
+        )
+    )
+    requested: list[bool] = []
+    running = True
+    monkeypatch.setattr(window._controller, "is_running", lambda: running)
+    monkeypatch.setattr(window._controller, "set_paused", requested.append)
+    try:
+        assert not window.pause_button.isEnabled()
+
+        window._receive_playback_state(False)
+        assert window.pause_button.isEnabled()
+        assert window.pause_button.text() == "Pause"
+
+        window.pause_button.click()
+        application.processEvents()
+        assert requested == [True]
+        assert not window.pause_button.isEnabled()
+        assert window.pause_button.text() == "Pausing…"
+
+        window._receive_playback_state(True)
+        assert window.pause_button.isEnabled()
+        assert window.pause_button.text() == "Resume"
+        assert window.speed_label.text() == "Target speed: 3x · Paused"
+
+        # This is the same acknowledgement delivered after Space is pressed in
+        # the native MuJoCo window; the Inspector must follow it without having
+        # initiated the transition itself.
+        window._receive_playback_state(False)
+        assert window.pause_button.text() == "Pause"
+        assert window.speed_label.text() == "Target speed: 3x"
+
+        window._runtime_finished()
+        window._receive_playback_state(True)
+        assert not window.pause_button.isEnabled()
+    finally:
+        running = False
+        window.close()
+
+
 def test_runtime_window_exposes_one_global_label_toggle(
     application: QApplication,
     monkeypatch: pytest.MonkeyPatch,
