@@ -40,6 +40,7 @@ class ConnectorLifecycleState(StrEnum):
     RELEASING = "releasing"
     FAILED = "failed"
 
+
 ENGAGED_STATES = frozenset(
     {
         ConnectorLifecycleState.LATCHING,

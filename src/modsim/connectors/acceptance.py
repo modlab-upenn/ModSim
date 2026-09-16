@@ -57,6 +57,7 @@ class AcceptanceCriterion:
     unit: str
     detail: str | None = None
 
+
 @dataclass(frozen=True, slots=True)
 class AcceptanceResult:
     """The full outcome of evaluating one candidate connector pair."""
