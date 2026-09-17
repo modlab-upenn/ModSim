@@ -6,6 +6,16 @@ move at whatever twist they are given, nothing falls, and nothing collides.
 What it does model faithfully is the part ModSim actually depends on — that a
 physical connection makes two modules move as one rigid body, and that removing
 it lets them move independently again.
+
+Because the mock never moves a joint, every link of a module sits at a fixed
+transform from the module root for the whole run. The mock resolves that
+transform from the URDF joint origins at zero configuration, so it reports the
+true world frame of a connector carried on a wheel or a tilt body rather than
+collapsing every link onto the module root. This is what makes the mock a
+genuine kinematic reference for articulated modules, not only single-link ones.
+When no URDF is reachable it degrades to the root frame for every link, which is
+exact for a single-link module and is the only case that pre-dates this
+resolution.
 """
 
 from __future__ import annotations
@@ -28,12 +38,62 @@ from modsim.core.transforms import (
     Transform,
     Vec3,
     quat_from_axis_angle,
+    quat_from_rpy,
+    vec_add,
+    vec_cross,
     vec_norm,
     vec_scale,
+    vec_sub,
 )
-from modsim.robot_packs.schema import RobotPack
+from modsim.importers.urdf import URDFImportError, URDFImporter
+from modsim.robot_packs.schema import AssetCatalogKind, ModuleType, RobotPack
 
 MOCK_BACKEND_NAME = "mock"
+
+
+def _resolve_link_transforms(
+    pack: RobotPack,
+    module_type: ModuleType,
+    root: Path | None,
+) -> dict[str, Transform]:
+    """Return each link's transform from the module root at zero joint config.
+
+    The mock has no articulated dynamics, so its joints never move and the fixed
+    transform implied by the URDF joint origins is the correct pose of every
+    child link for the mock's whole lifetime. When no URDF is reachable the map
+    holds only the root link, and every other link falls back to the root frame,
+    which is exact for a single-link module.
+    """
+    transforms: dict[str, Transform] = {module_type.root_link: Transform.identity()}
+    if root is None:
+        return transforms
+    relative = pack.manifest.assets.mechanical_catalog(AssetCatalogKind.URDF).get(
+        module_type.asset_ref
+    )
+    if relative is None:
+        return transforms
+    try:
+        asset = URDFImporter().load(root / relative)
+    except (URDFImportError, OSError):
+        return transforms
+
+    # Resolve links outward from the root: a child's transform is its parent's
+    # composed with the joint origin. Repeated passes handle any joint order and
+    # any tree depth without assuming the URDF lists joints parent-first.
+    remaining = list(asset.joints)
+    progressed = True
+    while progressed:
+        progressed = False
+        for joint in remaining:
+            if joint.child_link in transforms or joint.parent_link not in transforms:
+                continue
+            origin = Transform(
+                translation=joint.origin_xyz_m,
+                rotation=quat_from_rpy(joint.origin_rpy_rad),
+            )
+            transforms[joint.child_link] = transforms[joint.parent_link].compose(origin)
+            progressed = True
+    return transforms
 
 
 @dataclass(slots=True)
@@ -42,6 +102,7 @@ class _Body:
 
     pose: Transform
     links: tuple[str, ...]
+    module_type_id: str
     linear_velocity_m_s: Vec3 = ZERO_VEC3
     angular_velocity_rad_s: Vec3 = ZERO_VEC3
 
@@ -60,12 +121,13 @@ class _Weld:
 class MockBackendAdapter:
     """Kinematic backend used for tests, CI, and semantics development."""
 
-    __slots__ = ("_bodies", "_forces", "_next_failure", "_time_s", "_welds")
+    __slots__ = ("_bodies", "_forces", "_link_transforms", "_next_failure", "_time_s", "_welds")
 
     def __init__(self) -> None:
         self._bodies: dict[ModuleInstanceId, _Body] = {}
         self._welds: dict[ConstraintHandle, _Weld] = {}
         self._forces: dict[ConstraintHandle, float] = {}
+        self._link_transforms: dict[str, dict[str, Transform]] = {}
         self._time_s = 0.0
         self._next_failure: str | None = None
 
@@ -92,26 +154,33 @@ class MockBackendAdapter:
     ) -> BackendHandleRegistry:
         """Instantiate every placement as one rigid body per module.
 
-        ``root`` is ignored: the mock reads no mechanical assets, which is
-        exactly why it can run from an in-memory Robot Pack.
+        ``root`` is the Robot Pack directory. The mock reads no meshes, but it
+        does read the URDF joint tree so it can place articulated child links;
+        without ``root`` it falls back to the module root frame for every link.
         """
-        del root
         links_by_module = scene.module_links(pack)
-        self._bodies = {
-            placement.instance_id: _Body(
+        self._link_transforms = {}
+        bodies: dict[ModuleInstanceId, _Body] = {}
+        for placement in scene.placements:
+            module_type = pack.hardware_catalog.module_types[placement.module_type_id]
+            if placement.module_type_id not in self._link_transforms:
+                self._link_transforms[placement.module_type_id] = _resolve_link_transforms(
+                    pack, module_type, root
+                )
+            bodies[placement.instance_id] = _Body(
                 pose=placement.pose,
                 links=links_by_module[placement.instance_id],
+                module_type_id=placement.module_type_id,
             )
-            for placement in scene.placements
-        }
+        self._bodies = bodies
         self._welds = {}
         self._forces = {}
         self._time_s = 0.0
-        bodies: dict[tuple[ModuleInstanceId, str], str] = {}
+        handles: dict[tuple[ModuleInstanceId, str], str] = {}
         for module_id, body in self._bodies.items():
             for link in body.links:
-                bodies[(module_id, link)] = f"{module_id}:{link}"
-        return BackendHandleRegistry(bodies=bodies)
+                handles[(module_id, link)] = f"{module_id}:{link}"
+        return BackendHandleRegistry(bodies=handles)
 
     def step(self, dt_s: float) -> None:
         """Advance every welded group rigidly by its representative's twist."""
@@ -132,18 +201,31 @@ class MockBackendAdapter:
     def snapshot(self) -> BackendStateSnapshot:
         """Return the current kinematic state.
 
-        Every link of a module reports the module pose, because the mock has no
-        articulated kinematics. Modules with internal joints therefore need a
-        real backend before their non-root connectors mean anything.
+        Every module is one rigid body: the mock never moves a joint, so each
+        link sits at its fixed transform from the module root and inherits the
+        module's twist through the rigid ``omega x r`` term. Reporting those
+        per-link frames is what lets a connector on an articulated link resolve
+        to the same place a real backend would put it.
         """
         link_states: dict[ModuleInstanceId, dict[str, BodyState]] = {}
         for module_id, body in self._bodies.items():
-            state = BodyState(
-                pose=body.pose,
-                linear_velocity_m_s=body.linear_velocity_m_s,
-                angular_velocity_rad_s=body.angular_velocity_rad_s,
-            )
-            link_states[module_id] = dict.fromkeys(body.links, state)
+            transforms = self._link_transforms.get(body.module_type_id, {})
+            root_origin = body.pose.translation
+            states: dict[str, BodyState] = {}
+            for link in body.links:
+                local = transforms.get(link)
+                world_pose = body.pose if local is None else body.pose.compose(local)
+                lever = vec_sub(world_pose.translation, root_origin)
+                linear = vec_add(
+                    body.linear_velocity_m_s,
+                    vec_cross(body.angular_velocity_rad_s, lever),
+                )
+                states[link] = BodyState(
+                    pose=world_pose,
+                    linear_velocity_m_s=linear,
+                    angular_velocity_rad_s=body.angular_velocity_rad_s,
+                )
+            link_states[module_id] = states
         return BackendStateSnapshot(
             time_s=self._time_s,
             link_states=link_states,
@@ -188,6 +270,7 @@ class MockBackendAdapter:
         self._bodies.clear()
         self._welds.clear()
         self._forces.clear()
+        self._link_transforms.clear()
 
     # ------------------------------------------------------------------
     # test controls
@@ -242,12 +325,25 @@ class MockBackendAdapter:
         except KeyError as error:
             raise BackendError(f"unknown module '{module_id}'") from error
 
+    def _root_to_link(self, module_type_id: str, link: str) -> Transform:
+        """Return one link's fixed transform from its module root."""
+        return self._link_transforms.get(module_type_id, {}).get(link, Transform.identity())
+
     def _snap(self, request: ConnectionRequest) -> None:
-        """Move module B so the requested connector-frame relative pose holds."""
-        body_a, body_b = self._bodies[request.module_a], self._bodies[request.module_b]
-        connector_a_world = body_a.pose.compose(request.connector_a_local)
+        """Move module B so the requested connector-frame relative pose holds.
+
+        Both connectors are expressed on their parent links, which may be
+        articulated children rather than the module root, so the root-to-link
+        transforms are folded in before solving for module B's root pose.
+        """
+        body_a = self._bodies[request.module_a]
+        body_b = self._bodies[request.module_b]
+        root_to_a = self._root_to_link(body_a.module_type_id, request.link_a)
+        root_to_b = self._root_to_link(body_b.module_type_id, request.link_b)
+        connector_a_world = body_a.pose.compose(root_to_a).compose(request.connector_a_local)
         target_connector_b = connector_a_world.compose(request.relative_transform)
-        body_b.pose = target_connector_b.compose(request.connector_b_local.inverse())
+        offset_b = root_to_b.compose(request.connector_b_local)
+        body_b.pose = target_connector_b.compose(offset_b.inverse())
 
     @staticmethod
     def _integrate(body: _Body, dt_s: float) -> Transform:
