@@ -1,4 +1,6 @@
 # ModSim
+![GitHub top language](https://shields.io)
+![GitHub Actions Workflow Status](https://shields.io)
 
 ModSim is a Python-first, backend-agnostic framework for modular and multi-robot
 systems. Robot Packs describe hardware and docking semantics; ModSim owns the
