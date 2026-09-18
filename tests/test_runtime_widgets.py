@@ -19,6 +19,7 @@ from PySide6.QtWidgets import QApplication
 
 from modsim.runtime.inspection import RuntimeEventRow, RuntimeInspectorFrame
 from modsim.runtime.inspector_runner import RuntimeInspectorConfig
+from modsim_studio.appearance import THEMES, theme_manager
 from modsim_studio.runtime_events import (
     RuntimeEventLogWidget,
     RuntimeEventTableModel,
@@ -44,6 +45,39 @@ from modsim_studio.runtime_presenter import (
     RuntimePresentation,
 )
 from modsim_studio.runtime_window import RuntimeInspectorWindow
+
+
+def test_live_theme_changes_preserve_runtime_selection_camera_and_geometry(
+    application: QApplication,
+) -> None:
+    manager = theme_manager()
+    original = manager.theme.id
+    graph = TopologyGraphWidget()
+    lattice = CubicLatticeWidget()
+    graph.set_presentation(presentation(selected=True))
+    lattice.set_presentation(lattice_presentation())
+    graph.plot.setRange(xRange=(-4, 5), yRange=(-3, 4), padding=0)
+    lattice.plot.setRange(xRange=(-5, 6), yRange=(-2, 3), padding=0)
+    graph_range = graph.plot.viewRange()
+    lattice_range = lattice.plot.viewRange()
+    module_faces = dict(lattice._module_face_items)
+    try:
+        for identifier, theme in THEMES.items():
+            manager.set_theme(identifier, persist=False)
+            assert graph.displayed_selection == ("edge", "connection:one")
+            assert graph.displayed_node_ids == ("alpha", "beta")
+            assert lattice.displayed_node_ids == ("alpha", "beta")
+            assert lattice._module_face_items == module_faces
+            assert graph.plot.viewRange() == graph_range
+            assert lattice.plot.viewRange() == lattice_range
+            assert graph.plot.backgroundBrush().color().name() == theme.viewport
+            assert lattice.plot.backgroundBrush().color().name() == theme.viewport
+            assert graph._labels[0].color.name() == theme.text
+            assert lattice._module_label_items["alpha"].color.name() == theme.text
+    finally:
+        manager.set_theme(original, persist=False)
+        graph.deleteLater()
+        lattice.deleteLater()
 
 
 @pytest.fixture(scope="module")

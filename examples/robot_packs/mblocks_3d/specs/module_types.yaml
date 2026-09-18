@@ -19,7 +19,10 @@ module_types:
         type: continuous
         parent_link: actuator_carrier_link_1
         child_link: flywheel_link_1
-        axis: [0.0, 1.0, 0.0]
+        axis:
+          - 0.0
+          - 1.0
+          - 0.0
         control_modes:
           - effort
         limits:
@@ -37,10 +40,22 @@ module_types:
         parent_link: base_link
         frame: null
         local_pose:
-          xyz_m: [0.025, 0.0, 0.0]
-          rpy_rad: [0.0, 0.0, 0.0]
-        docking_axis: [1.0, 0.0, 0.0]
-        approach_axis: [1.0, 0.0, 0.0]
+          xyz_m:
+            - 0.025
+            - 0.0
+            - 0.0
+          rpy_rad:
+            - 0.0
+            - 0.0
+            - 0.0
+        docking_axis:
+          - 1.0
+          - 0.0
+          - 0.0
+        approach_axis:
+          - 1.0
+          - 0.0
+          - 0.0
         metadata:
           face_axis: pos_x
           pose_source: published_nominal_50_mm_lattice
@@ -49,10 +64,22 @@ module_types:
         parent_link: base_link
         frame: null
         local_pose:
-          xyz_m: [-0.025, 0.0, 0.0]
-          rpy_rad: [0.0, 0.0, 3.141592653589793]
-        docking_axis: [-1.0, 0.0, 0.0]
-        approach_axis: [-1.0, 0.0, 0.0]
+          xyz_m:
+            - -0.025
+            - 0.0
+            - 0.0
+          rpy_rad:
+            - 0.0
+            - 0.0
+            - 3.141592653589793
+        docking_axis:
+          - -1.0
+          - 0.0
+          - 0.0
+        approach_axis:
+          - -1.0
+          - 0.0
+          - 0.0
         metadata:
           face_axis: neg_x
           pose_source: published_nominal_50_mm_lattice
@@ -61,10 +88,22 @@ module_types:
         parent_link: base_link
         frame: null
         local_pose:
-          xyz_m: [0.0, 0.025, 0.0]
-          rpy_rad: [0.0, 0.0, 1.5707963267948966]
-        docking_axis: [0.0, 1.0, 0.0]
-        approach_axis: [0.0, 1.0, 0.0]
+          xyz_m:
+            - 0.0
+            - 0.025
+            - 0.0
+          rpy_rad:
+            - 0.0
+            - 0.0
+            - 1.5707963267948966
+        docking_axis:
+          - 0.0
+          - 1.0
+          - 0.0
+        approach_axis:
+          - 0.0
+          - 1.0
+          - 0.0
         metadata:
           face_axis: pos_y
           pose_source: published_nominal_50_mm_lattice
@@ -73,10 +112,22 @@ module_types:
         parent_link: base_link
         frame: null
         local_pose:
-          xyz_m: [0.0, -0.025, 0.0]
-          rpy_rad: [0.0, 0.0, -1.5707963267948966]
-        docking_axis: [0.0, -1.0, 0.0]
-        approach_axis: [0.0, -1.0, 0.0]
+          xyz_m:
+            - 0.0
+            - -0.025
+            - 0.0
+          rpy_rad:
+            - 0.0
+            - 0.0
+            - -1.5707963267948966
+        docking_axis:
+          - 0.0
+          - -1.0
+          - 0.0
+        approach_axis:
+          - 0.0
+          - -1.0
+          - 0.0
         metadata:
           face_axis: neg_y
           pose_source: published_nominal_50_mm_lattice
@@ -85,10 +136,22 @@ module_types:
         parent_link: base_link
         frame: null
         local_pose:
-          xyz_m: [0.0, 0.0, 0.025]
-          rpy_rad: [0.0, -1.5707963267948966, 0.0]
-        docking_axis: [0.0, 0.0, 1.0]
-        approach_axis: [0.0, 0.0, 1.0]
+          xyz_m:
+            - 0.0
+            - 0.0
+            - 0.025
+          rpy_rad:
+            - 0.0
+            - -1.5707963267948966
+            - 0.0
+        docking_axis:
+          - 0.0
+          - 0.0
+          - 1.0
+        approach_axis:
+          - 0.0
+          - 0.0
+          - 1.0
         metadata:
           face_axis: pos_z
           pose_source: published_nominal_50_mm_lattice
@@ -97,10 +160,22 @@ module_types:
         parent_link: base_link
         frame: null
         local_pose:
-          xyz_m: [0.0, 0.0, -0.025]
-          rpy_rad: [0.0, 1.5707963267948966, 0.0]
-        docking_axis: [0.0, 0.0, -1.0]
-        approach_axis: [0.0, 0.0, -1.0]
+          xyz_m:
+            - 0.0
+            - 0.0
+            - -0.025
+          rpy_rad:
+            - 0.0
+            - 1.5707963267948966
+            - 0.0
+        docking_axis:
+          - 0.0
+          - 0.0
+          - -1.0
+        approach_axis:
+          - 0.0
+          - 0.0
+          - -1.0
         metadata:
           face_axis: neg_z
           pose_source: published_nominal_50_mm_lattice
@@ -109,10 +184,22 @@ module_types:
         parent_link: base_link
         frame: null
         local_pose:
-          xyz_m: [0.025, 0.0, 0.025]
-          rpy_rad: [0.0, 0.0, 0.0]
-        docking_axis: [0.0, 0.0, 1.0]
-        approach_axis: [0.0, 0.0, 1.0]
+          xyz_m:
+            - 0.025
+            - 0.0
+            - 0.025
+          rpy_rad:
+            - 0.0
+            - 0.0
+            - 0.0
+        docking_axis:
+          - 0.0
+          - 0.0
+          - 1.0
+        approach_axis:
+          - 0.0
+          - 0.0
+          - 1.0
         metadata:
           edge_axis: pos_y
           pivot_role: reference_top_edge
@@ -123,10 +210,22 @@ module_types:
         parent_link: base_link
         frame: null
         local_pose:
-          xyz_m: [0.025, 0.0, -0.025]
-          rpy_rad: [0.0, 0.0, 0.0]
-        docking_axis: [0.0, 0.0, -1.0]
-        approach_axis: [0.0, 0.0, -1.0]
+          xyz_m:
+            - 0.025
+            - 0.0
+            - -0.025
+          rpy_rad:
+            - 0.0
+            - 0.0
+            - 0.0
+        docking_axis:
+          - 0.0
+          - 0.0
+          - -1.0
+        approach_axis:
+          - 0.0
+          - 0.0
+          - -1.0
         metadata:
           edge_axis: pos_y
           pivot_role: moving_bottom_edge
@@ -137,10 +236,22 @@ module_types:
         parent_link: base_link
         frame: null
         local_pose:
-          xyz_m: [-0.025, 0.0, 0.025]
-          rpy_rad: [0.0, 0.0, 0.0]
-        docking_axis: [0.0, 0.0, 1.0]
-        approach_axis: [0.0, 0.0, 1.0]
+          xyz_m:
+            - -0.025
+            - 0.0
+            - 0.025
+          rpy_rad:
+            - 0.0
+            - 0.0
+            - 0.0
+        docking_axis:
+          - 0.0
+          - 0.0
+          - 1.0
+        approach_axis:
+          - 0.0
+          - 0.0
+          - 1.0
         metadata:
           edge_axis: pos_y
           pivot_role: reference_top_edge
@@ -151,10 +262,22 @@ module_types:
         parent_link: base_link
         frame: null
         local_pose:
-          xyz_m: [-0.025, 0.0, -0.025]
-          rpy_rad: [0.0, 0.0, 0.0]
-        docking_axis: [0.0, 0.0, -1.0]
-        approach_axis: [0.0, 0.0, -1.0]
+          xyz_m:
+            - -0.025
+            - 0.0
+            - -0.025
+          rpy_rad:
+            - 0.0
+            - 0.0
+            - 0.0
+        docking_axis:
+          - 0.0
+          - 0.0
+          - -1.0
+        approach_axis:
+          - 0.0
+          - 0.0
+          - -1.0
         metadata:
           edge_axis: pos_y
           pivot_role: moving_bottom_edge
@@ -165,10 +288,22 @@ module_types:
         parent_link: base_link
         frame: null
         local_pose:
-          xyz_m: [0.025, 0.0, 0.025]
-          rpy_rad: [0.0, 0.0, 0.0]
-        docking_axis: [1.0, 0.0, 0.0]
-        approach_axis: [1.0, 0.0, 0.0]
+          xyz_m:
+            - 0.025
+            - 0.0
+            - 0.025
+          rpy_rad:
+            - 0.0
+            - 0.0
+            - 0.0
+        docking_axis:
+          - 1.0
+          - 0.0
+          - 0.0
+        approach_axis:
+          - 1.0
+          - 0.0
+          - 0.0
         metadata:
           edge_axis: pos_y
           corner: pos_x_pos_z
@@ -180,10 +315,22 @@ module_types:
         parent_link: base_link
         frame: null
         local_pose:
-          xyz_m: [0.025, 0.0, -0.025]
-          rpy_rad: [0.0, 0.0, 0.0]
-        docking_axis: [1.0, 0.0, 0.0]
-        approach_axis: [1.0, 0.0, 0.0]
+          xyz_m:
+            - 0.025
+            - 0.0
+            - -0.025
+          rpy_rad:
+            - 0.0
+            - 0.0
+            - 0.0
+        docking_axis:
+          - 1.0
+          - 0.0
+          - 0.0
+        approach_axis:
+          - 1.0
+          - 0.0
+          - 0.0
         metadata:
           edge_axis: pos_y
           corner: pos_x_neg_z
@@ -195,10 +342,22 @@ module_types:
         parent_link: base_link
         frame: null
         local_pose:
-          xyz_m: [-0.025, 0.0, 0.025]
-          rpy_rad: [0.0, 0.0, 0.0]
-        docking_axis: [-1.0, 0.0, 0.0]
-        approach_axis: [-1.0, 0.0, 0.0]
+          xyz_m:
+            - -0.025
+            - 0.0
+            - 0.025
+          rpy_rad:
+            - 0.0
+            - 0.0
+            - 0.0
+        docking_axis:
+          - -1.0
+          - 0.0
+          - 0.0
+        approach_axis:
+          - -1.0
+          - 0.0
+          - 0.0
         metadata:
           edge_axis: pos_y
           corner: neg_x_pos_z
@@ -210,10 +369,22 @@ module_types:
         parent_link: base_link
         frame: null
         local_pose:
-          xyz_m: [-0.025, 0.0, -0.025]
-          rpy_rad: [0.0, 0.0, 0.0]
-        docking_axis: [-1.0, 0.0, 0.0]
-        approach_axis: [-1.0, 0.0, 0.0]
+          xyz_m:
+            - -0.025
+            - 0.0
+            - -0.025
+          rpy_rad:
+            - 0.0
+            - 0.0
+            - 0.0
+        docking_axis:
+          - -1.0
+          - 0.0
+          - 0.0
+        approach_axis:
+          - -1.0
+          - 0.0
+          - 0.0
         metadata:
           edge_axis: pos_y
           corner: neg_x_neg_z

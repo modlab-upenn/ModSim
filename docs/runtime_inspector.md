@@ -750,6 +750,17 @@ do not jump when the physical modules move or an edge is added. Clicking a node
 or edge selects it by stable runtime ID. Selection survives ordinary updates
 and is cleared when a selected connection disappears.
 
+## Appearance
+
+The Inspector shares Studio's Graphite Workbench, Light Studio, and Midnight
+Panels themes. Use the **Theme** picker in the header; see `studio.md` for
+preference storage and behavior across separate processes. Colors apply to
+the controls, event table, topology graph, and lattice presentation, including
+backgrounds, grids, and labels. Switching themes preserves selection, pan/zoom,
+projection, label visibility, event history, and playback state. It repaints
+the latest immutable presentation without sending a runtime command or
+restarting the simulation. The native MuJoCo viewer uses its own appearance.
+
 ## Process, thread, and data boundary
 
 The Qt thread never reads a live `WorldState`, `RuntimeSession`, or MuJoCo

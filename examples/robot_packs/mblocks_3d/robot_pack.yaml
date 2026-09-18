@@ -2,12 +2,10 @@ schema_version: '0.1'
 id: mblocks_3d
 name: 3D M-Blocks
 version: 0.1.0
-description: >-
-  A CAD-derived M-Block-inspired cube with six passive magnetic face
-  interfaces, a paper-reference one-plane flywheel bootstrap, and
-  cubic-lattice model-view recipes. The supplied CAD meshes remain the visual
-  source while a deliberately simplified +Y-axis actuator enables the first
-  physical edge-pivot experiment.
+description: A CAD-derived M-Block-inspired cube with six passive magnetic face interfaces, a 
+  paper-reference one-plane flywheel bootstrap, and cubic-lattice model-view recipes. The supplied 
+  CAD meshes remain the visual source while a deliberately simplified +Y-axis actuator enables the 
+  first physical edge-pivot experiment.
 metadata:
   asset_source: User-provided M-Block_description Fusion 360 export
   repository_inclusion: authorized_by_user_for_modsim_implementation
@@ -18,22 +16,21 @@ metadata:
   semantic_status: provisional_demo
   nominal_lattice_pitch_m: 0.05
   visual_mesh_envelope_m: 0.053
-  exported_total_mass_kg: 0.16287582771682236
+  exported_total_mass_kg: 0.16287582771682235
   published_reference_mass_kg: 0.15
   nominal_physics_mass_kg: 0.15
   flywheel_axis_source: paper_reference_one_plane_bootstrap
-  flywheel_axial_inertia_kg_m2: 0.0000084
+  flywheel_axial_inertia_kg_m2: 8.4e-06
   flywheel_speed_cap_rad_per_s: 2094.3951023931954
   spinup_effort_cap_nm: 0.03
   mechanical_brake_effort_cap_nm: 2.6
   actuator_bootstrap: one_plane_positive_y
   underactuated_three_plane_carrier_modeled: false
   magnetic_capture_model: deterministic_constraint_transition
-  flywheel_axis_note: >-
-    The supplied export places the wheel on the body diagonal. Its meshes are
-    preserved, but the physical joint is intentionally aligned with +Y for one
-    validated pivot plane. The published three-detent carrier is not yet
-    modeled, so this pack must not be used for full-actuator fidelity claims.
+  flywheel_axis_note: The supplied export places the wheel on the body diagonal. Its meshes are 
+    preserved, but the physical joint is intentionally aligned with +Y for one validated pivot 
+    plane. The published three-detent carrier is not yet modeled, so this pack must not be used for 
+    full-actuator fidelity claims.
 model_views:
   - id: mblocks_topology
     name: M-Blocks Topology
@@ -50,7 +47,10 @@ model_views:
     default: true
     configuration:
       pitch_m: 0.05
-      origin_world_m: [0.0, 0.0, 0.0]
+      origin_world_m:
+        - 0.0
+        - 0.0
+        - 0.0
       position_tolerance_m: 0.002
       orientation_tolerance_rad: 0.05235987755982989
   - id: mblocks_physics_lattice
@@ -61,7 +61,10 @@ model_views:
     default: false
     configuration:
       pitch_m: 0.05
-      origin_world_m: [0.0, 0.0, 0.025]
+      origin_world_m:
+        - 0.0
+        - 0.0
+        - 0.025
       position_tolerance_m: 0.003
       orientation_tolerance_rad: 0.05235987755982989
 assets:

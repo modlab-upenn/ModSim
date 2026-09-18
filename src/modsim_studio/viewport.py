@@ -20,10 +20,8 @@ from modsim.importers import (
 )
 from modsim.importers.urdf import GeometryKind
 from modsim.robot_packs import ModuleType
+from modsim_studio.appearance import theme_manager
 
-_FALLBACK_BACKGROUND = "#151a20"
-_GROUND_COLOR = "#262d35"
-_GROUND_EDGE_COLOR = "#3a4652"
 _GROUND_SIZE_MULTIPLIER = 16.0
 _GROUND_RESOLUTION = 128
 _CAMERA_FOOTPRINT_MULTIPLIER = 1.8
@@ -41,8 +39,9 @@ class RobotViewport(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self.plotter = QtInteractor(self)
         layout.addWidget(self.plotter.interactor)
-        self.plotter.set_background(_FALLBACK_BACKGROUND, top="#29333d")
-        self.plotter.add_axes()
+        self._appearance = theme_manager()
+        self._ground_actor: Any | None = None
+        self._axes_actor: Any = self.plotter.add_axes(color=self._appearance.theme.text)
         self.plotter.enable_anti_aliasing("fxaa")
         self._link_actors: dict[str, list[Any]] = {}
         self._link_outlines: dict[str, list[Any]] = {}
@@ -57,6 +56,27 @@ class RobotViewport(QWidget):
         self._show_joint_axes = False
         self._show_connectors = True
         self._show_ground = True
+        self._apply_theme()
+        self._appearance.changed.connect(self._apply_theme)
+
+    def _apply_theme(self) -> None:
+        theme = self._appearance.theme
+        self.plotter.set_background(theme.viewport, top=theme.viewport_top)
+        if self._ground_actor is not None:
+            self._ground_actor.prop.color = theme.viewport_top
+            self._ground_actor.prop.edge_color = theme.grid
+        for caption in (
+            self._axes_actor.GetXAxisCaptionActor2D(),
+            self._axes_actor.GetYAxisCaptionActor2D(),
+            self._axes_actor.GetZAxisCaptionActor2D(),
+        ):
+            caption.GetCaptionTextProperty().SetColor(pv.Color(theme.text).float_rgb)
+        self.plotter.render()
+
+    def fit_module(self) -> None:
+        """Fit visible module geometry without changing layers or selection."""
+        self.plotter.reset_camera()
+        self.plotter.render()
 
     def render_module(self, asset: ImportedRobotAsset, module: ModuleType) -> None:
         """Replace the scene with a module at its zero joint configuration."""
@@ -98,6 +118,7 @@ class RobotViewport(QWidget):
         self.plotter.render()
 
     def close(self) -> bool:
+        self._appearance.changed.disconnect(self._apply_theme)
         self._release_shadow_resources()
         self.plotter.close()
         return super().close()
@@ -131,7 +152,8 @@ class RobotViewport(QWidget):
         self.plotter.disable_picking()
         self.plotter.disable_shadows()
         self.plotter.clear()
-        self.plotter.add_axes()
+        self._ground_actor = None
+        self._axes_actor = self.plotter.add_axes(color=self._appearance.theme.text)
         self._link_actors.clear()
         self._link_outlines.clear()
         self._actor_entities.clear()
@@ -379,9 +401,9 @@ class RobotViewport(QWidget):
         ground_actor = self.plotter.add_mesh(
             plane,
             name="viewport:ground",
-            color=_GROUND_COLOR,
+            color=self._appearance.theme.viewport_top,
             show_edges=True,
-            edge_color=_GROUND_EDGE_COLOR,
+            edge_color=self._appearance.theme.grid,
             edge_opacity=0.55,
             line_width=1.0,
             pickable=False,
@@ -392,6 +414,7 @@ class RobotViewport(QWidget):
         # Exclude the decorative floor from automatic camera fitting. This is
         # also needed when Qt performs its first render after the window opens.
         ground_actor.use_bounds = False
+        self._ground_actor = ground_actor
 
 
 def _visual_appearance(

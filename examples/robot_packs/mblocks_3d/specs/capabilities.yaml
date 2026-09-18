@@ -15,10 +15,9 @@ capabilities:
   momentum_pivot:
     name: Momentum-driven pivot
     kind: behavior
-    description: >-
-      Pivot about a cube edge using an internal flywheel impulse. This is
-      implemented as a one-plane physics bootstrap with a deterministic
-      face-to-edge-hinge transition and measured target-face capture.
+    description: Pivot about a cube edge using an internal flywheel impulse. This is implemented as 
+      a one-plane physics bootstrap with a deterministic face-to-edge-hinge transition and measured 
+      target-face capture.
     required_connector_types:
       - mblock_magnetic_face
       - mblock_magnetic_edge_hinge

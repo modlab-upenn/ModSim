@@ -11,12 +11,9 @@ import pyqtgraph as pg
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
+from modsim_studio.appearance import theme_manager
 from modsim_studio.runtime_presenter import RuntimePresentation
 
-_BACKGROUND = "#151a20"
-_EDGE_COLOR = "#78909c"
-_SELECTED_COLOR = "#ffd166"
-_NODE_OUTLINE = "#dce6ef"
 _ASSEMBLY_PALETTE = (
     "#4fc3f7",
     "#ce93d8",
@@ -38,7 +35,8 @@ class TopologyGraphWidget(QWidget):
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        self.plot = pg.PlotWidget(background=_BACKGROUND)
+        self._appearance = theme_manager()
+        self.plot = pg.PlotWidget(background=self._appearance.theme.viewport)
         layout.addWidget(self.plot)
 
         self._plot_item: Any = self.plot.getPlotItem()
@@ -58,6 +56,14 @@ class TopologyGraphWidget(QWidget):
         self._node_item: Any | None = None
         self._edge_items: dict[str, Any] = {}
         self._labels: list[Any] = []
+        self._presentation: RuntimePresentation | None = None
+        self._appearance.changed.connect(self._apply_theme)
+
+    def _apply_theme(self) -> None:
+        self.plot.setBackground(self._appearance.theme.viewport)
+        self._fingerprint = None
+        if self._presentation is not None:
+            self.set_presentation(self._presentation)
 
     @property
     def displayed_node_ids(self) -> tuple[str, ...]:
@@ -81,6 +87,8 @@ class TopologyGraphWidget(QWidget):
 
     def set_presentation(self, presentation: RuntimePresentation) -> None:
         """Draw ``presentation`` unless its visible graph is unchanged."""
+        self._presentation = presentation
+        theme = self._appearance.theme
         fingerprint = _presentation_fingerprint(presentation)
         if fingerprint == self._fingerprint:
             return
@@ -106,7 +114,7 @@ class TopologyGraphWidget(QWidget):
                 x=x_values,
                 y=y_values,
                 pen=pg.mkPen(
-                    _SELECTED_COLOR if edge.selected else _EDGE_COLOR,
+                    theme.warning if edge.selected else theme.grid_major,
                     width=4.0 if edge.selected else 2.2,
                 ),
                 antialias=True,
@@ -129,7 +137,7 @@ class TopologyGraphWidget(QWidget):
                     "symbol": "o",
                     "brush": pg.mkBrush(_assembly_color(node.assembly_id)),
                     "pen": pg.mkPen(
-                        _SELECTED_COLOR if node.selected else _NODE_OUTLINE,
+                        theme.warning if node.selected else theme.text,
                         width=4.0 if node.selected else 1.6,
                     ),
                 }
@@ -144,7 +152,7 @@ class TopologyGraphWidget(QWidget):
             for node in presentation.nodes:
                 label = pg.TextItem(
                     text=node.label,
-                    color="#eef5fb",
+                    color=theme.text,
                     anchor=(0.5, -0.65),
                     border=None,
                     fill=None,

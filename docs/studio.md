@@ -45,6 +45,44 @@ The standalone `modsim-studio` command and `python -m modsim_studio` are
 equivalent. Running through `.venv/bin/python -m modsim_studio` is useful while
 developing because the editable install uses the current source tree.
 
+## Appearance and workspace
+
+Both applications share a native Studio design with three built-in palettes:
+
+- **Midnight Panels** (default): navy surfaces with teal accents;
+- **Graphite Workbench**: charcoal surfaces with blue accents; and
+- **Light Studio**: light surfaces with blue accents.
+
+Use the **Theme** picker at the top right of either window to switch immediately.
+The choice is stored in Qt user settings under organization `ModSim`, application
+`Studio`, key `appearance/theme`. Both applications restore that preference on
+their next launch. Windows within the same process update together; an already
+running separate process keeps its current theme until changed or relaunched.
+Appearance preferences are not written into Robot Packs or tracked project files.
+
+The shared styling covers headers, menus, dialogs, fields, tables, tabs, and
+scrollbars. The authoring viewport background/grid and runtime graph colors
+also follow the palette. Theme changes preserve in-progress edits, document
+selection, viewport cameras, and runtime presentation state. Robot materials,
+geometry, physics, and the native MuJoCo companion viewer are unchanged.
+The styling and small line icons are implemented in Studio itself using the
+existing PySide6 dependency; no external theme or icon package is required.
+
+The Builder has an Open/Import/Save/Validate toolbar, a searchable project tree,
+and a scrollable Inspector. Connector pose inputs separate XYZ and RPY
+components. Connector and connector-type fields are grouped by purpose;
+connector custom metadata can be expanded when needed. The Validation tab
+shows the actual profile result and issue counts, with a read-only issue table
+when there are findings. Viewport layers and **Fit** are above the preview.
+Dock panels remain movable and can be restored through the **View** menu.
+
+Open, import, asset-root selection, and export use Qt's built-in file dialogs,
+which follow the Studio theme. They bypass the native GTK file picker, avoiding
+process aborts caused by incompatible GTK/pixbuf libraries inherited from a
+Snap-packaged terminal (for example, a loader requiring a newer system glibc).
+Native dialog helpers are disabled application-wide before dialogs are created;
+setting only the individual file-dialog option is too late on some Qt/GTK paths.
+
 ## Current feature inventory
 
 The current Studio MVP provides:
@@ -310,13 +348,13 @@ These are current-source limitations, not intended long-term behavior:
   without embedding the backend viewer in Studio. A document edit rebuilds
   the scene, resets the camera, and currently returns multi-module documents
   to the first renderable module.
-- **Native authoring regression coverage remains limited.** Runtime presenter,
-  graph/event widgets, and worker shutdown have focused automated coverage.
-  Document-model tests cover connector/type mutation, URDF-body association,
-  metadata persistence, and selection-supporting state changes, but there are
-  no automated MainWindow/viewport tests for the corresponding dialogs,
-  tree-selection lifecycle, or 3D interaction. Treat manual reproduction steps
-  and the session log as required evidence when reporting those authoring issues.
+- **Native authoring regression coverage remains limited.** Focused Builder
+  tests cover appearance, pending connector edits, project filtering, and file
+  picker acceptance/cancellation with a stub viewport. The native launch smoke
+  test checks camera/material preservation when switching themes. Full 3D
+  interaction and all editing dialogs still need manual reproduction and session
+  logs. Document-model tests separately cover connector/type mutation,
+  URDF-body association, and metadata persistence.
 
 ## Import support and limitations
 

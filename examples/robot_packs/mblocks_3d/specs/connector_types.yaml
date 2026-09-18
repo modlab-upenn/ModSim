@@ -21,6 +21,7 @@ connector_types:
     physical_connection:
       constraint: fixed
       compliance: null
+      hinge: null
     limits:
       max_normal_force_n: 23.0
       max_shear_force_n: 18.0
@@ -36,16 +37,14 @@ connector_types:
       semantic_scope: one_face_bond_not_individual_magnets
       final_connection_model: measured_fixed_weld
       parameter_status: provisional_simulation
-      load_limit_note: >-
-        The normal and hinge-force scales are initialized from the 2013
-        M-Blocks characterization. Shear and bending values are provisional
-        mappings for structural validation and are not yet enforced by the
-        MuJoCo adapter or calibrated against this CAD model.
+      load_limit_note: The normal and hinge-force scales are initialized from the 2013 M-Blocks 
+        characterization. Shear and bending values are provisional mappings for structural 
+        validation and are not yet enforced by the MuJoCo adapter or calibrated against this CAD 
+        model.
       transient_edge_hinge_supported: true
-      note: >-
-        Published M-Blocks pivot on temporary magnetic edge hinges. The first
-        physical demo uses a deterministic face-to-hinge-to-face constraint
-        transition; a continuous magnetic force field remains future work.
+      note: Published M-Blocks pivot on temporary magnetic edge hinges. The first physical demo uses
+        a deterministic face-to-hinge-to-face constraint transition; a continuous magnetic force 
+        field remains future work.
   mblock_magnetic_edge_hinge:
     name: M-Block Directed Magnetic Edge Hinge
     active: false
@@ -64,7 +63,10 @@ connector_types:
       constraint: hinge
       compliance: null
       hinge:
-        axis: [0.0, 1.0, 0.0]
+        axis:
+          - 0.0
+          - 1.0
+          - 0.0
         anchor_separation_m: 0.04
     limits:
       max_normal_force_n: 23.0

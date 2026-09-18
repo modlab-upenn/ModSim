@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from modsim.runtime import RuntimeInspectorConfig, RuntimeInspectorFrame
+from modsim_studio.chrome import StudioHeader
 from modsim_studio.runtime_events import RuntimeEventLogWidget
 from modsim_studio.runtime_graph import TopologyGraphWidget
 from modsim_studio.runtime_lattice import CubicLatticeWidget
@@ -59,20 +60,27 @@ class RuntimeInspectorWindow(QMainWindow):
 
         self.setWindowTitle(f"ModSim Runtime Inspector — {config.pack_path.name}")
         self.resize(1180, 820)
+        self.header = StudioHeader(self, "Runtime Inspector")
+        self.addToolBar(self.header)
 
         self.status_label = QLabel("Preparing runtime…")
+        self.status_label.setObjectName("SectionTitle")
         self.status_label.setWordWrap(True)
         self.speed_label = QLabel(f"Target speed: {config.real_time_factor:g}x")
+        self.speed_label.setObjectName("Muted")
         self.speed_label.setToolTip(
             "Wall-clock playback target; simulated motor speeds and physics are unchanged."
         )
         self.source_label = QLabel(str(config.pack_path))
+        self.source_label.setObjectName("Muted")
         self.source_label.setWordWrap(True)
         self.source_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.stop_button = QPushButton("Stop")
+        self.stop_button.setProperty("danger", True)
         self.stop_button.setEnabled(False)
         self.stop_button.clicked.connect(self.request_stop)
         self.pause_button = QPushButton("Pause")
+        self.pause_button.setProperty("primary", True)
         self.pause_button.setEnabled(False)
         self.pause_button.setToolTip(
             "Pause at the next simulation step boundary. Space in the MuJoCo window "
@@ -90,8 +98,9 @@ class RuntimeInspectorWindow(QMainWindow):
         self.labels_button.toggled.connect(self._set_labels_visible)
 
         header = QWidget()
+        header.setObjectName("Panel")
         header_layout = QVBoxLayout(header)
-        header_layout.setContentsMargins(8, 8, 8, 4)
+        header_layout.setContentsMargins(14, 12, 14, 12)
         status_row = QHBoxLayout()
         status_row.addWidget(self.status_label, 1)
         status_row.addWidget(self.pause_button)
@@ -107,16 +116,23 @@ class RuntimeInspectorWindow(QMainWindow):
         self.view_stack.addWidget(self.graph)
         self.view_stack.addWidget(self.lattice)
         self.events = RuntimeEventLogWidget()
+        events_panel = QWidget()
+        events_panel.setObjectName("Panel")
+        events_layout = QVBoxLayout(events_panel)
+        events_title = QLabel("Event timeline")
+        events_title.setObjectName("SectionTitle")
+        events_layout.addWidget(events_title)
+        events_layout.addWidget(self.events, 1)
         splitter = QSplitter(Qt.Orientation.Vertical)
         splitter.addWidget(self.view_stack)
-        splitter.addWidget(self.events)
+        splitter.addWidget(events_panel)
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 2)
         splitter.setSizes([520, 250])
 
         central = QWidget()
         central_layout = QVBoxLayout(central)
-        central_layout.setContentsMargins(0, 0, 0, 0)
+        central_layout.setContentsMargins(10, 10, 10, 10)
         central_layout.addWidget(header)
         central_layout.addWidget(splitter, 1)
         self.setCentralWidget(central)

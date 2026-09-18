@@ -85,6 +85,9 @@ select = ["B", "E", "F", "I", "RUF", "SIM", "UP"]
 include = ["src", "tests"]
 exclude = [
   "src/modsim_studio/app.py",
+  "src/modsim_studio/appearance.py",
+  "src/modsim_studio/chrome.py",
+  "src/modsim_studio/icons.py",
   "src/modsim_studio/main_window.py",
   "src/modsim_studio/runtime_app.py",
   "src/modsim_studio/runtime_events.py",
@@ -96,6 +99,7 @@ exclude = [
   "src/modsim_studio/viewport.py",
   "tests/test_runtime_process.py",
   "tests/test_runtime_widgets.py",
+  "tests/test_studio_appearance.py",
   "tests/test_runtime_worker.py",
   # MuJoCo ships no type stubs, so strict mode reports every engine call as
   # partially unknown. Checked separately by pyright-mujoco.json, which runs at

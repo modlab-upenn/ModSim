@@ -109,6 +109,7 @@ class RuntimeEventLogWidget(QWidget):
         self.model = RuntimeEventTableModel(self.table)
         self.table.setModel(self.model)
         self.table.setAlternatingRowColors(True)
+        self.table.setShowGrid(False)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
