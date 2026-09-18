@@ -78,7 +78,8 @@ modsim backends
 ```
 
 `dock` exercises connector semantics with the mock backend by default. `run`
-executes a scripted lifecycle without a GUI unless `--view` is supplied.
+executes a scripted lifecycle headlessly; add `--view` for the MuJoCo native
+viewer, or `--gui` for the live Runtime Inspector.
 
 ## Studio
 
@@ -101,7 +102,7 @@ Install both the `studio` and `mujoco` extras, then run the live two-module
 docking demonstration:
 
 ```bash
-modsim runtime examples/robot_packs/generic_cube \
+modsim run --gui examples/robot_packs/generic_cube \
   --fixed-connector front \
   --moving-connector front \
   --duration 4
@@ -110,7 +111,8 @@ modsim runtime examples/robot_packs/generic_cube \
 The Runtime Inspector displays immutable topology and event snapshots while a
 single authoritative process owns the runtime. With MuJoCo, a separate native
 3D viewer opens by default; `--no-viewer` suppresses it while retaining the Qt
-inspector. Use `modsim run` for a fully non-GUI execution.
+inspector. The Runtime Inspector is `modsim run --gui`; drop `--gui` (optionally
+adding `--view`) for a fully non-GUI execution.
 
 The larger `examples/robot_packs/smores_ep` pack includes the `dock`,
 `dock_undock`, and `smores_driver_to_snake` demonstrations. Its geometry and
@@ -141,7 +143,7 @@ modsim pack validate \
 Run a two-module docking demonstration using the `pan` face on each module:
 
 ```bash
-modsim runtime examples/robot_packs/smores_ep \
+modsim run --gui examples/robot_packs/smores_ep \
   --backend mujoco \
   --demo dock \
   --fixed-connector pan \
@@ -157,7 +159,7 @@ modsim runtime examples/robot_packs/smores_ep \
 Run the same pair through docking, undocking, and visible retraction:
 
 ```bash
-modsim runtime examples/robot_packs/smores_ep \
+modsim run --gui examples/robot_packs/smores_ep \
   --backend mujoco \
   --demo dock_undock \
   --fixed-connector pan \
@@ -174,7 +176,7 @@ modsim runtime examples/robot_packs/smores_ep \
 Finally, run the seven-module Driver-to-Snake demonstration:
 
 ```bash
-modsim runtime examples/robot_packs/smores_ep \
+modsim run --gui examples/robot_packs/smores_ep \
   --backend mujoco \
   --demo smores_driver_to_snake \
   --model-view smores_topology \
