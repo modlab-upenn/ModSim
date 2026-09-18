@@ -22,13 +22,18 @@ from modsim.connectors.compatibility import evaluate_compatibility
 from modsim.core.events import Event
 from modsim.core.ids import ModuleInstanceId, connector_instance_id
 from modsim.core.scene import ModulePlacement, SceneSpec
-from modsim.core.transforms import Transform
+from modsim.core.transforms import Transform, quat_from_rpy
 from modsim.core.validation import (
     require_finite,
     require_finite_nonnegative,
     require_finite_positive,
 )
 from modsim.model_views import ModelViewFactory
+from modsim.planning.smores import (
+    driver_to_snake_goal,
+    mobile_manipulator_goal,
+    paper_initial_poses,
+)
 from modsim.robot_packs import (
     LoadedRobotPack,
     ModelViewMode,
@@ -50,6 +55,7 @@ from modsim.runtime.momentum_pivot import (
     MomentumPivotConfig,
     MomentumPivotScenario,
 )
+from modsim.runtime.online_planning import OnlineAssemblyScenario
 from modsim.runtime.physical_reconfiguration import (
     DifferentialDriveReconfigurationConfig,
     DifferentialDriveReconfigurationScenario,
@@ -238,6 +244,7 @@ class RuntimeInspectorRunner:
         if demo in {
             RuntimeDemo.SMORES_DRIVER_TO_SNAKE,
             RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE,
+            RuntimeDemo.SMORES_ONLINE_DRIVER_TO_SNAKE,
         }:
             plan = _load_smores_example_plan()
             fixed_local = moving_local = None
@@ -254,6 +261,19 @@ class RuntimeInspectorRunner:
                     ),
                 )
                 for index, module_id in enumerate(plan.module_ids)
+            )
+        elif demo is RuntimeDemo.SMORES_ONLINE_ASSEMBLY:
+            fixed_local = moving_local = None
+            scene = SceneSpec.of(
+                ModulePlacement(
+                    instance_id=ModuleInstanceId(module),
+                    module_type_id=module_type,
+                    pose=Transform(
+                        translation=(pose.x, pose.y, config.height_m),
+                        rotation=quat_from_rpy((0.0, 0.0, pose.yaw)),
+                    ),
+                )
+                for module, pose in paper_initial_poses().items()
             )
         elif demo in {
             RuntimeDemo.MBLOCKS_FIVE_MODULE_PIVOT,
@@ -388,6 +408,19 @@ class RuntimeInspectorRunner:
                     session,
                     physical_config,
                 )
+            elif demo in {
+                RuntimeDemo.SMORES_ONLINE_ASSEMBLY,
+                RuntimeDemo.SMORES_ONLINE_DRIVER_TO_SNAKE,
+            }:
+                reconfiguration_config = _load_smores_physical_reconfiguration_config(config)
+                scenario = OnlineAssemblyScenario.create(
+                    session,
+                    mobile_manipulator_goal()
+                    if demo is RuntimeDemo.SMORES_ONLINE_ASSEMBLY
+                    else driver_to_snake_goal(),
+                    reconfiguration_config,
+                    initial=plan,
+                )
             elif demo is RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE:
                 if plan is None:  # pragma: no cover - branch invariant
                     raise AssertionError("physical runtime demo requires a plan")
@@ -444,6 +477,8 @@ class RuntimeInspectorRunner:
                 report_status(
                     f"Running {scenario.status.plan_name} with {len(scene.instance_ids)} modules"
                 )
+            elif isinstance(scenario, OnlineAssemblyScenario):
+                report_status(f"Running {demo.value} with generated routes and online scheduling")
             else:
                 assert fixed_local is not None and moving_local is not None
                 report_status(f"Running {module_type}: {fixed_local} ↔ {moving_local}")
@@ -492,6 +527,11 @@ class RuntimeInspectorRunner:
             self._factory,
             event_cursor=self._event_cursor,
             scenario_status=self.scenario.status,
+            planning=(
+                self.scenario.planning_snapshot
+                if isinstance(self.scenario, OnlineAssemblyScenario)
+                else None
+            ),
         )
         self._event_cursor = frame.next_event_sequence
         return frame
@@ -695,50 +735,48 @@ def validate_runtime_inspector_config(config: RuntimeInspectorConfig) -> None:
             raise RuntimeInspectorSetupError(
                 "smores_diff_drive_dock_undock requires a positive retract_m_s"
             )
-    elif demo is RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE:
+    elif demo in {
+        RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE,
+        RuntimeDemo.SMORES_ONLINE_ASSEMBLY,
+        RuntimeDemo.SMORES_ONLINE_DRIVER_TO_SNAKE,
+    }:
         if config.backend != "mujoco":
             raise RuntimeInspectorSetupError(
-                "smores_physical_driver_to_snake requires the MuJoCo backend's "
-                "joint and contact dynamics"
+                f"{demo.value} requires the MuJoCo backend's joint and contact dynamics"
             )
         if config.fixed_connector is not None or config.moving_connector is not None:
             raise RuntimeInspectorSetupError(
-                "smores_physical_driver_to_snake defines its connector actions; do not "
+                f"{demo.value} defines its connector actions; do not "
                 "supply fixed_connector or moving_connector"
             )
         if config.undock_at_s is not None:
             raise RuntimeInspectorSetupError(
-                "smores_physical_driver_to_snake defines its own releases; do not supply "
-                "undock_at_s"
+                f"{demo.value} defines its own releases; do not supply undock_at_s"
             )
         if config.connector_gap_m is not None:
             raise RuntimeInspectorSetupError(
-                "smores_physical_driver_to_snake defines its initial seven-module "
+                f"{demo.value} defines its initial seven-module "
                 "staging; leave connector_gap_m unspecified"
             )
         if config.retract_m_s is not None:
             raise RuntimeInspectorSetupError(
-                "smores_physical_driver_to_snake defines its wheel-driven routes; "
-                "leave retract_m_s unspecified"
+                f"{demo.value} defines its wheel-driven routes; leave retract_m_s unspecified"
             )
         if config.orientation_rad != 0.0:
             raise RuntimeInspectorSetupError(
-                "smores_physical_driver_to_snake keeps the staged modules upright; "
-                "orientation_rad must be zero"
+                f"{demo.value} keeps the staged modules upright; orientation_rad must be zero"
             )
         if not config.gravity or not config.ground:
             raise RuntimeInspectorSetupError(
-                "smores_physical_driver_to_snake requires gravity and the ground plane; "
-                "enable both options"
+                f"{demo.value} requires gravity and the ground plane; enable both options"
             )
         if config.height_m < 0.04:
             raise RuntimeInspectorSetupError(
-                "smores_physical_driver_to_snake requires height_m >= 0.04 so the tires "
-                "start above the ground"
+                f"{demo.value} requires height_m >= 0.04 so the tires start above the ground"
             )
         if config.dt_s > MAX_PHYSICAL_TIMESTEP_S:
             raise RuntimeInspectorSetupError(
-                "smores_physical_driver_to_snake requires dt_s <= "
+                f"{demo.value} requires dt_s <= "
                 f"{MAX_PHYSICAL_TIMESTEP_S:g} for the tuned contact/controller model"
             )
     try:
@@ -859,6 +897,7 @@ def runtime_frame_signature(frame: RuntimeInspectorFrame) -> object:
         source.event_revision,
         frame.next_event_sequence,
         frame.scenario,
+        frame.planning,
     )
 
 

@@ -298,7 +298,11 @@ def runtime_command(
 ) -> None:
     """Open live semantic and optional native 3D views of a runtime demo."""
     physical_pair = demo is RuntimeDemo.SMORES_DIFF_DRIVE_DOCK_UNDOCK
-    physical_reconfiguration = demo is RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE
+    physical_reconfiguration = demo in {
+        RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE,
+        RuntimeDemo.SMORES_ONLINE_ASSEMBLY,
+        RuntimeDemo.SMORES_ONLINE_DRIVER_TO_SNAKE,
+    }
     mblocks_kinematic_pivot = demo is RuntimeDemo.MBLOCKS_FIVE_MODULE_PIVOT
     mblocks_momentum_pivot = demo is RuntimeDemo.MBLOCKS_MOMENTUM_PIVOT
     mblocks_twelve_module_line = demo is RuntimeDemo.MBLOCKS_TWELVE_MODULE_LINE
@@ -325,6 +329,8 @@ def runtime_command(
             RuntimeDemo.SMORES_DIFF_DRIVE_DOCK_UNDOCK: 12.0,
             RuntimeDemo.SMORES_DRIVER_TO_SNAKE: 14.0,
             RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE: 210.0,
+            RuntimeDemo.SMORES_ONLINE_ASSEMBLY: 360.0,
+            RuntimeDemo.SMORES_ONLINE_DRIVER_TO_SNAKE: 360.0,
             RuntimeDemo.MBLOCKS_FIVE_MODULE_PIVOT: 8.0,
             RuntimeDemo.MBLOCKS_MOMENTUM_PIVOT: 5.0,
             RuntimeDemo.MBLOCKS_PHYSICAL_TWELVE_MODULE_LINE: 12.0,
@@ -626,61 +632,59 @@ def runtime_command(
     if physical_reconfiguration:
         if fixed_connector is not None or moving_connector is not None:
             typer.echo(
-                "--demo smores_physical_driver_to_snake defines its connector actions; "
+                f"--demo {demo.value} defines its connector actions; "
                 "do not supply --fixed-connector or --moving-connector.",
                 err=True,
             )
             raise typer.Exit(code=2)
         if undock_at_s is not None:
             typer.echo(
-                "--demo smores_physical_driver_to_snake defines its own releases; "
-                "do not supply --undock-at.",
+                f"--demo {demo.value} defines its own releases; do not supply --undock-at.",
                 err=True,
             )
             raise typer.Exit(code=2)
         if connector_gap_m is not None:
             typer.echo(
-                "--demo smores_physical_driver_to_snake defines its initial "
+                f"--demo {demo.value} defines its initial "
                 "seven-module staging; do not supply --connector-gap.",
                 err=True,
             )
             raise typer.Exit(code=2)
         if retract_m_s is not None:
             typer.echo(
-                "--demo smores_physical_driver_to_snake defines its wheel-driven "
-                "routes; do not supply --retract.",
+                f"--demo {demo.value} defines its wheel-driven routes; do not supply --retract.",
                 err=True,
             )
             raise typer.Exit(code=2)
         if orientation_rad != 0.0:
             typer.echo(
-                "--demo smores_physical_driver_to_snake keeps the staged modules "
+                f"--demo {demo.value} keeps the staged modules "
                 "upright; do not supply --orientation.",
                 err=True,
             )
             raise typer.Exit(code=2)
         if backend != "mujoco":
             typer.echo(
-                "--demo smores_physical_driver_to_snake requires --backend mujoco.",
+                f"--demo {demo.value} requires --backend mujoco.",
                 err=True,
             )
             raise typer.Exit(code=2)
         if not resolved_gravity or not resolved_ground:
             typer.echo(
-                "--demo smores_physical_driver_to_snake requires gravity and ground; "
+                f"--demo {demo.value} requires gravity and ground; "
                 "do not pass --no-gravity or --no-ground.",
                 err=True,
             )
             raise typer.Exit(code=2)
         if resolved_height_m < 0.04:
             typer.echo(
-                "--demo smores_physical_driver_to_snake requires --height >= 0.04.",
+                f"--demo {demo.value} requires --height >= 0.04.",
                 err=True,
             )
             raise typer.Exit(code=2)
         if resolved_dt_s > MAX_PHYSICAL_TIMESTEP_S:
             typer.echo(
-                "--demo smores_physical_driver_to_snake requires --dt <= "
+                f"--demo {demo.value} requires --dt <= "
                 f"{MAX_PHYSICAL_TIMESTEP_S:g} for its tuned contact/controller model.",
                 err=True,
             )

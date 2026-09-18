@@ -76,6 +76,7 @@ jobs:
           tests/test_mujoco_hinges.py
           tests/test_mujoco_physical_docking.py
           tests/test_mujoco_physical_reconfiguration.py
+          tests/test_online_planning.py
           tests/test_mujoco_reconfiguration.py
           tests/test_mujoco_runtime_inspector_process.py
           tests/test_smores_example_pack.py
@@ -108,6 +109,7 @@ jobs:
           xvfb-run -a uv run --no-sync pytest
           tests/test_runtime_process.py
           tests/test_runtime_widgets.py
+          tests/test_runtime_planning_widgets.py
           tests/test_runtime_worker.py
           tests/test_studio_appearance.py
 

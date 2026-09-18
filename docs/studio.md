@@ -8,6 +8,10 @@ the current slice. A MuJoCo Runtime Inspector launch also opens the backend's
 native 3D viewer as a separate companion window by default; it is not embedded
 in either Studio application.
 
+Online SMORES demos add a Planning tab to the Runtime Inspector, with physical
+XY routes, target topology, per-action status, an execution timeline, and planner
+decisions. See [Online planar planning](planning.md) for launch commands and scope.
+
 ## Install and launch
 
 Create a repository-local virtual environment and install the current checkout

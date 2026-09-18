@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSplitter,
     QStackedWidget,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -24,6 +25,7 @@ from modsim_studio.chrome import StudioHeader
 from modsim_studio.runtime_events import RuntimeEventLogWidget
 from modsim_studio.runtime_graph import TopologyGraphWidget
 from modsim_studio.runtime_lattice import CubicLatticeWidget
+from modsim_studio.runtime_planning import PlanningWorkspace
 from modsim_studio.runtime_presenter import (
     CubicLatticePresentation,
     RuntimeInspectorPresentation,
@@ -115,6 +117,12 @@ class RuntimeInspectorWindow(QMainWindow):
         self.view_stack = QStackedWidget()
         self.view_stack.addWidget(self.graph)
         self.view_stack.addWidget(self.lattice)
+        self.planning = PlanningWorkspace()
+        self.workspace_tabs = QTabWidget()
+        self.workspace_tabs.addTab(self.view_stack, "Runtime state")
+        self.workspace_tabs.addTab(self.planning, "Planning")
+        self.workspace_tabs.setTabVisible(1, False)
+        self._planning_visible = False
         self.events = RuntimeEventLogWidget()
         events_panel = QWidget()
         events_panel.setObjectName("Panel")
@@ -124,7 +132,7 @@ class RuntimeInspectorWindow(QMainWindow):
         events_layout.addWidget(events_title)
         events_layout.addWidget(self.events, 1)
         splitter = QSplitter(Qt.Orientation.Vertical)
-        splitter.addWidget(self.view_stack)
+        splitter.addWidget(self.workspace_tabs)
         splitter.addWidget(events_panel)
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 2)
@@ -217,6 +225,12 @@ class RuntimeInspectorWindow(QMainWindow):
             self._presentation_failed(error)
             return
         self._apply_presentation(presentation)
+        if frames[-1].planning is not None:
+            self.planning.set_frame(frames[-1])
+            if not self._planning_visible:
+                self.workspace_tabs.setTabVisible(1, True)
+                self.workspace_tabs.setCurrentWidget(self.planning)
+                self._planning_visible = True
 
     @Slot(str)
     def _receive_status(self, message: str) -> None:

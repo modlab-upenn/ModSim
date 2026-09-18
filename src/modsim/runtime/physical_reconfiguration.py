@@ -14,7 +14,7 @@ same target if the stationary component shifts under contact.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from modsim.backends.base import BackendError
 from modsim.core.entities import JointCommand
@@ -49,6 +49,7 @@ from modsim.runtime.differential_drive import (
 )
 from modsim.runtime.physics_docking import MAX_PHYSICAL_TIMESTEP_S, JointHoldTarget
 from modsim.runtime.reconfiguration import (
+    ConnectorPairRef,
     ReconfigurationAction,
     ReconfigurationPhase,
     ReconfigurationPlan,
@@ -598,6 +599,31 @@ class DifferentialDriveReconfigurationScenario:
         linear_m_s: float = 0.0,
         yaw_rate_rad_s: float = 0.0,
     ) -> None:
+        try:
+            self.session.set_joint_commands(
+                self.control_commands(
+                    linear_m_s=linear_m_s,
+                    yaw_rate_rad_s=yaw_rate_rad_s,
+                )
+            )
+        except JointCommandError as error:
+            raise ReconfigurationScenarioError(
+                f"could not command physical reconfiguration joints: {error}"
+            ) from error
+
+    def control_commands(
+        self,
+        *,
+        linear_m_s: float = 0.0,
+        yaw_rate_rad_s: float = 0.0,
+        controlled_modules: tuple[ModuleInstanceId, ...] | None = None,
+    ) -> tuple[JointCommand, ...]:
+        """Compute efforts without sending them or stepping the session.
+
+        An online coordinator restricts the command scope and merges all active
+        controllers into one batch. The scripted executor retains its whole-world
+        braking behavior when no scope is supplied.
+        """
         wheel_targets: dict[ModuleInstanceId, tuple[float, float]] = {}
         if self._moving_modules and (abs(linear_m_s) > _EPSILON or abs(yaw_rate_rad_s) > _EPSILON):
             reference_module = self._moving_reference_module()
@@ -665,16 +691,13 @@ class DifferentialDriveReconfigurationScenario:
             }
 
         commands: list[JointCommand] = []
-        for module_id in sorted(self.session.world.modules):
+        for module_id in sorted(
+            self.session.world.modules if controlled_modules is None else controlled_modules
+        ):
             left_target, right_target = wheel_targets.get(module_id, (0.0, 0.0))
             commands.extend(self._wheel_commands(module_id, left_target, right_target))
             commands.extend(self._hold_commands(module_id))
-        try:
-            self.session.set_joint_commands(commands)
-        except JointCommandError as error:
-            raise ReconfigurationScenarioError(
-                f"could not command physical reconfiguration joints: {error}"
-            ) from error
+        return tuple(commands)
 
     def _wheel_commands(
         self,
@@ -987,6 +1010,187 @@ class DifferentialDriveReconfigurationScenario:
         self._apply_control()
 
 
+class PhysicalDockController(DifferentialDriveReconfigurationScenario):
+    """Reusable feedback controller for one online action; never steps physics.
+
+    Lifecycle, staging, reservations, and command arbitration belong to the caller.
+    The inherited scripted state is only used by shared motion/roll calculations.
+    """
+
+    axle_offset_m: float = 0.034458
+    desired_orientation_rad: float | None = None
+
+    def _connector_roll_target(
+        self,
+        current_position_rad: float,
+        *,
+        controlled_connector: ConnectorInstanceId,
+        other_connector: ConnectorInstanceId,
+    ) -> float:
+        if self.desired_orientation_rad is None:
+            return super()._connector_roll_target(
+                current_position_rad,
+                controlled_connector=controlled_connector,
+                other_connector=other_connector,
+            )
+        pair = self._current_action().dock
+        assert pair is not None
+        controlled = self.session.world.connector(controlled_connector)
+        other = self.session.world.connector(other_connector)
+        axis = controlled.world_docking_axis
+        roll = signed_angle_about(
+            _frame_reference(controlled.world_pose, axis),
+            _frame_reference(other.world_pose, axis),
+            axis,
+        )
+        desired = (
+            self.desired_orientation_rad
+            if controlled_connector == pair.fixed_connector
+            else -self.desired_orientation_rad
+        )
+        return current_position_rad + wrap_angle(roll - desired)
+
+    @classmethod
+    def for_action(
+        cls,
+        session: RuntimeSession,
+        pair: ConnectorPairRef,
+        config: DifferentialDriveReconfigurationConfig,
+    ) -> PhysicalDockController:
+        controller = cls(
+            session=session,
+            plan=ReconfigurationPlan(
+                id="online_control",
+                name="Online docking controller",
+                module_ids=tuple(session.world.modules),
+                initial_connections=(),
+                actions=(ReconfigurationAction(label="Online dock", dock=pair),),
+            ),
+            config=replace(
+                config,
+                routes=(
+                    PhysicalActionRoute(
+                        (),
+                        1 if split_connector_instance_id(pair.moving_connector)[1] == "pan" else -1,
+                    ),
+                ),
+            ),
+            _phase=ReconfigurationPhase.APPROACHING,
+            _phase_started_at_s=session.world.time_s,
+            _detail="Online control",
+            _next_control_at_s=0.0,
+            _action_index=0,
+        )
+        controller._require_feedback()
+        controller._require_measured_alignment()
+        return controller
+
+    def target_pose(self) -> tuple[float, float, float]:
+        target = self._target_root_pose()
+        return (*target.position_m[:2], target.yaw_rad)
+
+    def commands_to(
+        self,
+        members: tuple[ModuleInstanceId, ...],
+        *,
+        waypoint: tuple[float, float, float] | None = None,
+        direction: int = 1,
+        approach: bool = False,
+        stopped: bool = False,
+        turn_only: bool = False,
+    ) -> tuple[JointCommand, ...]:
+        self._moving_modules = members
+        linear = yaw = 0.0
+        if not stopped:
+            if approach:
+                linear, yaw = self._online_approach_twist()
+            elif waypoint is not None:
+                if turn_only:
+                    current = self.session.world.modules[self._moving_reference_module()].pose
+                    yaw = self._heading_rate(wrap_angle(waypoint[2] - _yaw_of(current.rotation)))
+                else:
+                    linear, yaw = self._follow_point(waypoint, direction)
+        return self.control_commands(
+            linear_m_s=linear, yaw_rate_rad_s=yaw, controlled_modules=members
+        )
+
+    def _follow_point(
+        self, waypoint: tuple[float, float, float], direction: int
+    ) -> tuple[float, float]:
+        """Pure pursuit about the drive center; rolling turns reduce train scrub."""
+        current = self.session.world.modules[self._moving_reference_module()]
+        heading = _yaw_of(current.pose.rotation)
+        offset = self.axle_offset_m
+        dx = (
+            waypoint[0]
+            + offset * math.cos(waypoint[2])
+            - current.pose.translation[0]
+            - offset * math.cos(heading)
+        )
+        dy = (
+            waypoint[1]
+            + offset * math.sin(waypoint[2])
+            - current.pose.translation[1]
+            - offset * math.sin(heading)
+        )
+        distance = math.hypot(dx, dy)
+        effective = heading if direction > 0 else wrap_angle(heading + math.pi)
+        error = wrap_angle(math.atan2(dy, dx) - effective)
+        if abs(error) > 1.0 and len(self._moving_modules) == 1:
+            return 0.0, self._heading_rate(error)
+        speed = min(self.config.navigation_speed_m_s, max(0.008, distance * 0.8))
+        speed *= max(0.25, math.cos(error))
+        yaw = self._bounded_yaw(2 * speed * math.sin(error) / max(distance, 0.06))
+        if len(self._moving_modules) > 1:
+            # Tire scrub attenuates a train's yaw response. Close the heading
+            # loop instead of relying on the single-module curvature feedforward.
+            yaw = self._heading_rate(error)
+            speed *= max(0.15, math.cos(error))
+        return direction * speed, yaw
+
+    def parent_roll_commands(self) -> tuple[JointCommand, ...]:
+        endpoint = self._connector_roll_endpoint()
+        if endpoint is None:
+            return ()
+        module = split_connector_instance_id(endpoint[0])[0]
+        if module in self._moving_modules:
+            return ()
+        return self._hold_commands(module)
+
+    def _online_approach_twist(self) -> tuple[float, float]:
+        """Follow the docking axis using the drive center, including reverse docks."""
+        target = self._target_root_pose()
+        module = self.session.world.modules[self._moving_reference_module()]
+        heading = _yaw_of(module.pose.rotation)
+        offset = self.axle_offset_m
+        dx = (
+            target.position_m[0]
+            + offset * math.cos(target.yaw_rad)
+            - module.pose.translation[0]
+            - offset * math.cos(heading)
+        )
+        dy = (
+            target.position_m[1]
+            + offset * math.sin(target.yaw_rad)
+            - module.pose.translation[1]
+            - offset * math.sin(heading)
+        )
+        direction = self._current_route().approach_direction
+        forward = target.yaw_rad if direction > 0 else target.yaw_rad + math.pi
+        axial = dx * math.cos(forward) + dy * math.sin(forward)
+        lateral = -dx * math.sin(forward) + dy * math.cos(forward)
+        correction = max(-0.4, min(0.4, math.atan2(lateral, 0.08)))
+        error = wrap_angle(target.yaw_rad + correction - heading)
+        yaw = self._bounded_yaw(4 * error - 0.5 * module.angular_velocity_rad_s[2])
+        speed = max(
+            -self.config.approach_speed_m_s,
+            min(self.config.approach_speed_m_s, self.config.position_gain_per_s * axial),
+        )
+        if abs(axial) > 0.002:
+            speed = math.copysign(max(0.004, abs(speed)), axial)
+        return direction * speed, yaw
+
+
 def _yaw_of(rotation: tuple[float, float, float, float]) -> float:
     forward = quat_rotate(rotation, (1.0, 0.0, 0.0))
     planar = _planar_unit(forward)
@@ -1013,5 +1217,6 @@ __all__ = [
     "DifferentialDriveReconfigurationConfig",
     "DifferentialDriveReconfigurationScenario",
     "PhysicalActionRoute",
+    "PhysicalDockController",
     "TargetRelativeWaypoint",
 ]

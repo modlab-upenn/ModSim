@@ -1,5 +1,15 @@
 # ModSim
 
+[![CI](https://github.com/modlab-upenn/ModSim/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/modlab-upenn/ModSim/actions/workflows/ci.yml)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
+[![Pre-alpha](https://img.shields.io/badge/status-pre--alpha-F59E0B)](pyproject.toml)
+[![Ruff](https://img.shields.io/badge/lint-Ruff-D7FF64?logo=ruff&logoColor=black)](#development-checks)
+
+[![MuJoCo](https://img.shields.io/badge/physics-MuJoCo-0D9488)](docs/backends.md)
+[![PySide6](https://img.shields.io/badge/desktop-PySide6-41CD52?logo=qt&logoColor=white)](docs/studio.md)
+[![YAML](https://img.shields.io/badge/Robot_Packs-YAML-CB171E?logo=yaml&logoColor=white)](docs/robot_pack_spec.md)
+[![URDF / XML](https://img.shields.io/badge/robot_assets-URDF_%2F_XML-E34F26)](examples/robot_packs)
+
 ModSim is a Python-first, backend-agnostic framework for modular and multi-robot
 systems. Robot Packs describe hardware and docking semantics; ModSim owns the
 canonical world state and event log; backend adapters own physics.
@@ -21,7 +31,12 @@ The pre-alpha project currently supports these core workflows:
 - inspect live topology or cubic-lattice state, events, status, and metrics in
   the Runtime Inspector.
 
-Isaac Sim integration, actuator/transmission catalogs, autonomous
+An experimental online SMORES-EP planner generates planar assembly assignments,
+parallel action groups, and routes with feedback-based recovery. Its Planning
+tab visualizes goals, paths, action progress, and decisions; see
+[online planning](docs/planning.md) for validation scope and current limitations.
+
+Isaac Sim integration, actuator/transmission catalogs, general 3D
 reconfiguration planning, continuous magnetic interaction, and MuJoCo
 compliant/ball/custom connections are not yet implemented. The `simulation`
 profile checks structural readiness; it does not launch a simulator.
@@ -148,6 +163,16 @@ See [Runtime Inspector](docs/runtime_inspector.md) for the execution boundary,
 controls, and named demonstrations.
 
 ## Reproducible SMORES-EP examples
+
+Try the experimental online demos with the Planning tab and MuJoCo companion:
+
+```bash
+modsim runtime examples/robot_packs/smores_ep --demo smores_online_assembly
+modsim runtime examples/robot_packs/smores_ep --demo smores_online_driver_to_snake
+```
+
+These generate routes at runtime. The examples below remain the scripted
+references. See [Online planar planning](docs/planning.md) for behavior and limits.
 
 Run these commands from the repository root after installing the `studio` and
 `mujoco` extras. If the virtual environment is not activated, replace `modsim`
@@ -520,6 +545,8 @@ derived snapshots rather than canonical state.
 - [Backend adapters](docs/backends.md) — runtime/backend responsibilities
 - [Model views](docs/model_views.md) — recipes and immutable generated views
 - [Runtime Inspector](docs/runtime_inspector.md) — live visualization contract
+- [Online planar planning](docs/planning.md) — SMORES-EP assignment, routing,
+  execution, and planner visualization
 - [3D M-Blocks integration](docs/mblocks_3d.md) — CAD-derived pack, lattice view,
   physical momentum pivots, kinematic/physics benchmarks, and fidelity gates
 - [Studio](docs/studio.md) — desktop authoring workflow

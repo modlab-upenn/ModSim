@@ -29,6 +29,7 @@ from modsim.model_views import (
     ModelViewFactory,
     ModuleTopologyGraphView,
 )
+from modsim.planning.models import PlanningSnapshot
 from modsim.robot_packs.schema import ModelViewSpec
 from modsim.runtime.metrics import DockingMetrics
 from modsim.runtime.reconfiguration import ReconfigurationStatus
@@ -80,6 +81,7 @@ class RuntimeInspectorFrame(_RuntimeInspectionDTO):
     event_start_sequence: int = Field(ge=0)
     next_event_sequence: int = Field(ge=0)
     scenario: RuntimeScenarioStatus | None = None
+    planning: PlanningSnapshot | None = None
 
     @model_validator(mode="after")
     def require_contiguous_event_delta(self) -> RuntimeInspectorFrame:
@@ -91,6 +93,14 @@ class RuntimeInspectorFrame(_RuntimeInspectionDTO):
             raise ValueError(
                 "event rows must exactly cover the contiguous inspector event interval"
             )
+        if self.planning is not None:
+            source = self.view.source
+            if (
+                self.planning.time_s != source.world_time_s
+                or self.planning.sample_sequence != source.sample_sequence
+                or self.planning.topology_revision != source.topology_revision
+            ):
+                raise ValueError("planner observation and runtime view must share a world sample")
         return self
 
 
@@ -113,6 +123,7 @@ def build_runtime_inspector_frame(
     *,
     event_cursor: int = 0,
     scenario_status: RuntimeScenarioStatus | None = None,
+    planning: PlanningSnapshot | None = None,
 ) -> RuntimeInspectorFrame:
     """Copy a coherent supported view, metrics, and event delta from ``session``.
 
@@ -144,6 +155,7 @@ def build_runtime_inspector_frame(
         event_start_sequence=event_cursor,
         next_event_sequence=event_count,
         scenario=scenario_status,
+        planning=planning,
     )
 
 

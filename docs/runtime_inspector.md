@@ -12,6 +12,13 @@ selected model-view recipe:
 - the header shows backend, scenario phase, module/assembly/connection counts,
   simulation time, and source revision counters.
 
+The experimental `smores_online_assembly` and `smores_online_driver_to_snake`
+demos also expose a Planning tab with measured XY footprints, goals, generated
+paths, target topology, action dependencies/status, execution timelines, and
+planner decisions. See [Online planar planning](planning.md) for the algorithms,
+launch settings, validation scope, and remaining physical-control limitations.
+Planner intent travels separately from canonical state in protocol version 2.
+
 With the MuJoCo backend, the same command opens MuJoCo's native 3D viewer as a
 companion window by default. The two windows show the same authoritative
 runtime in parallel: MuJoCo renders the physical model while Studio renders the
@@ -838,7 +845,8 @@ M-Blocks momentum controller, an eleven-action twelve-module physical M-Blocks
 line sequence, matched reference/physical twelve-module staircase routes, one
 external seven-module SMORES plan, one physical SMORES
 differential-drive controller, synchronized Pause/Resume control, and a Stop
-control. General scenes, autonomous reconfiguration planning, continuous
+control, plus the experimental online SMORES planner and its Planning workspace.
+General scenes, arbitrary-configuration planning, continuous
 magnetic fields, a three-plane M-Blocks carrier, restart controls,
 interactive/manual joint controls,
 position/velocity backend command modes, metric plots, docking-lifecycle

@@ -484,6 +484,8 @@ def test_cli_runtime_demo_selects_a_reproducible_default_duration(
     (
         (RuntimeDemo.SMORES_DIFF_DRIVE_DOCK_UNDOCK, 12.0),
         (RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE, 210.0),
+        (RuntimeDemo.SMORES_ONLINE_ASSEMBLY, 360.0),
+        (RuntimeDemo.SMORES_ONLINE_DRIVER_TO_SNAKE, 360.0),
     ),
 )
 def test_cli_runtime_physical_smores_demos_supply_physics_defaults(
@@ -521,7 +523,7 @@ def test_cli_runtime_physical_smores_demos_supply_physics_defaults(
     assert config.gravity
     assert config.ground
     assert config.height_m == pytest.approx(0.05)
-    if demo is RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE:
+    if demo is not RuntimeDemo.SMORES_DIFF_DRIVE_DOCK_UNDOCK:
         assert config.connector_gap_m is None
         assert config.retract_m_s is None
     else:
