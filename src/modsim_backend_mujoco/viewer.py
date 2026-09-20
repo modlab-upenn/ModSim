@@ -49,6 +49,7 @@ def run_with_viewer(
     hold: bool = True,
     stop_requested: StopPredicate | None = None,
     pause_requested: PausePredicate | None = None,
+    execution_finished: StopPredicate | None = None,
     key_callback: KeyCallback | None = None,
     on_started: ViewerCallback | None = None,
     after_step: ViewerCallback | None = None,
@@ -77,7 +78,9 @@ def run_with_viewer(
     the public passive-viewer ``key_callback`` without touching MuJoCo data.
     ``on_started`` runs after the passive viewer is configured, ``after_step``
     runs after each viewer synchronization, and ``on_scenario_complete`` runs
-    once when the requested simulated duration is reached.
+    once when the requested simulated duration is reached or the optional
+    ``execution_finished`` predicate reports a terminal scenario result. In
+    either case physics freezes while the final-view hold remains interactive.
     ``on_pause_changed`` reports actual playback transitions and ``on_stopped``
     runs exactly once immediately before the viewer context is closed. Existing
     callers need none of these hooks.
@@ -104,6 +107,7 @@ def run_with_viewer(
 
     should_stop = stop_requested if stop_requested is not None else _never_stop
     should_pause = pause_requested if pause_requested is not None else _never_pause
+    is_finished = execution_finished if execution_finished is not None else _never_stop
     playback_controls_enabled = (
         pause_requested is not None or key_callback is not None or on_pause_changed is not None
     )
@@ -137,6 +141,7 @@ def run_with_viewer(
                 viewer.is_running()
                 and not should_stop()
                 and session.world.time_s - simulated_start < duration_s
+                and not is_finished()
             ):
                 requested_pause = should_pause()
                 if requested_pause:
@@ -211,16 +216,17 @@ def run_with_viewer(
             # A short or faster-than-real-time run can finish between display
             # refreshes. Push its final state before entering the hold loop or
             # closing the viewer without coupling every physics step to rendering.
-            if session.world.time_s - simulated_start >= duration_s and not last_step_was_synced:
+            finished = session.world.time_s - simulated_start >= duration_s or is_finished()
+            if finished and not last_step_was_synced:
                 viewer.sync()
                 if after_step is not None:
                     after_step()
 
-            if (
-                session.world.time_s - simulated_start >= duration_s
-                and on_scenario_complete is not None
-            ):
-                on_scenario_complete()
+            if finished:
+                if hold and playback_controls_enabled:
+                    _set_finished_overlay(viewer)
+                if on_scenario_complete is not None:
+                    on_scenario_complete()
 
             while hold and viewer.is_running() and not should_stop():
                 viewer.sync()
@@ -274,3 +280,16 @@ def _set_playback_overlay(
             f"{state}{action}",
         )
     )
+
+
+def _set_finished_overlay(viewer: Any) -> None:
+    set_texts = getattr(viewer, "set_texts", None)
+    if callable(set_texts):
+        set_texts(
+            (
+                mujoco.mjtFontScale.mjFONTSCALE_150,
+                mujoco.mjtGridPos.mjGRID_TOPRIGHT,
+                "ModSim playback",
+                "FINISHED · final state frozen\nSee Inspector for the result",
+            )
+        )

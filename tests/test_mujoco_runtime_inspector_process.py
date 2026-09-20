@@ -105,6 +105,7 @@ def test_process_streams_frames_from_the_same_mujoco_runtime(
         hold: bool,
         stop_requested: Any,
         pause_requested: Any,
+        execution_finished: Any,
         key_callback: Any,
         on_started: Any,
         after_step: Any,

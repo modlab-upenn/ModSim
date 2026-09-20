@@ -504,6 +504,11 @@ class RuntimeInspectorRunner:
         return math.ceil(self.config.duration_s / self.config.dt_s)
 
     @property
+    def execution_finished(self) -> bool:
+        """Whether the scenario has reported a terminal result to the interactive host."""
+        return self.scenario.status.phase.value in {"complete", "failed"}
+
+    @property
     def event_cursor(self) -> int:
         """Return the next canonical event sequence that a frame will publish."""
         return self._event_cursor

@@ -61,6 +61,39 @@ class _PassiveViewer:
         self.text_overlays.append(texts)
 
 
+def test_terminal_scenario_freezes_physics_and_keeps_viewer_interactive(
+    example_pack_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = RuntimeSession.create(
+        RobotPackLoader().load(example_pack_dir),
+        SceneSpec.grid("generic_cube", 1, spacing_m=0.1),
+        "mujoco",
+    )
+    viewer = _PassiveViewer()
+    monkeypatch.setattr(
+        "modsim_backend_mujoco.viewer.mujoco.viewer.launch_passive", lambda *_args: viewer
+    )
+    complete: list[float] = []
+    try:
+        run_with_viewer(
+            session,
+            duration_s=10.0,
+            step_once=lambda: session.step(0.01),
+            execution_finished=lambda: session.world.time_s >= 0.02,
+            pause_requested=lambda: False,
+            on_scenario_complete=lambda: complete.append(session.world.time_s),
+            stop_requested=lambda: bool(complete) and viewer.sync_count >= 5,
+            hold=True,
+        )
+        assert session.world.time_s == pytest.approx(0.02)
+        assert complete == [pytest.approx(0.02)]
+        assert viewer.sync_count >= 5
+        assert "FINISHED" in str(viewer.text_overlays[-1])
+    finally:
+        session.shutdown()
+
+
 def test_viewer_starts_with_collision_proxies_hidden(
     example_pack_dir: Path,
     monkeypatch: pytest.MonkeyPatch,

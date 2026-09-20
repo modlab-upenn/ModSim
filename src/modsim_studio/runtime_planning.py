@@ -4,17 +4,20 @@
 from __future__ import annotations
 
 import math
-from typing import Any, cast
+from typing import Any
 
 import pyqtgraph as pg
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPen
+from PySide6.QtGui import QColor, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
+    QGraphicsRectItem,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QPushButton,
+    QScrollBar,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
@@ -25,6 +28,136 @@ from PySide6.QtWidgets import (
 from modsim.planning.models import PlanningSnapshot, Pose2
 from modsim.runtime.inspection import RuntimeInspectorFrame
 from modsim_studio.appearance import theme_manager
+from modsim_studio.chrome import LegendWidget
+
+
+def phase_colors() -> dict[str, str]:
+    theme = theme_manager().theme
+    return {
+        "pending": theme.muted,
+        "waiting": theme.warning,
+        "navigating": theme.accent,
+        "aligning": theme.warning,
+        "approaching": theme.accent,
+        "holding": theme.success,
+        "retreating": theme.warning,
+        "complete": theme.success,
+        "failed": theme.danger,
+    }
+
+
+class ActionHistory(QWidget):
+    """Categorical action rows with time-only navigation and stable hoverable intervals."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._snapshot: PlanningSnapshot | None = None
+        self._bars: dict[tuple[str, int], QGraphicsRectItem] = {}
+        self._row_count = 0
+        layout = QVBoxLayout(self)
+        controls = QHBoxLayout()
+        controls.addWidget(QLabel("Action history · time spent in each state"), 1)
+        self.follow = QCheckBox("Follow time")
+        self.follow.setChecked(True)
+        self.follow.setToolTip(
+            "Keep the whole run visible. Manual time navigation switches this off."
+        )
+        self.fit_button = QPushButton("Fit all")
+        controls.addWidget(self.follow)
+        controls.addWidget(self.fit_button)
+        layout.addLayout(controls)
+        self.legend = LegendWidget("History legend and controls")
+        layout.addWidget(self.legend)
+        self.plot: Any = pg.PlotWidget()
+        self.plot.setAspectLocked(False)
+        self.plot.setMouseEnabled(x=True, y=False)
+        self.plot.setMenuEnabled(False)
+        self.plot.enableAutoRange(x=False, y=False)
+        self.plot.setLabel("bottom", "Simulation time", units="s")
+        self.plot.getAxis("bottom").enableAutoSIPrefix(False)
+        self.plot.getAxis("left").setWidth(105)
+        self.plot.getViewBox().invertY(True)
+        self.plot.setToolTip(
+            "One row per docking action. Wheel zooms time only; drag pans time. "
+            "Hover a segment for its state and duration."
+        )
+        self.plot.setMinimumHeight(170)
+        self.row_scroll = QScrollBar(Qt.Orientation.Vertical)
+        self.row_scroll.setToolTip("Scroll action rows; the time axis stays visible")
+        chart = QHBoxLayout()
+        chart.addWidget(self.plot, 1)
+        chart.addWidget(self.row_scroll)
+        layout.addLayout(chart, 1)
+        self.row_scroll.valueChanged.connect(self._fit_rows)
+        self.plot.getViewBox().sigResized.connect(self._fit_rows)
+        self.plot.getViewBox().sigRangeChangedManually.connect(self._manual_range)
+        self.follow.toggled.connect(self._follow_changed)
+        self.fit_button.clicked.connect(self.fit_all)
+
+    def _manual_range(self, _axes: object) -> None:
+        self.follow.setChecked(False)
+
+    def _follow_changed(self, checked: bool) -> None:
+        if checked:
+            self.fit_all()
+
+    def fit_all(self) -> None:
+        end = max(1.0, self._snapshot.time_s if self._snapshot is not None else 0.0)
+        self.plot.setXRange(0.0, end, padding=0.02)
+
+    def _fit_rows(self) -> None:
+        visible = min(max(1, int(self.plot.getViewBox().height() / 26)), max(1, self._row_count))
+        maximum = max(0, self._row_count - visible)
+        self.row_scroll.setRange(0, maximum)
+        self.row_scroll.setPageStep(visible)
+        self.row_scroll.setVisible(maximum > 0)
+        first = self.row_scroll.value()
+        self.plot.setYRange(first - 0.5, first + visible - 0.5, padding=0)
+
+    def set_snapshot(self, snapshot: PlanningSnapshot) -> None:
+        self._snapshot = snapshot
+        theme = theme_manager().theme
+        colors = phase_colors()
+        self.plot.setBackground(theme.viewport)
+        for axis in ("left", "bottom"):
+            self.plot.getAxis(axis).setTextPen(theme.muted)
+            self.plot.getAxis(axis).setPen(theme.border)
+        self.plot.setLabel("bottom", "Simulation time", units="s", color=theme.muted)
+        self.legend.set_entries(
+            tuple(("■", colors[p], p.capitalize()) for p in colors),
+            "Each row is one module's docking action. Segment width is elapsed simulation time, "
+            "not distance. Wheel/drag changes time only; scroll the row list vertically. "
+            "Hover for exact state and duration.",
+        )
+        ticks: list[tuple[int, str]] = []
+        live_keys: set[tuple[str, int]] = set()
+        for row, observation in enumerate(snapshot.actions):
+            ticks.append((row, observation.action.moving))
+            for index, interval in enumerate(observation.intervals):
+                key = (observation.action.id, index)
+                live_keys.add(key)
+                bar = self._bars.get(key)
+                if bar is None:
+                    bar = QGraphicsRectItem()
+                    self._bars[key] = bar
+                    self.plot.addItem(bar)
+                end = snapshot.time_s if interval.end_s is None else interval.end_s
+                bar.setRect(interval.start_s, row - 0.32, max(0.0, end - interval.start_s), 0.64)
+                bar.setBrush(QColor(colors[interval.phase]))
+                bar.setPen(QPen(Qt.PenStyle.NoPen))
+                bar.setToolTip(
+                    f"{observation.action.moving} → {observation.action.parent}\n"
+                    f"{interval.phase.capitalize()}: {interval.start_s:.2f}-{end:.2f} s\n"
+                    f"Duration: {end - interval.start_s:.2f} s"
+                )
+        for key in self._bars.keys() - live_keys:
+            self.plot.removeItem(self._bars.pop(key))
+        self.plot.getAxis("left").setTicks([ticks])
+        if self._row_count != len(ticks):
+            self._row_count = len(ticks)
+            self._fit_rows()
+        if self.follow.isChecked():
+            self.fit_all()
 
 
 class PlanningWorkspace(QWidget):
@@ -52,14 +185,14 @@ class PlanningWorkspace(QWidget):
         self.workspace.setLabel("bottom", "World X", units="m")
         self.workspace.setLabel("left", "World Y", units="m")
         self.workspace.showGrid(x=True, y=True, alpha=0.15)
-        self.topology: Any = pg.PlotWidget()
-        self.topology.setAspectLocked(True)
-        self.topology.hideAxis("left")
-        self.topology.hideAxis("bottom")
-        self.topology.setTitle("Target topology · solid edges are committed")
-        self.topology.getViewBox().setDefaultPadding(0.2)
         self.action_table = QTableWidget(0, 4)
         self.action_table.setHorizontalHeaderLabels(["Module → parent", "Stage", "State", "Reason"])
+        stage_header = self.action_table.horizontalHeaderItem(1)
+        assert stage_header is not None
+        stage_header.setToolTip(
+            "Assembly order group. Actions in the same group may run in parallel; "
+            "earlier groups finish before dependent groups start."
+        )
         header = self.action_table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         for column, width in enumerate((185, 60, 95)):
@@ -70,18 +203,15 @@ class PlanningWorkspace(QWidget):
         self.action_table.itemSelectionChanged.connect(self._select_action)
         self.detail = QLabel("Select an action to inspect its connector errors and dependencies.")
         self.detail.setWordWrap(True)
-        self.timeline: Any = pg.PlotWidget()
-        self.timeline.setLabel("bottom", "Simulation time", units="s")
-        self.timeline.setMaximumHeight(180)
-        self.timeline.getAxis("left").setWidth(95)
-        self.decisions = QTableWidget(0, 3)
+        self.history = ActionHistory()
+        self.timeline = self.history.plot
+        self.legend = LegendWidget("Workspace legend")
+        self.decisions = QTableWidget(0, 3, self)
         self.decisions.setHorizontalHeaderLabels(["Time (s)", "Decision", "Explanation"])
         self.decisions.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.decisions.horizontalHeader().setStretchLastSection(True)
-        self.decisions.setMaximumHeight(140)
         right = QWidget()
         right_layout = QVBoxLayout(right)
-        right_layout.addWidget(self.topology, 2)
         right_layout.addWidget(self.action_table, 2)
         right_layout.addWidget(self.detail)
         split = QSplitter(Qt.Orientation.Horizontal)
@@ -90,9 +220,12 @@ class PlanningWorkspace(QWidget):
         split.setSizes([650, 420])
         layout = QVBoxLayout(self)
         layout.addLayout(controls)
-        layout.addWidget(split, 1)
-        layout.addWidget(self.timeline)
-        layout.addWidget(self.decisions)
+        layout.addWidget(self.legend)
+        vertical = QSplitter(Qt.Orientation.Vertical)
+        vertical.addWidget(split)
+        vertical.addWidget(self.history)
+        vertical.setSizes([450, 230])
+        layout.addWidget(vertical, 1)
         self.paths.toggled.connect(self._redraw)
         self.goals.toggled.connect(self._redraw)
         self._appearance.changed.connect(self._redraw)
@@ -118,49 +251,35 @@ class PlanningWorkspace(QWidget):
             return
         snapshot = frame.planning
         theme = self._appearance.theme
-        for plot in (self.workspace, self.topology, self.timeline):
+        for plot in (self.workspace,):
             plot.setBackground(theme.viewport)
             for name in ("left", "bottom"):
                 plot.getAxis(name).setTextPen(theme.muted)
                 plot.getAxis(name).setPen(theme.border)
             plot.clear()
+        self.workspace.setLabel("bottom", "World X", units="m", color=theme.muted)
+        self.workspace.setLabel("left", "World Y", units="m", color=theme.muted)
         self.summary.setText(
             f"Plan {snapshot.plan_revision} · Root {snapshot.plan.root_module} · "
             f"{snapshot.replans} replans · Peak planning {snapshot.planning_ms:.1f} ms · "
             f"Travel {snapshot.path_length_m:.2f} m"
         )
-        colors = {
-            "complete": theme.success,
-            "failed": theme.danger,
-            "waiting": theme.warning,
-            "pending": theme.muted,
-            "navigating": theme.accent,
-            "aligning": theme.warning,
-            "approaching": theme.accent,
-            "holding": theme.success,
-            "retreating": theme.warning,
-        }
-        assignments = {a.goal_node: a for a in snapshot.plan.assignments}
-        committed = {
-            tuple(sorted((edge.connector_a, edge.connector_b))) for edge in frame.view.edges
-        }
-        for edge in snapshot.plan.goal.edges:
-            a, b = assignments[edge.a], assignments[edge.b]
-            key = tuple(sorted((f"{a.module_id}/{edge.face_a}", f"{b.module_id}/{edge.face_b}")))
-            pen = cast(
-                QPen,
-                pg.mkPen(
-                    theme.success if key in committed else theme.muted,
-                    width=2,
-                    style=Qt.PenStyle.SolidLine if key in committed else Qt.PenStyle.DashLine,
-                ),
-            )
-            self.topology.plot([a.target.x, b.target.x], [a.target.y, b.target.y], pen=pen)
+        colors = phase_colors()
+        self.legend.set_entries(
+            (
+                ("□", theme.text, "Solid outline: measured module"),
+                ("┄", theme.muted, "Dashed outline: goal pose"),
+                ("━", theme.accent, "Short line: module heading"),
+                ("─", theme.muted, "Thin line: travelled trail"),
+                ("─●─", theme.accent, "Route and waypoints: action state color"),
+                ("┄", theme.accent, "Route rectangles: predicted assembly footprint"),
+            ),
+            "XY is a physical map in metres. Drag to pan; wheel to zoom. "
+            "Paths are predictions, not committed connections.",
+        )
         for assignment in snapshot.plan.assignments:
-            pose = assignment.target
-            self._label(self.topology, pose.x, pose.y, assignment.module_id, theme.text)
             if self.goals.isChecked():
-                self._rectangle(pose, snapshot, theme.muted, dashed=True)
+                self._rectangle(assignment.target, snapshot, theme.muted, dashed=True)
         module_poses: dict[str, Pose2] = {}
         for node in frame.view.nodes:
             w, x, y, z = node.world_orientation_wxyz
@@ -181,7 +300,6 @@ class PlanningWorkspace(QWidget):
                 )
         self.action_table.blockSignals(True)
         self.action_table.setRowCount(len(snapshot.actions))
-        ticks: list[tuple[int, str]] = []
         for row, observation in enumerate(snapshot.actions):
             action = observation.action
             color = colors[observation.phase]
@@ -220,29 +338,19 @@ class PlanningWorkspace(QWidget):
                 for point in path:
                     for relative in relatives or (Pose2(x=0.0, y=0.0),):
                         self._rectangle(point.pose.compose(relative), snapshot, color, dashed=True)
-            ticks.append((row, action.moving))
-            for interval in observation.intervals:
-                end = snapshot.time_s if interval.end_s is None else interval.end_s
-                bar = pg.BarGraphItem(
-                    x0=interval.start_s,
-                    width=max(0.01, end - interval.start_s),
-                    y0=row - 0.3,
-                    height=0.6,
-                    brush=colors[interval.phase],
-                    pen=None,
-                )
-                self.timeline.addItem(bar)
         self.action_table.blockSignals(False)
-        self.timeline.getAxis("left").setTicks([ticks])
-        self.timeline.setYRange(-1, len(snapshot.actions))
+        self.history.set_snapshot(snapshot)
         decisions = snapshot.decisions[-100:]
+        scrollbar = self.decisions.verticalScrollBar()
+        follow_tail = scrollbar.value() >= scrollbar.maximum() - 1
         self.decisions.setRowCount(len(decisions))
         for row, decision in enumerate(decisions):
             for column, text in enumerate(
                 (f"{decision.time_s:.2f}", decision.kind, decision.detail)
             ):
                 self.decisions.setItem(row, column, QTableWidgetItem(text))
-        self.decisions.scrollToBottom()
+        if follow_tail:
+            self.decisions.scrollToBottom()
         self._update_detail(snapshot)
 
     def _rectangle(

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from html import escape
+
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import (
     QComboBox,
@@ -145,3 +147,22 @@ class DetailsSection(QWidget):
         self.toggle.setAccessibleName(
             f"{'Collapse' if expanded else 'Expand'} {self.toggle.text()}"
         )
+
+
+class LegendWidget(DetailsSection):
+    """A compact legend that can be pinned open or read by hovering its toggle."""
+
+    def __init__(self, title: str = "Legend") -> None:
+        self.description = QLabel()
+        self.description.setWordWrap(True)
+        self.description.setTextFormat(Qt.TextFormat.RichText)
+        super().__init__(title, self.description)
+
+    def set_entries(self, entries: tuple[tuple[str, str, str], ...], hint: str = "") -> None:
+        rows = " &nbsp; · &nbsp; ".join(
+            f'<span style="color:{escape(color)}">{escape(symbol)}</span> {escape(label)}'
+            for symbol, color, label in entries
+        )
+        text = rows + (f"<br>{escape(hint)}" if hint else "")
+        self.description.setText(text)
+        self.toggle.setToolTip(text)

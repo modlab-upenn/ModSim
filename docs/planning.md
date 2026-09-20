@@ -114,16 +114,32 @@ with a failure instead of silently treating the goal as achieved.
 
 ## Runtime Inspector
 
-Online demos expose a Planning tab alongside the canonical runtime-state view:
+Online demos expose three Inspector tabs. **Runtime state** places live and
+target topology side by side using the same node-and-edge renderer and stable
+logical layout. Both use current assembly colors; target edges are dashed while
+needed and green when committed. Planned edges never become live graph edges.
+
+**Planning** contains:
 
 - measured XY module outlines, heading indicators, and recent movement trails;
 - dashed goal poses, generated routes, and footprint samples along those routes;
-- a target topology diagram whose edges become solid only after actual commits;
 - per-action depth groups, current phases, dependencies, and waiting reasons;
-- an execution timeline using simulation timestamps rather than UI receipt time;
+- an **Action history** chart: one row per docking action, with colored segments
+  showing time spent in each state using simulation timestamps;
 - connector position, axis, and relative-velocity diagnostics for a selected action;
 - plan revision, peak planning-cycle time, accumulated travel, replanning count,
-  and decisions.
+  and action diagnostics.
+
+**Event log** contains separate tables for canonical simulation events and planner
+decisions. Both remain available when the run ends.
+
+The history chart zooms and pans only along time. Module rows keep their height
+and can be scrolled vertically without hiding the time axis. Hover a segment for
+its state, start/end times, and duration. **Follow time** keeps the whole run in
+view; manual time navigation turns it off so incoming updates preserve the chosen
+range. **Fit all** restores the full time range. The divider above the chart
+resizes it independently of the workspace. Every graphical view has a collapsible
+legend; hovering its legend control provides the same explanation.
 
 Paths and goal poses can be hidden independently. Theme switching and manual
 camera ranges are preserved. Pause/Resume/Stop control the same authoritative
@@ -131,6 +147,13 @@ simulation as the MuJoCo window. Planner intent is an optional immutable field
 in `RuntimeInspectorFrame`, separate from generated world views and canonical
 events. IPC protocol version 2 carries the extended frame; parent and companion
 must use the same installation. Old version-1 peers are explicitly rejected.
+
+Interactive runs stop advancing on a terminal scenario result. **Target reached ·
+Simulation complete** appears only after the planner reports completion. Failures,
+manual stops, and a time limit reached before completion have distinct banners.
+The Inspector and native viewer retain the frozen final result for inspection;
+completion disables playback controls. The direct `RuntimeInspectorRunner.step()`
+API still permits additional steps for physical hold/validation experiments.
 
 ## Validation and limits
 

@@ -32,6 +32,31 @@ def test_worker_preserves_public_config_import() -> None:
     assert config.real_time_factor == 1.0
 
 
+def test_worker_stops_on_terminal_result_and_publishes_the_exact_final_frame(
+    example_pack_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = RuntimeInspectorConfig(
+        pack_path=example_pack_dir, backend="mock", dt_s=0.01, duration_s=2.0
+    )
+    runner = RuntimeInspectorRunner.create(config)
+    worker = RuntimeInspectorWorker(config)
+    frames: list[RuntimeInspectorFrame] = []
+    worker.frame_ready.connect(frames.append)
+    monkeypatch.setattr(
+        RuntimeInspectorRunner,
+        "execution_finished",
+        property(lambda owner: owner.session.world.time_s >= 0.02),
+    )
+    monkeypatch.setattr(RuntimeInspectorWorker, "_wait_until", lambda *_args: True)
+    try:
+        assert not worker._run_scenario(runner)
+        assert runner.session.world.time_s == pytest.approx(0.02)
+        assert frames[-1].metrics.time_s == pytest.approx(0.02)
+    finally:
+        runner.shutdown()
+
+
 def test_worker_applies_real_time_factor_only_to_pacing_deadlines(
     example_pack_dir: Path,
     monkeypatch: pytest.MonkeyPatch,

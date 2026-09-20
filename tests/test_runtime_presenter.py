@@ -10,6 +10,8 @@ from modsim.model_views import (
     ModuleGraphNode,
     ModuleTopologyGraphView,
 )
+from modsim.planning import AssemblyGoal, GoalEdge, Pose2, plan_assembly
+from modsim.planning.models import PlanningSnapshot
 from modsim.runtime.inspection import (
     RuntimeEventRow,
     RuntimeInspectorFrame,
@@ -27,6 +29,38 @@ from modsim_studio.runtime_presenter import (
     RuntimeInspectorPresenter,
     RuntimePresentation,
 )
+
+
+def test_target_graph_shares_live_layout_but_only_marks_actual_goal_connections() -> None:
+    goal = AssemblyGoal(
+        id="target",
+        nodes=("alpha", "beta"),
+        edges=(GoalEdge(a="alpha", face_a="pan", b="beta", face_b="bottom"),),
+    )
+    plan = plan_assembly(goal, {"alpha": Pose2(x=0.0, y=0.0), "beta": Pose2(x=0.3, y=0.0)})
+    snapshot = PlanningSnapshot(
+        time_s=0.0, sample_sequence=0, topology_revision=0, plan_revision=1, plan=plan, actions=()
+    )
+    initial = frame(view()).model_copy(update={"planning": snapshot})
+    presenter = RuntimeInspectorPresenter()
+    live = presenter.apply_frame(initial)
+    assert isinstance(live, RuntimePresentation)
+    target = presenter.target_presentation()
+    assert target is not None
+    assert tuple(n.position for n in target.nodes) == tuple(n.position for n in live.nodes)
+    assert len(target.edges) == 1 and target.edges[0].state == "pending"
+    assert live.edges == ()
+    target_edge = target.edges[0]
+    committed = edge("connection").model_copy(
+        update={
+            "connector_a": target_edge.connector_a,
+            "connector_b": target_edge.connector_b,
+        }
+    )
+    presenter.apply_frame(initial.model_copy(update={"view": view(connections=(committed,))}))
+    updated = presenter.target_presentation()
+    assert updated is not None and updated.edges[0].state == "matched"
+    assert tuple(n.position for n in updated.nodes) == tuple(n.position for n in target.nodes)
 
 
 def metrics(*, connections: int = 0, events: int = 0) -> DockingMetrics:

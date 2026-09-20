@@ -63,6 +63,7 @@ class PresentedConnectionEdge:
     connector_b: str
     path: tuple[Point2D, ...]
     selected: bool = False
+    state: Literal["committed", "pending", "matched"] = "committed"
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,6 +124,56 @@ class RuntimeInspectorPresenter:
     def presentation(self) -> RuntimeInspectorPresentation | None:
         """Return the most recently generated presentation, if any."""
         return self._presentation
+
+    @property
+    def frame(self) -> RuntimeInspectorFrame | None:
+        """Newest accepted immutable sample, shared by all Inspector panels."""
+        return self._frame
+
+    def target_presentation(self) -> RuntimePresentation | None:
+        """Render planner intent with the live graph's layout, without inventing world edges."""
+        frame = self._frame
+        if frame is None or frame.planning is None:
+            return None
+        plan = frame.planning.plan
+        mapping = {a.goal_node: a.module_id for a in plan.assignments}
+        positions = self._positions or _initial_layout(tuple(n.id for n in frame.view.nodes))
+        committed = {tuple(sorted((e.connector_a, e.connector_b))) for e in frame.view.edges}
+        nodes = tuple(
+            PresentedModuleNode(
+                id=n.id,
+                label=n.label,
+                module_type_id=n.module_type_id,
+                assembly_id=n.assembly_id,
+                position=positions[n.id],
+                selected=self._selection == GraphSelection("node", n.id),
+            )
+            for n in frame.view.nodes
+        )
+        edges: list[PresentedConnectionEdge] = []
+        for edge in plan.goal.edges:
+            a, b = mapping[edge.a], mapping[edge.b]
+            ca, cb = f"{a}/{edge.face_a}", f"{b}/{edge.face_b}"
+            edges.append(
+                PresentedConnectionEdge(
+                    id=f"goal:{ca}:{cb}",
+                    source=a,
+                    target=b,
+                    connector_a=ca,
+                    connector_b=cb,
+                    path=(positions[a], positions[b]),
+                    state="matched" if tuple(sorted((ca, cb))) in committed else "pending",
+                )
+            )
+        return RuntimePresentation(
+            nodes=nodes,
+            edges=tuple(edges),
+            events=(),
+            selection=None,
+            source_text="Planner goal",
+            status_text="Target topology",
+            show_labels=self._show_labels,
+        )
 
     def apply_frame(self, frame: RuntimeInspectorFrame) -> RuntimeInspectorPresentation:
         """Apply one immutable worker frame and return its presentation.

@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 )
 
 from modsim_studio.appearance import theme_manager
+from modsim_studio.chrome import LegendWidget
 from modsim_studio.runtime_lattice_presenter import LatticeProjection, PresentedLatticeModule
 from modsim_studio.runtime_presenter import CubicLatticePresentation
 
@@ -112,14 +113,23 @@ class CubicLatticeWidget(QWidget):
             background=self._appearance.theme.viewport, viewBox=self._view_box
         )
         root.addWidget(self.plot, 1)
-        self.legend_label = QLabel(
-            "Dashed cube: nearest cell  ·  amber: off lattice  ·  red: occupancy conflict  "
-            "·  local axes: X / Y / Z  ·  left-drag: pan  ·  right-drag: orbit  "
-            "·  wheel: zoom"
+        self.legend = LegendWidget()
+        self.legend.set_entries(
+            (
+                ("□", "#9fa8da", "Solid cube: measured pose, color identifies assembly"),
+                ("┄", "#9fa8da", "Dashed cube: nearest lattice cell; dotted tether: snap error"),
+                ("■", _OFF_LATTICE_COLOR, "Off lattice"),
+                ("■", _CONFLICT_COLOR, "Occupancy conflict"),
+                ("■", "#f4b942", "Selected item"),
+                ("X", _AXIS_COLORS["x"], "Local X"),
+                ("Y", _AXIS_COLORS["y"], "Local Y"),
+                ("Z", _AXIS_COLORS["z"], "Local Z"),
+                ("━◆", "#9fa8da", "Committed connection and selectable midpoint"),
+            ),
+            "Left-drag pans; right-drag orbits; wheel zooms. "
+            "Click modules, cells, or connections to inspect them.",
         )
-        self.legend_label.setWordWrap(True)
-        self.legend_label.setObjectName("Hint")
-        root.addWidget(self.legend_label)
+        root.addWidget(self.legend)
         self.detail_label = QLabel("No lattice sample received")
         self.detail_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.detail_label.setObjectName("Hint")

@@ -8,10 +8,11 @@ from functools import partial
 from typing import Any
 
 import pyqtgraph as pg
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
 from modsim_studio.appearance import theme_manager
+from modsim_studio.chrome import LegendWidget
 from modsim_studio.runtime_presenter import RuntimePresentation
 
 _ASSEMBLY_PALETTE = (
@@ -38,6 +39,8 @@ class TopologyGraphWidget(QWidget):
         self._appearance = theme_manager()
         self.plot = pg.PlotWidget(background=self._appearance.theme.viewport)
         layout.addWidget(self.plot)
+        self.legend = LegendWidget()
+        layout.addWidget(self.legend)
 
         self._plot_item: Any = self.plot.getPlotItem()
         self._plot_item.hideAxis("left")
@@ -107,6 +110,22 @@ class TopologyGraphWidget(QWidget):
         self._edge_items.clear()
         self._labels.clear()
 
+        entries = [
+            ("●", _assembly_color(identifier), f"Assembly {identifier}")
+            for identifier in sorted({n.assembly_id for n in presentation.nodes})
+        ]
+        entries.extend(
+            (
+                ("━", theme.grid_major, "Committed connection"),
+                ("┄", theme.muted, "Target connection still needed"),
+                ("━", theme.success, "Target connection reached"),
+                ("●", theme.warning, "Selected module or connection"),
+            )
+        )
+        self.legend.set_entries(
+            tuple(entries), "Node positions are logical, not physical. Drag to pan; wheel to zoom."
+        )
+
         for edge in presentation.edges:
             x_values = [point[0] for point in edge.path]
             y_values = [point[1] for point in edge.path]
@@ -114,15 +133,24 @@ class TopologyGraphWidget(QWidget):
                 x=x_values,
                 y=y_values,
                 pen=pg.mkPen(
-                    theme.warning if edge.selected else theme.grid_major,
+                    theme.warning
+                    if edge.selected
+                    else theme.success
+                    if edge.state == "matched"
+                    else theme.muted
+                    if edge.state == "pending"
+                    else theme.grid_major,
                     width=4.0 if edge.selected else 2.2,
+                    style=Qt.PenStyle.DashLine
+                    if edge.state == "pending"
+                    else Qt.PenStyle.SolidLine,
                 ),
                 antialias=True,
                 clickable=True,
             )
             curve.setClickable(True, width=12)
             curve.setZValue(5 if edge.selected else 1)
-            curve.setToolTip(f"{edge.id}\n{edge.connector_a} ↔ {edge.connector_b}")
+            curve.setToolTip(f"{edge.connector_a} ↔ {edge.connector_b}\n{edge.state.capitalize()}")
             curve.sigClicked.connect(partial(self._edge_clicked, edge.id))
             self._plot_item.addItem(curve)
             self._edge_items[edge.id] = curve
@@ -220,6 +248,7 @@ def _presentation_fingerprint(presentation: RuntimePresentation) -> object:
                 edge.connector_b,
                 edge.path,
                 edge.selected,
+                edge.state,
             )
             for edge in presentation.edges
         ),

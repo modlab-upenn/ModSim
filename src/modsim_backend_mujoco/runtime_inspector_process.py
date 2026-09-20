@@ -155,7 +155,7 @@ class _FramePublisher:
         self.writer.send(
             RuntimeStatus(
                 message=(
-                    "Run complete; the MuJoCo viewer is holding the final state. "
+                    "Simulation ended; the MuJoCo viewer is holding the final state. "
                     "Close either window when finished."
                 )
             )
@@ -233,6 +233,7 @@ def run_runtime_inspector_process(
                 hold=True,
                 stop_requested=stop_requested.is_set,
                 pause_requested=playback.is_paused,
+                execution_finished=lambda: runner.execution_finished,
                 key_callback=playback.viewer_key,
                 on_started=publisher.viewer_started,
                 after_step=publisher.after_step,

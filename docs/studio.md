@@ -8,9 +8,12 @@ the current slice. A MuJoCo Runtime Inspector launch also opens the backend's
 native 3D viewer as a separate companion window by default; it is not embedded
 in either Studio application.
 
-Online SMORES demos add a Planning tab to the Runtime Inspector, with physical
-XY routes, target topology, per-action status, an execution timeline, and planner
-decisions. See [Online planar planning](planning.md) for launch commands and scope.
+Online SMORES demos show live and target topology side by side in **Runtime state**.
+The **Planning** tab contains physical XY routes, per-action status, and a time-only
+action-history chart. **Event log** has its own tab for simulation events and planner
+decisions. Collapsible/hover legends explain the graphics, and a persistent result
+banner distinguishes completion from failure, stopping, or an exhausted time budget.
+See [Online planar planning](planning.md) for launch commands and scope.
 
 ## Install and launch
 

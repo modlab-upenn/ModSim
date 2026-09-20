@@ -67,7 +67,16 @@ class RuntimeInspectorWorker(QObject):
                 self.status_changed.emit("Run stopped")
                 return
             interrupted = self._run_scenario(runner)
-            self.status_changed.emit("Run stopped" if interrupted else "Run complete")
+            phase = runner.scenario.status.phase.value
+            self.status_changed.emit(
+                "Run stopped"
+                if interrupted
+                else "Simulation complete"
+                if phase == "complete"
+                else "Simulation failed"
+                if phase == "failed"
+                else "Time limit reached"
+            )
         except Exception as error:
             failure = error
             _LOGGER.exception("Runtime Inspector worker failed")
@@ -103,7 +112,7 @@ class RuntimeInspectorWorker(QObject):
         completed_steps = 0
         was_paused = False
 
-        while completed_steps < runner.step_count:
+        while completed_steps < runner.step_count and not runner.execution_finished:
             if self._interrupted():
                 break
             if self._pause_requested.is_set():

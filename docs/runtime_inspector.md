@@ -13,9 +13,11 @@ selected model-view recipe:
   simulation time, and source revision counters.
 
 The experimental `smores_online_assembly` and `smores_online_driver_to_snake`
-demos also expose a Planning tab with measured XY footprints, goals, generated
-paths, target topology, action dependencies/status, execution timelines, and
-planner decisions. See [Online planar planning](planning.md) for the algorithms,
+demos place target topology next to live topology in **Runtime state**, using
+the same node-and-edge graphics and layout. Their **Planning** tab shows measured
+XY footprints, goals, generated paths, action dependencies/status, and action
+history. **Event log** is its own tab with canonical events and a separate planner
+decision table. See [Online planar planning](planning.md) for the algorithms,
 launch settings, validation scope, and remaining physical-control limitations.
 Planner intent travels separately from canonical state in protocol version 2.
 
@@ -166,6 +168,18 @@ requested speed.
 The topology renderer keeps a logical layout stable while physical poses
 change. Disconnected modules remain visible, parallel connections use separate
 curved paths, and clicking a node or edge selects it by stable runtime ID.
+The target graph shares live node positions and assembly colors. Its dashed edges
+show required connections; green edges show goal connections already committed.
+Target intent does not add edges to canonical live topology. Each graphical view
+has a **Legend** toggle that can also be hovered for an explanation of its colors,
+line styles, and controls.
+
+The Planning tab's **Action history** is a state-duration chart, not a motion or
+sensor plot. One row represents a module's docking action; segment width measures
+simulation time in that state. Hover segments for details. Wheel and drag operate
+on time only; a separate scrollbar moves through module rows. **Follow time**
+automatically fits the elapsed run and turns off when the user navigates manually.
+**Fit all** restores the time range without rescaling the row dimension.
 
 The cubic-lattice renderer is a 2.5-D diagnostic view rather than a second 3-D
 physics viewport. Its default isometric projection draws solid cubes at the
@@ -812,8 +826,15 @@ The scenario is paced to the requested wall-clock real-time factor while both
 windows are open. The factor is fixed for one launch and applies equally to the
 native-viewer process and `--no-viewer` worker path. Pausing freezes simulated
 time while the windows continue servicing input; resuming resets the pacing
-origin. When the configured simulated duration ends, the final state remains
-visible for inspection.
+origin. Interactive hosts stop stepping when the scenario reports completion or
+failure, or when the configured simulated duration ends. The final state remains
+visible for inspection. A persistent header banner distinguishes **Target reached ·
+Simulation complete**, **Simulation failed**, **Simulation stopped**, and **Time
+limit reached**. An online planner reaching its time limit without completion is
+explicitly labelled **Target not reached**. A finished companion process is not
+treated as proof that a goal succeeded. The native viewer switches its playback
+overlay to **FINISHED**, and the Inspector disables Pause/Resume for the frozen
+result. Camera navigation, legends, graph selection, and the Event log still work.
 Closing the Runtime Inspector requests a cooperative child shutdown and closes
 the native viewer. Closing the native viewer first ends the simulation while
 leaving the last complete semantic view and event log visible in the Runtime
