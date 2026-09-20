@@ -72,6 +72,7 @@ jobs:
           tests/test_mblocks_physical_twelve.py
           tests/test_momentum_pivot.py
           tests/test_mujoco_backend.py
+          tests/test_mujoco_contact_mechanics.py
           tests/test_mujoco_docking.py
           tests/test_mujoco_hinges.py
           tests/test_mujoco_physical_docking.py

@@ -6,10 +6,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 mujoco = pytest.importorskip("mujoco", reason="the MuJoCo backend extra is not installed")
+
+import numpy as np
 
 from modsim.core.events import DockCommitted, DockFailed, UndockCommitted
 from modsim.core.ids import ConnectorInstanceId, ConstraintHandle, ModuleInstanceId
