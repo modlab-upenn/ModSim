@@ -1,4 +1,13 @@
 # ModSim
+[![CI](https://github.com/modlab-upenn/ModSim/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/modlab-upenn/ModSim/actions/workflows/ci.yml)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
+[![Pre-alpha](https://img.shields.io/badge/status-pre--alpha-F59E0B)](pyproject.toml)
+[![Ruff](https://img.shields.io/badge/lint-Ruff-D7FF64?logo=ruff&logoColor=black)](#development-checks)
+
+[![MuJoCo](https://img.shields.io/badge/physics-MuJoCo-0D9488)](docs/backends.md)
+[![PySide6](https://img.shields.io/badge/desktop-PySide6-41CD52?logo=qt&logoColor=white)](docs/studio.md)
+[![YAML](https://img.shields.io/badge/Robot_Packs-YAML-CB171E?logo=yaml&logoColor=white)](docs/robot_pack_spec.md)
+[![URDF / XML](https://img.shields.io/badge/robot_assets-URDF_%2F_XML-E34F26)](examples/robot_packs)
 
 [![CI](https://github.com/modlab-upenn/ModSim/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/modlab-upenn/ModSim/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
@@ -91,7 +100,8 @@ modsim backends
 ```
 
 `dock` exercises connector semantics with the mock backend by default. `run`
-executes a scripted lifecycle without a GUI unless `--view` is supplied.
+executes a scripted lifecycle headlessly; add `--view` for the MuJoCo native
+viewer, or `--gui` for the live Runtime Inspector.
 
 ## Studio
 
@@ -114,7 +124,7 @@ Install both the `studio` and `mujoco` extras, then run the live two-module
 docking demonstration:
 
 ```bash
-modsim runtime examples/robot_packs/generic_cube \
+modsim run --gui examples/robot_packs/generic_cube \
   --fixed-connector front \
   --moving-connector front \
   --duration 4
@@ -191,7 +201,7 @@ modsim pack validate \
 Run a two-module docking demonstration using the `pan` face on each module:
 
 ```bash
-modsim runtime examples/robot_packs/smores_ep \
+modsim run --gui examples/robot_packs/smores_ep \
   --backend mujoco \
   --demo dock \
   --fixed-connector pan \
@@ -247,7 +257,7 @@ Run the older kinematic pair through docking, undocking, and visible
 retraction:
 
 ```bash
-modsim runtime examples/robot_packs/smores_ep \
+modsim run --gui examples/robot_packs/smores_ep \
   --backend mujoco \
   --demo dock_undock \
   --fixed-connector pan \
@@ -264,7 +274,7 @@ modsim runtime examples/robot_packs/smores_ep \
 Finally, run the seven-module Driver-to-Snake demonstration:
 
 ```bash
-modsim runtime examples/robot_packs/smores_ep \
+modsim run --gui examples/robot_packs/smores_ep \
   --backend mujoco \
   --demo smores_driver_to_snake \
   --model-view smores_topology \
