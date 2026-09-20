@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +23,7 @@ from modsim.importers import (
 from modsim.importers.urdf import GeometryKind
 from modsim.robot_packs import ModuleType
 from modsim_studio.appearance import theme_manager
+from modsim_studio.visual_colors import categorical_color
 
 _GROUND_SIZE_MULTIPLIER = 16.0
 _GROUND_RESOLUTION = 128
@@ -37,7 +40,7 @@ class RobotViewport(QWidget):
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        self.plotter = QtInteractor(self)
+        self.plotter = QtInteractor(self, auto_update=False)
         layout.addWidget(self.plotter.interactor)
         self._appearance = theme_manager()
         self._ground_actor: Any | None = None
@@ -46,6 +49,8 @@ class RobotViewport(QWidget):
         self._link_actors: dict[str, list[Any]] = {}
         self._link_outlines: dict[str, list[Any]] = {}
         self._actor_entities: dict[str, tuple[str, str]] = {}
+        self._layer_actors: dict[str, list[Any]] = {}
+        self._mesh_cache: dict[Path, pv.DataSet | None] = {}
         self._selected_link: str | None = None
         self._asset: ImportedRobotAsset | None = None
         self._module: ModuleType | None = None
@@ -75,11 +80,24 @@ class RobotViewport(QWidget):
 
     def fit_module(self) -> None:
         """Fit visible module geometry without changing layers or selection."""
-        self.plotter.reset_camera()
+        self.plotter.reset_camera(render=False)
         self.plotter.render()
 
     def render_module(self, asset: ImportedRobotAsset, module: ModuleType) -> None:
-        """Replace the scene with a module at its zero joint configuration."""
+        """Load a new mechanical scene, or update an existing module's overlays."""
+        if self._asset is asset and self._module is not None and self._module.id == module.id:
+            previous = self._module
+            self._module = module
+            if previous.connectors != module.connectors:
+                with self._scene_update():
+                    for actor in self._layer_actors.pop("connectors", []):
+                        self.plotter.remove_actor(actor, reset_camera=False, render=False)
+                    self._add_connectors()
+                    self._apply_layer_visibility()
+            return
+        if self._asset is not asset:
+            # A reopened/reimported asset must reload any changed mesh files.
+            self._mesh_cache.clear()
         self._asset = asset
         self._module = module
         self._selected_link = None
@@ -96,24 +114,30 @@ class RobotViewport(QWidget):
         connectors: bool | None = None,
         ground: bool | None = None,
     ) -> None:
-        """Update viewport overlay visibility and redraw."""
-        if visuals is not None:
-            self._show_visuals = visuals
-        if collisions is not None:
-            self._show_collisions = collisions
-        if frames is not None:
-            self._show_frames = frames
-        if joint_axes is not None:
-            self._show_joint_axes = joint_axes
-        if connectors is not None:
-            self._show_connectors = connectors
-        if ground is not None:
-            self._show_ground = ground
-        self._rebuild()
+        """Show/hide retained graphics without reloading meshes or moving the camera."""
+        changed = False
+        for layer, visible in (
+            ("visuals", visuals),
+            ("collisions", collisions),
+            ("frames", frames),
+            ("joint_axes", joint_axes),
+            ("connectors", connectors),
+            ("ground", ground),
+        ):
+            attribute = f"_show_{layer}"
+            if visible is not None and visible != getattr(self, attribute):
+                setattr(self, attribute, visible)
+                changed = True
+        if changed:
+            self._apply_layer_visibility()
+            self.plotter.render()
 
     def select_entity(self, kind: str, entity_id: str) -> None:
         """Highlight a selected link without changing document state."""
-        self._selected_link = entity_id if kind == "link" else None
+        selected_link = entity_id if kind == "link" else None
+        if selected_link == self._selected_link:
+            return
+        self._selected_link = selected_link
         self._apply_selection_highlight()
         self.plotter.render()
 
@@ -121,7 +145,27 @@ class RobotViewport(QWidget):
         self._appearance.changed.disconnect(self._apply_theme)
         self._release_shadow_resources()
         self.plotter.close()
+        self._mesh_cache.clear()
         return super().close()
+
+    @contextmanager
+    def _scene_update(self) -> Generator[None, None, None]:
+        """Keep intermediate scene changes off screen and draw the result once."""
+        suppressed = self.plotter.suppress_rendering
+        self.plotter.suppress_rendering = True
+        try:
+            yield
+        finally:
+            self.plotter.suppress_rendering = suppressed
+            if not suppressed:
+                self.plotter.render()
+
+    def _apply_layer_visibility(self) -> None:
+        for layer, actors in self._layer_actors.items():
+            visible = getattr(self, f"_show_{layer}")
+            for actor in actors:
+                actor.visibility = visible
+        self._apply_selection_highlight()
 
     def _release_shadow_resources(self) -> None:
         """Free shadow-map GPU resources before the GL context is torn down.
@@ -149,7 +193,12 @@ class RobotViewport(QWidget):
             pass
 
     def _rebuild(self) -> None:
+        with self._scene_update():
+            self._build_scene()
+
+    def _build_scene(self) -> None:
         self.plotter.disable_picking()
+        self._release_shadow_resources()
         self.plotter.disable_shadows()
         self.plotter.clear()
         self._ground_actor = None
@@ -157,92 +206,65 @@ class RobotViewport(QWidget):
         self._link_actors.clear()
         self._link_outlines.clear()
         self._actor_entities.clear()
+        self._layer_actors.clear()
         if self._asset is None or self._module is None:
             self._configure_lighting(None)
-            self.plotter.render()
             return
 
+        # Prepare each layer once. Later toggles only change actor visibility.
         scene_bounds: list[tuple[float, float, float, float, float, float]] = []
         for link_index, link in enumerate(self._asset.links):
             transform = self._link_transforms.get(link.name, np.eye(4))
-            color = _palette_color(link_index)
-            if self._show_visuals:
-                scene_bounds.extend(
-                    self._add_geometries(
-                        link.name,
-                        link.visuals,
-                        transform,
-                        color=color,
-                        opacity=1.0,
-                        layer="visual",
-                    )
+            scene_bounds.extend(
+                self._add_geometries(
+                    link.name,
+                    link.visuals,
+                    transform,
+                    color=_palette_color(link_index),
+                    opacity=1.0,
+                    layer="visual",
                 )
-            if self._show_collisions:
-                scene_bounds.extend(
-                    self._add_geometries(
-                        link.name,
-                        link.collisions,
-                        transform,
-                        color="#ef476f",
-                        opacity=0.28,
-                        layer="collision",
-                        style="wireframe",
-                    )
+            )
+            scene_bounds.extend(
+                self._add_geometries(
+                    link.name,
+                    link.collisions,
+                    transform,
+                    color="#ef476f",
+                    opacity=0.28,
+                    layer="collision",
+                    style="wireframe",
                 )
+            )
+            self._layer_actors.setdefault("frames", []).extend(
+                _add_frame(self.plotter, transform, scale=0.04)
+            )
 
         bounds = _merge_bounds(scene_bounds)
         self._configure_lighting(bounds)
-        if self._show_ground and bounds is not None:
+        if bounds is not None:
             self._add_ground(bounds)
 
-        for link in self._asset.links:
-            transform = self._link_transforms.get(link.name, np.eye(4))
-            if self._show_frames:
-                _add_frame(self.plotter, transform, scale=0.04)
-
-        if self._show_joint_axes:
-            for joint in self._asset.joints:
-                if joint.axis is None:
-                    continue
-                transform = self._link_transforms.get(joint.child_link)
-                if transform is None:
-                    continue
-                origin = transform[:3, 3]
-                direction = transform[:3, :3] @ np.asarray(joint.axis)
-                self.plotter.add_arrows(
-                    np.asarray([origin]),
-                    np.asarray([direction]),
-                    mag=0.075,
-                    color="#f4d35e",
-                )
-
-        if self._show_connectors:
-            for connector in self._module.connectors:
-                parent_transform = self._link_transforms.get(connector.parent_link)
-                if parent_transform is None or connector.local_pose is None:
-                    continue
-                connector_transform = parent_transform @ _pose_matrix(
-                    connector.local_pose.xyz_m,
-                    connector.local_pose.rpy_rad,
-                )
-                _add_frame(self.plotter, connector_transform, scale=0.055)
-                origin = connector_transform[:3, 3]
-                if connector.docking_axis is not None:
-                    direction = parent_transform[:3, :3] @ np.asarray(connector.docking_axis)
-                    self.plotter.add_arrows(
-                        np.asarray([origin]),
-                        np.asarray([direction]),
-                        mag=0.1,
-                        color="#06d6a0",
-                    )
-                if connector.approach_axis is not None:
-                    direction = parent_transform[:3, :3] @ np.asarray(connector.approach_axis)
-                    self.plotter.add_arrows(
-                        np.asarray([origin]),
-                        np.asarray([direction]),
-                        mag=0.085,
-                        color="#118ab2",
-                    )
+        for joint in self._asset.joints:
+            if joint.axis is None:
+                continue
+            transform = self._link_transforms.get(joint.child_link)
+            if transform is None:
+                continue
+            origin = transform[:3, 3]
+            direction = transform[:3, :3] @ np.asarray(joint.axis)
+            actor = self.plotter.add_arrows(
+                np.asarray([origin]),
+                np.asarray([direction]),
+                mag=0.075,
+                color="#f4d35e",
+                pickable=False,
+                reset_camera=False,
+                render=False,
+            )
+            actor.use_bounds = False
+            self._layer_actors.setdefault("joint_axes", []).append(actor)
+        self._add_connectors()
 
         self.plotter.enable_mesh_picking(
             callback=self._picked_actor,
@@ -253,11 +275,43 @@ class RobotViewport(QWidget):
         )
         if bounds is not None:
             self.plotter.enable_shadows()
-        self._apply_selection_highlight()
+        self._apply_layer_visibility()
         camera_bounds = _camera_bounds(bounds) if bounds is not None else None
-        self.plotter.view_isometric(bounds=camera_bounds)
+        self.plotter.view_isometric(bounds=camera_bounds, render=False)
         self.plotter.camera.zoom(1.08)
-        self.plotter.render()
+
+    def _add_connectors(self) -> None:
+        if self._module is None:
+            return
+        actors = self._layer_actors.setdefault("connectors", [])
+        for connector in self._module.connectors:
+            parent_transform = self._link_transforms.get(connector.parent_link)
+            if parent_transform is None or connector.local_pose is None:
+                continue
+            connector_transform = parent_transform @ _pose_matrix(
+                connector.local_pose.xyz_m,
+                connector.local_pose.rpy_rad,
+            )
+            actors.extend(_add_frame(self.plotter, connector_transform, scale=0.055))
+            origin = connector_transform[:3, 3]
+            for axis, magnitude, color in (
+                (connector.docking_axis, 0.1, "#06d6a0"),
+                (connector.approach_axis, 0.085, "#118ab2"),
+            ):
+                if axis is None:
+                    continue
+                direction = parent_transform[:3, :3] @ np.asarray(axis)
+                actor = self.plotter.add_arrows(
+                    np.asarray([origin]),
+                    np.asarray([direction]),
+                    mag=magnitude,
+                    color=color,
+                    pickable=False,
+                    reset_camera=False,
+                    render=False,
+                )
+                actor.use_bounds = False
+                actors.append(actor)
 
     def _add_geometries(
         self,
@@ -272,7 +326,7 @@ class RobotViewport(QWidget):
     ) -> list[tuple[float, float, float, float, float, float]]:
         bounds: list[tuple[float, float, float, float, float, float]] = []
         for index, visual in enumerate(geometries):
-            dataset = _geometry_dataset(visual.geometry)
+            dataset = _geometry_dataset(visual.geometry, mesh_cache=self._mesh_cache)
             if dataset is None:
                 continue
             transform = link_transform @ _pose_matrix(
@@ -306,6 +360,8 @@ class RobotViewport(QWidget):
                     pbr=True,
                     metallic=0.04,
                     roughness=0.56,
+                    reset_camera=False,
+                    render=False,
                 )
             else:
                 actor = self.plotter.add_mesh(
@@ -316,9 +372,13 @@ class RobotViewport(QWidget):
                     style=style,
                     pickable=True,
                     line_width=1.5,
+                    reset_camera=False,
+                    render=False,
                     lighting=False,
                 )
             self._link_actors.setdefault(link_name, []).append(actor)
+            layer_key = "visuals" if layer == "visual" else "collisions"
+            self._layer_actors.setdefault(layer_key, []).append(actor)
             self._actor_entities[actor_name] = ("link", link_name)
             if style == "surface":
                 outline_actor = self.plotter.add_mesh(
@@ -329,7 +389,10 @@ class RobotViewport(QWidget):
                     render_lines_as_tubes=True,
                     lighting=False,
                     pickable=False,
+                    reset_camera=False,
+                    render=False,
                 )
+                outline_actor.use_bounds = False
                 outline_actor.visibility = False
                 self._link_outlines.setdefault(link_name, []).append(outline_actor)
         return bounds
@@ -342,7 +405,7 @@ class RobotViewport(QWidget):
 
     def _apply_selection_highlight(self) -> None:
         for link_name, actors in self._link_outlines.items():
-            selected = link_name == self._selected_link
+            selected = self._show_visuals and link_name == self._selected_link
             for actor in actors:
                 actor.visibility = selected
 
@@ -410,11 +473,14 @@ class RobotViewport(QWidget):
             pbr=True,
             metallic=0.0,
             roughness=0.92,
+            reset_camera=False,
+            render=False,
         )
         # Exclude the decorative floor from automatic camera fitting. This is
         # also needed when Qt performs its first render after the window opens.
         ground_actor.use_bounds = False
         self._ground_actor = ground_actor
+        self._layer_actors.setdefault("ground", []).append(ground_actor)
 
 
 def _visual_appearance(
@@ -463,7 +529,9 @@ def _camera_bounds(
     )
 
 
-def _geometry_dataset(geometry: ImportedGeometry) -> pv.DataSet | None:
+def _geometry_dataset(
+    geometry: ImportedGeometry, *, mesh_cache: dict[Path, pv.DataSet | None] | None = None
+) -> pv.DataSet | None:
     if geometry.kind is GeometryKind.BOX and geometry.size_m is not None:
         x_size, y_size, z_size = geometry.size_m
         return pv.Box(
@@ -489,7 +557,15 @@ def _geometry_dataset(geometry: ImportedGeometry) -> pv.DataSet | None:
     if geometry.kind is GeometryKind.SPHERE and geometry.radius_m is not None:
         return pv.Sphere(radius=geometry.radius_m)
     if geometry.kind is GeometryKind.MESH and geometry.resolved_mesh_path is not None:
-        dataset = _read_mesh(geometry.resolved_mesh_path)
+        path = geometry.resolved_mesh_path
+        if mesh_cache is None:
+            dataset = _read_mesh(path)
+        else:
+            if path not in mesh_cache:
+                mesh_cache[path] = _read_mesh(path)
+            cached = mesh_cache[path]
+            # Scaling/placement below must never mutate the shared source mesh.
+            dataset = None if cached is None else cached.copy(deep=True)
         if dataset is None:
             return None
         dataset.scale(geometry.scale, inplace=True)
@@ -556,26 +632,26 @@ def _add_frame(
     transform: np.ndarray[Any, Any],
     *,
     scale: float,
-) -> None:
+) -> list[Any]:
+    actors: list[Any] = []
     origin = transform[:3, 3]
     colors = ("#ff5252", "#69f0ae", "#448aff")
     for column, color in enumerate(colors):
         direction = transform[:3, column]
-        plotter.add_arrows(
+        actor = plotter.add_arrows(
             np.asarray([origin]),
             np.asarray([direction]),
             mag=scale,
             color=color,
+            pickable=False,
+            reset_camera=False,
+            render=False,
         )
+        actor.use_bounds = False
+        actors.append(actor)
+    return actors
 
 
 def _palette_color(index: int) -> str:
-    palette = (
-        "#90caf9",
-        "#ce93d8",
-        "#80cbc4",
-        "#ffcc80",
-        "#a5d6a7",
-        "#ef9a9a",
-    )
-    return palette[index % len(palette)]
+    # Fallback materials stay fixed when the UI theme changes, like URDF materials.
+    return categorical_color(index, "graphite")

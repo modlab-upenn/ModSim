@@ -29,21 +29,11 @@ from modsim.planning.models import PlanningSnapshot, Pose2
 from modsim.runtime.inspection import RuntimeInspectorFrame
 from modsim_studio.appearance import theme_manager
 from modsim_studio.chrome import LegendWidget
+from modsim_studio.visual_colors import action_colors, visual_colors
 
 
 def phase_colors() -> dict[str, str]:
-    theme = theme_manager().theme
-    return {
-        "pending": theme.muted,
-        "waiting": theme.warning,
-        "navigating": theme.accent,
-        "aligning": theme.warning,
-        "approaching": theme.accent,
-        "holding": theme.success,
-        "retreating": theme.warning,
-        "complete": theme.success,
-        "failed": theme.danger,
-    }
+    return action_colors(theme_manager().theme.id)
 
 
 class ActionHistory(QWidget):
@@ -265,21 +255,22 @@ class PlanningWorkspace(QWidget):
             f"Travel {snapshot.path_length_m:.2f} m"
         )
         colors = phase_colors()
+        overlay = visual_colors(theme.id)
         self.legend.set_entries(
             (
                 ("□", theme.text, "Solid outline: measured module"),
-                ("┄", theme.muted, "Dashed outline: goal pose"),
-                ("━", theme.accent, "Short line: module heading"),
-                ("─", theme.muted, "Thin line: travelled trail"),
-                ("─●─", theme.accent, "Route and waypoints: action state color"),
-                ("┄", theme.accent, "Route rectangles: predicted assembly footprint"),
+                ("┄", overlay["violet"], "Dashed outline: goal pose"),
+                ("━", overlay["cyan"], "Short line: module heading"),
+                ("─", overlay["orange"], "Thin line: travelled trail"),
+                ("─●─", colors["navigating"], "Route and waypoints: action state color"),
+                ("┄", colors["navigating"], "Route rectangles: predicted assembly footprint"),
             ),
             "XY is a physical map in metres. Drag to pan; wheel to zoom. "
             "Paths are predictions, not committed connections.",
         )
         for assignment in snapshot.plan.assignments:
             if self.goals.isChecked():
-                self._rectangle(assignment.target, snapshot, theme.muted, dashed=True)
+                self._rectangle(assignment.target, snapshot, overlay["violet"], dashed=True)
         module_poses: dict[str, Pose2] = {}
         for node in frame.view.nodes:
             w, x, y, z = node.world_orientation_wxyz
@@ -291,12 +282,12 @@ class PlanningWorkspace(QWidget):
             self.workspace.plot(
                 [pose.x, pose.x + 0.065 * math.cos(yaw)],
                 [pose.y, pose.y + 0.065 * math.sin(yaw)],
-                pen=pg.mkPen(theme.accent, width=2),
+                pen=pg.mkPen(overlay["cyan"], width=2),
             )
             trail = self._trails.get(node.id, [])
             if len(trail) > 1:
                 self.workspace.plot(
-                    [p[0] for p in trail], [p[1] for p in trail], pen=pg.mkPen(theme.muted)
+                    [p[0] for p in trail], [p[1] for p in trail], pen=pg.mkPen(overlay["orange"])
                 )
         self.action_table.blockSignals(True)
         self.action_table.setRowCount(len(snapshot.actions))
@@ -313,6 +304,8 @@ class PlanningWorkspace(QWidget):
             ):
                 item = QTableWidgetItem(text)
                 item.setToolTip(text)
+                if column == 2:
+                    item.setForeground(QColor(color))
                 self.action_table.setItem(row, column, item)
             if self._selected == action.id:
                 self.action_table.selectRow(row)

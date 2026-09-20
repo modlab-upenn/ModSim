@@ -112,6 +112,7 @@ jobs:
           tests/test_runtime_planning_widgets.py
           tests/test_runtime_worker.py
           tests/test_studio_appearance.py
+          tests/test_studio_viewport.py
 
       - name: Launch Studio smoke test
         run: |

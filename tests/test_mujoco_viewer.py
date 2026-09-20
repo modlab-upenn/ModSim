@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import math
+import time
 from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
+from threading import Event as ThreadEvent
+from threading import Thread
 from types import TracebackType
 from typing import Self
 
@@ -59,6 +62,77 @@ class _PassiveViewer:
 
     def set_texts(self, texts: object) -> None:
         self.text_overlays.append(texts)
+
+
+@pytest.mark.parametrize("step_fails", (False, True), ids=("stop", "scenario-error"))
+def test_viewer_waits_for_async_render_cleanup_before_returning(
+    example_pack_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    step_fails: bool,
+) -> None:
+    session = RuntimeSession.create(
+        RobotPackLoader().load(example_pack_dir),
+        SceneSpec.grid("generic_cube", 1, spacing_m=0.1),
+        "mujoco",
+    )
+    close_requested = ThreadEvent()
+    cleaned_up = ThreadEvent()
+    stop_requested = ThreadEvent()
+    release_existing = ThreadEvent()
+    existing_thread = Thread(target=release_existing.wait, daemon=True)
+    existing_thread.start()
+
+    def render() -> None:
+        close_requested.wait()
+        # Native window destruction continues after Handle.close() returns.
+        time.sleep(0.05)
+        cleaned_up.set()
+
+    render_thread = Thread(target=render, daemon=True)
+
+    class AsyncViewer(_PassiveViewer):
+        def __exit__(
+            self,
+            exc_type: type[BaseException] | None,
+            exc_value: BaseException | None,
+            traceback: TracebackType | None,
+        ) -> None:
+            super().__exit__(exc_type, exc_value, traceback)
+            close_requested.set()
+
+    viewer = AsyncViewer()
+
+    def launch(_model: object, _data: object) -> AsyncViewer:
+        render_thread.start()
+        return viewer
+
+    def step() -> tuple[()]:
+        if step_fails:
+            raise ValueError("scenario failed")
+        session.step(0.01)
+        stop_requested.set()
+        return ()
+
+    monkeypatch.setattr("modsim_backend_mujoco.viewer.mujoco.viewer.launch_passive", launch)
+    try:
+        expected = (
+            pytest.raises(ValueError, match="scenario failed") if step_fails else nullcontext()
+        )
+        with expected:
+            run_with_viewer(
+                session, duration_s=1.0, step_once=step, stop_requested=stop_requested.is_set
+            )
+        assert viewer.exited
+        assert cleaned_up.is_set()
+        assert not render_thread.is_alive()
+        assert existing_thread.is_alive()  # The parent/control thread is not ours to join.
+    finally:
+        close_requested.set()
+        release_existing.set()
+        if render_thread.ident is not None:
+            render_thread.join(timeout=1.0)
+        existing_thread.join(timeout=1.0)
+        session.shutdown()
 
 
 def test_terminal_scenario_freezes_physics_and_keeps_viewer_interactive(

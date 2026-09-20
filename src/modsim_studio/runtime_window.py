@@ -37,6 +37,7 @@ from modsim_studio.runtime_process import (
     RuntimeInspectorProcessController,
     RuntimeInspectorThreadController,
 )
+from modsim_studio.visual_colors import CategoryColors
 
 _LOGGER = logging.getLogger("modsim.runtime_inspector")
 _FRAME_BATCH_DELAY_MS = 8
@@ -122,13 +123,14 @@ class RuntimeInspectorWindow(QMainWindow):
         header_layout.addWidget(self.speed_label)
         header_layout.addWidget(self.source_label)
 
-        self.graph = TopologyGraphWidget()
-        self.lattice = CubicLatticeWidget()
+        category_colors = CategoryColors()
+        self.graph = TopologyGraphWidget(category_colors=category_colors)
+        self.lattice = CubicLatticeWidget(category_colors=category_colors)
         self.view_stack = QStackedWidget()
         self.view_stack.addWidget(self.graph)
         self.view_stack.addWidget(self.lattice)
         self.planning = PlanningWorkspace()
-        self.target_graph = TopologyGraphWidget()
+        self.target_graph = TopologyGraphWidget(category_colors=category_colors)
         self.live_title = QLabel("Live topology")
         self.live_title.setObjectName("SectionTitle")
         live_panel = QWidget()
@@ -231,6 +233,7 @@ class RuntimeInspectorWindow(QMainWindow):
         self.pause_button.setEnabled(False)
         self.status_label.setText("Stopping runtime…")
         self.statusBar().showMessage("Stopping runtime…")
+        self._update_run_state()
         self._controller.request_interruption()
 
     def stop_and_wait(self, timeout_ms: int = 10_000) -> bool:
@@ -283,6 +286,7 @@ class RuntimeInspectorWindow(QMainWindow):
             not self._playback_available
             or self._playback_pending is not None
             or not self._controller.is_running()
+            or self._shutdown_requested
             or self._execution_ended
         ):
             return
@@ -483,6 +487,10 @@ class RuntimeInspectorWindow(QMainWindow):
             color = theme.warning
         elif self._finished:
             title, detail = "Simulation stopped", "Results remain available for inspection."
+            color = theme.warning
+        elif self._shutdown_requested:
+            title = "Stopping simulation…"
+            detail = "Closing the viewer and releasing simulation resources."
             color = theme.warning
         elif self._playback_paused:
             title, detail = "Simulation paused", "Resume to continue."

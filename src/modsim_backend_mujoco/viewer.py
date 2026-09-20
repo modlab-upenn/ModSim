@@ -8,7 +8,9 @@ here is what lets ``modsim.cli`` stay free of engine imports.
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from threading import enumerate as enumerate_threads
 from typing import Any
 
 import mujoco.viewer
@@ -31,6 +33,7 @@ KeyCallback = Callable[[int], None]
 
 IDLE_REFRESH_S = 1.0 / 60.0
 VIEWER_REFRESH_S = 1.0 / 30.0
+_VIEWER_CLOSE_TIMEOUT_S = 3.0
 
 MACOS_HINT = (
     "MuJoCo's passive viewer must own the main thread on macOS, so the script has to "
@@ -91,27 +94,13 @@ def run_with_viewer(
         raise BackendError("the viewer requires the MuJoCo backend")
 
     collected: list[Event] = []
-    try:
-        if key_callback is None:
-            handle = mujoco.viewer.launch_passive(adapter.model, adapter.data)
-        else:
-            handle = mujoco.viewer.launch_passive(
-                adapter.model,
-                adapter.data,
-                key_callback=key_callback,
-            )
-    except RuntimeError as error:
-        if "mjpython" in str(error):
-            raise BackendError(MACOS_HINT) from error
-        raise
-
     should_stop = stop_requested if stop_requested is not None else _never_stop
     should_pause = pause_requested if pause_requested is not None else _never_pause
     is_finished = execution_finished if execution_finished is not None else _never_stop
     playback_controls_enabled = (
         pause_requested is not None or key_callback is not None or on_pause_changed is not None
     )
-    with handle as viewer:
+    with _managed_passive_viewer(adapter, key_callback) as viewer:
         try:
             # URDF collision proxies stay active in physics but start hidden so
             # detailed visual meshes are not covered by opaque boxes. The native
@@ -236,6 +225,46 @@ def run_with_viewer(
             if on_stopped is not None:
                 on_stopped()
     return tuple(collected)
+
+
+@contextmanager
+def _managed_passive_viewer(
+    adapter: MuJoCoBackendAdapter, key_callback: KeyCallback | None
+) -> Iterator[Any]:
+    """Close and join the passive viewer before backend/interpreter teardown.
+
+    MuJoCo's handle.close() only requests exit. On Linux/Windows the render
+    thread is a daemon; allowing Python's glfw.terminate atexit hook to race
+    that thread can segfault even after a successful Stop. The public handle
+    exposes no join operation, so retain the Python threads created during
+    this launch, while excluding pre-existing runtime/control threads. ModSim
+    launches its one viewer from the sole simulation owner. On macOS mjpython
+    owns the existing UI thread, which must not be joined here.
+    """
+    existing_threads = set(enumerate_threads())
+    try:
+        if key_callback is None:
+            handle = mujoco.viewer.launch_passive(adapter.model, adapter.data)
+        else:
+            handle = mujoco.viewer.launch_passive(
+                adapter.model, adapter.data, key_callback=key_callback
+            )
+    except RuntimeError as error:
+        if "mjpython" in str(error):
+            raise BackendError(MACOS_HINT) from error
+        raise
+    viewer_threads = tuple(
+        thread for thread in enumerate_threads() if thread not in existing_threads
+    )
+    try:
+        with handle as viewer:
+            yield viewer
+    finally:
+        deadline = time.monotonic() + _VIEWER_CLOSE_TIMEOUT_S
+        for thread in viewer_threads:
+            thread.join(timeout=max(0.0, deadline - time.monotonic()))
+        if any(thread.is_alive() for thread in viewer_threads):
+            raise BackendError("MuJoCo viewer did not finish shutting down within 3 seconds")
 
 
 def _wait_until(target_s: float, stop_requested: StopPredicate) -> bool:

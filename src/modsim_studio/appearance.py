@@ -66,20 +66,20 @@ THEMES: dict[str, StudioTheme] = {
     "light": StudioTheme(
         id="light",
         name="Light Studio",
-        shell="#f2f4f8",
-        surface="#ffffff",
-        raised="#eaf0f8",
-        field="#f8fafd",
-        border="#d5dde8",
-        text="#243044",
-        muted="#586b83",
-        accent="#4068db",
+        shell="#f5f0e7",
+        surface="#fffcf7",
+        raised="#eee5d6",
+        field="#fffefa",
+        border="#cfc3b1",
+        text="#182b45",
+        muted="#5d655f",
+        accent="#183b6b",
         on_accent="#ffffff",
-        selection="#dce7ff",
-        viewport="#e9edf2",
-        viewport_top="#f5f7fb",
-        grid="#c7d0dc",
-        grid_major="#7c8ea5",
+        selection="#e6dcc9",
+        viewport="#f8f3e8",
+        viewport_top="#fffcf5",
+        grid="#dfd5c3",
+        grid_major="#8b8172",
         success="#157652",
         warning="#8b5b0b",
         danger="#be3349",
@@ -201,8 +201,8 @@ def _stylesheet(t: StudioTheme) -> str:
     QWidget#Panel, QWidget#StudioHeader, QWidget#InspectorContent {{ background: {t.surface}; }}
     QLabel {{ background: transparent; }}
     QLabel#Brand {{ font-size: 20px; font-weight: 650; }}
-    QLabel#Workspace {{ color: {t.accent}; background: {t.selection};
-        border: 1px solid {t.border}; border-radius: {t.radius}px; padding: 7px 14px; }}
+    QLabel#Workspace {{ color: {t.accent}; background: transparent; border: 0;
+        font-size: 14px; font-weight: 700; padding: 0 6px; }}
     QLabel#SectionTitle {{ font-size: 15px; font-weight: 600; }}
     QLabel#Muted, QLabel#Breadcrumb {{ color: {t.muted}; }}
     QLabel#Hint {{ color: {t.muted}; background: {t.surface}; padding: 6px 10px; }}

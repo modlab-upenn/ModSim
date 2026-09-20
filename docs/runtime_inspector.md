@@ -174,22 +174,36 @@ Target intent does not add edges to canonical live topology. Each graphical view
 has a **Legend** toggle that can also be hovered for an explanation of its colors,
 line styles, and controls.
 
+Assembly colors come from distinct categorical hues, shared between live and
+target topology and the lattice view. Up to nine visible assemblies receive
+separate colors; larger populations reuse that palette, with module labels and
+connections identifying membership. Colors survive presentation updates where
+possible and use darker inks in Light Studio. Selection has a magenta outline;
+pending target connections are dashed violet, reached connections are solid
+green, and ordinary committed edges are neutral.
+
 The Planning tab's **Action history** is a state-duration chart, not a motion or
 sensor plot. One row represents a module's docking action; segment width measures
 simulation time in that state. Hover segments for details. Wheel and drag operate
 on time only; a separate scrollbar moves through module rows. **Follow time**
 automatically fits the elapsed run and turns off when the user navigates manually.
 **Fit all** restores the time range without rescaling the row dimension.
+State colors are consistent in the history, route overlays, and action table:
+pending is neutral, waiting gold, navigating blue (navy in Light Studio), aligning
+violet, approaching cyan, holding orange, retreating magenta, complete green,
+and failed red. On the XY map, violet dashed outlines mark goals, cyan strokes
+show headings, and orange trails show travelled paths. Shape and line-style
+differences accompany the colors; hover/toggle legends explain each view.
 
 The cubic-lattice renderer is a 2.5-D diagnostic view rather than a second 3-D
 physics viewport. Its default isometric projection draws solid cubes at the
 measured lattice-space poses and dashed ghost cubes at the nearest integer
 cells. A dotted tether exposes any measured-to-snap displacement. Normal cubes
-are coloured by assembly; amber marks a pose outside the recipe's position or
+are coloured by assembly; gold marks a pose outside the recipe's position or
 orientation tolerance, red marks modules and cells involved in an occupancy
-conflict, and yellow marks the current selection. Committed connections remain
-visible as selectable curves and midpoint diamonds, with lattice-face names in
-their hover text.
+conflict, and a magenta outline marks the current selection. Committed connections
+remain visible as selectable curves and midpoint diamonds, with lattice-face
+names in their hover text.
 
 The projection selector offers **Isometric**, **XY**, **XZ**, and **YZ**. The
 **Z layer** selector shows all occupied layers or only modules snapped to one
@@ -840,7 +854,13 @@ the native viewer. Closing the native viewer first ends the simulation while
 leaving the last complete semantic view and event log visible in the Runtime
 Inspector.
 The **Stop** control follows the same cooperative shutdown path and remains
-available while playback is paused.
+available while playback is paused. The banner shows **Stopping simulation…**
+during cleanup, then **Simulation stopped** while the final semantic view and
+event log remain available. MuJoCo's passive-viewer close requests are asynchronous;
+the host waits for threads created by the viewer launch to exit before releasing
+the backend and sending its final completion message. This prevents interpreter
+and GLFW teardown from racing a still-active render thread. Pre-existing threads,
+including the control reader and macOS UI thread, are not joined by this step.
 
 The Qt process is the only writer that initializes and truncates the Studio
 session log. Diagnostics from the native-viewer child are captured and mirrored

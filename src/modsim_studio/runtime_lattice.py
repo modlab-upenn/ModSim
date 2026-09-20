@@ -27,24 +27,9 @@ from modsim_studio.appearance import theme_manager
 from modsim_studio.chrome import LegendWidget
 from modsim_studio.runtime_lattice_presenter import LatticeProjection, PresentedLatticeModule
 from modsim_studio.runtime_presenter import CubicLatticePresentation
+from modsim_studio.visual_colors import CategoryColors, visual_colors
 
-_NODE_OUTLINE = "#0b1117"
-_OFF_LATTICE_COLOR = "#f4b942"
-_OFF_LATTICE_OUTLINE = "#ffe0a3"
-_CONFLICT_COLOR = "#ef5350"
-_CONFLICT_OUTLINE = "#ffcdd2"
-_AXIS_COLORS = {"x": "#ef5350", "y": "#66bb6a", "z": "#42a5f5"}
 _ORBIT_RADIANS_PER_PIXEL = math.radians(0.4)
-_ASSEMBLY_PALETTE = (
-    "#4fc3f7",
-    "#ce93d8",
-    "#80cbc4",
-    "#ffb74d",
-    "#81c784",
-    "#ef9a9a",
-    "#9fa8da",
-    "#f48fb1",
-)
 
 
 class LatticeViewBox(ViewBox):
@@ -72,9 +57,13 @@ class CubicLatticeWidget(QWidget):
     orientation_axes_changed = Signal(bool)
     orbit_requested = Signal(float, float)
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self, parent: QWidget | None = None, *, category_colors: CategoryColors | None = None
+    ) -> None:
         super().__init__(parent)
         self._appearance = theme_manager()
+        self._category_colors = category_colors or CategoryColors()
+        self._colors = visual_colors(self._appearance.theme.id)
         self.setObjectName("Panel")
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -114,21 +103,7 @@ class CubicLatticeWidget(QWidget):
         )
         root.addWidget(self.plot, 1)
         self.legend = LegendWidget()
-        self.legend.set_entries(
-            (
-                ("□", "#9fa8da", "Solid cube: measured pose, color identifies assembly"),
-                ("┄", "#9fa8da", "Dashed cube: nearest lattice cell; dotted tether: snap error"),
-                ("■", _OFF_LATTICE_COLOR, "Off lattice"),
-                ("■", _CONFLICT_COLOR, "Occupancy conflict"),
-                ("■", "#f4b942", "Selected item"),
-                ("X", _AXIS_COLORS["x"], "Local X"),
-                ("Y", _AXIS_COLORS["y"], "Local Y"),
-                ("Z", _AXIS_COLORS["z"], "Local Z"),
-                ("━◆", "#9fa8da", "Committed connection and selectable midpoint"),
-            ),
-            "Left-drag pans; right-drag orbits; wheel zooms. "
-            "Click modules, cells, or connections to inspect them.",
-        )
+        self._update_legend(())
         root.addWidget(self.legend)
         self.detail_label = QLabel("No lattice sample received")
         self.detail_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -187,9 +162,41 @@ class CubicLatticeWidget(QWidget):
 
     def _apply_theme(self) -> None:
         self.plot.setBackground(self._appearance.theme.viewport)
+        self._colors = visual_colors(self._appearance.theme.id)
         self._fingerprint = None
         if self._presentation is not None:
             self.set_presentation(self._presentation)
+        else:
+            self._update_legend(())
+
+    def _axis_color(self, axis: str) -> str:
+        return self._colors[{"x": "red", "y": "green", "z": "blue"}[axis]]
+
+    def _update_legend(self, assembly_ids: tuple[str, ...]) -> None:
+        theme = self._appearance.theme
+        entries = [
+            ("■", self._category_colors.color(identifier, theme.id), f"Assembly {identifier}")
+            for identifier in assembly_ids
+        ]
+        entries.extend(
+            (
+                ("□", theme.text, "Solid cube: measured pose, color identifies assembly"),
+                ("┄", theme.grid_major, "Dashed cube: nearest lattice cell"),
+                ("┈", self._colors["gold"], "Dotted tether: snap error"),
+                ("■", self._colors["gold"], "Off lattice"),
+                ("■", self._colors["red"], "Occupancy conflict"),
+                ("□", self._colors["magenta"], "Selected item outline"),
+                ("X", self._axis_color("x"), "Local X"),
+                ("Y", self._axis_color("y"), "Local Y"),
+                ("Z", self._axis_color("z"), "Local Z"),
+                ("━◆", self._colors["neutral"], "Committed connection and selectable midpoint"),
+            )
+        )
+        self.legend.set_entries(
+            tuple(entries),
+            "Left-drag pans; right-drag orbits; wheel zooms. "
+            "Click modules, cells, or connections to inspect them.",
+        )
 
     @property
     def displayed_node_ids(self) -> tuple[str, ...]:
@@ -220,6 +227,8 @@ class CubicLatticeWidget(QWidget):
         """Draw ``presentation`` unless its visible lattice geometry is unchanged."""
         self._presentation = presentation
         geometry = presentation.geometry
+        assembly_ids = tuple(sorted({node.assembly_id for node in geometry.nodes}))
+        self._category_colors.prepare(assembly_ids)
         self._sync_controls(presentation)
         self.detail_label.setText(_selection_text(presentation))
         fingerprint = (
@@ -228,11 +237,13 @@ class CubicLatticeWidget(QWidget):
             presentation.show_snap_cells,
             presentation.show_orientation_axes,
             presentation.show_labels,
+            tuple(self._category_colors.color(i, self._appearance.theme.id) for i in assembly_ids),
         )
         if fingerprint == self._fingerprint:
             return
 
         self._fingerprint = fingerprint
+        self._update_legend(assembly_ids)
         self._node_ids = tuple(node.id for node in geometry.nodes)
         self._edge_ids = tuple(edge.id for edge in geometry.edges)
         self._cell_ids = tuple(cell.id for cell in geometry.cells)
@@ -339,11 +350,11 @@ class CubicLatticeWidget(QWidget):
         cell_spots: list[dict[str, object]] = []
         for cell in geometry.cells:
             color = (
-                self._appearance.theme.warning
+                self._colors["magenta"]
                 if cell.selected
-                else self._appearance.theme.danger
+                else self._colors["red"]
                 if cell.occupancy_conflict
-                else self._appearance.theme.warning
+                else self._colors["gold"]
                 if cell.id in off_lattice_cells
                 else self._appearance.theme.grid_major
             )
@@ -379,11 +390,11 @@ class CubicLatticeWidget(QWidget):
             if cell.occupancy_conflict:
                 badge = self._cell_badges.get(cell.id)
                 if badge is None:
-                    badge = pg.TextItem(color=self._appearance.theme.danger, anchor=(-0.3, 1.2))
+                    badge = pg.TextItem(color=self._colors["red"], anchor=(-0.3, 1.2))
                     badge.setZValue(80)
                     self._plot_item.addItem(badge)
                     self._cell_badges[cell.id] = badge
-                badge.setColor(self._appearance.theme.danger)
+                badge.setColor(self._colors["red"])
                 badge.setText(str(len(cell.occupant_ids)))
                 badge.setPos(*cell.center)
                 badge.setToolTip(
@@ -411,9 +422,7 @@ class CubicLatticeWidget(QWidget):
                 self._plot_item.addItem(tether)
                 self._tether_items[node.id] = tether
             tether.setData(x=[start[0], end[0]], y=[start[1], end[1]])
-            tether.setPen(
-                pg.mkPen(self._appearance.theme.warning, width=1.7, style=Qt.PenStyle.DotLine)
-            )
+            tether.setPen(pg.mkPen(self._colors["gold"], width=1.7, style=Qt.PenStyle.DotLine))
             tether.setZValue(-15)
 
     def _draw_connections(self, presentation: CubicLatticePresentation) -> None:
@@ -423,9 +432,7 @@ class CubicLatticeWidget(QWidget):
 
         marker_spots: list[dict[str, object]] = []
         for edge in presentation.geometry.edges:
-            color = (
-                self._appearance.theme.warning if edge.selected else self._appearance.theme.accent
-            )
+            color = self._colors["magenta"] if edge.selected else self._colors["neutral"]
             curve = self._connection_items.get(edge.id)
             if curve is None:
                 curve = pg.PlotCurveItem(antialias=True, clickable=True)
@@ -484,22 +491,14 @@ class CubicLatticeWidget(QWidget):
             face_index = face_indices.get(node.id, 0)
             face_indices[node.id] = face_index + 1
             fill_name = (
-                _CONFLICT_COLOR
+                self._colors["red"]
                 if node.occupancy_conflict
-                else _OFF_LATTICE_COLOR
+                else self._colors["gold"]
                 if node.off_lattice
-                else _assembly_color(node.assembly_id)
+                else self._category_colors.color(node.assembly_id, self._appearance.theme.id)
             )
-            fill = _shaded_color(fill_name, face.brightness, alpha=205)
-            outline = (
-                self._appearance.theme.warning
-                if node.selected
-                else _CONFLICT_OUTLINE
-                if node.occupancy_conflict
-                else _OFF_LATTICE_OUTLINE
-                if node.off_lattice
-                else _NODE_OUTLINE
-            )
+            fill = _shaded_color(fill_name, face.brightness, alpha=235)
+            outline = self._colors["magenta"] if node.selected else self._appearance.theme.text
             polygon = self._module_face_items[node.id][face_index]
             polygon.setPolygon(QPolygonF([QPointF(point[0], point[1]) for point in face.points]))
             polygon.setBrush(QBrush(fill))
@@ -511,15 +510,7 @@ class CubicLatticeWidget(QWidget):
             polygon.setToolTip(_module_tooltip(node))
 
         for node in geometry.nodes:
-            outline = (
-                self._appearance.theme.warning
-                if node.selected
-                else _CONFLICT_OUTLINE
-                if node.occupancy_conflict
-                else _OFF_LATTICE_OUTLINE
-                if node.off_lattice
-                else _NODE_OUTLINE
-            )
+            outline = self._colors["magenta"] if node.selected else self._appearance.theme.text
             outline_items = self._module_outline_items.setdefault(node.id, [])
             _resize_curve_items(
                 self._plot_item,
@@ -573,7 +564,7 @@ class CubicLatticeWidget(QWidget):
                     x=[axis.start[0], axis.end[0]],
                     y=[axis.start[1], axis.end[1]],
                 )
-                item.setPen(pg.mkPen(_AXIS_COLORS[axis.axis], width=1.7))
+                item.setPen(pg.mkPen(self._axis_color(axis.axis), width=1.7))
                 item.setZValue(72)
             label = self._module_label_items.get(node.id)
             if label is None:
@@ -610,18 +601,19 @@ class CubicLatticeWidget(QWidget):
                 x=[axis.start[0], axis.end[0]],
                 y=[axis.start[1], axis.end[1]],
             )
-            item.setPen(pg.mkPen(_AXIS_COLORS[axis.axis], width=3.0))
+            item.setPen(pg.mkPen(self._axis_color(axis.axis), width=3.0))
             item.setZValue(100)
             label = self._lattice_axis_labels.get(axis.axis)
             if label is None:
                 label = pg.TextItem(
                     text=axis.axis.upper(),
-                    color=_AXIS_COLORS[axis.axis],
+                    color=self._axis_color(axis.axis),
                     anchor=(0.5, 0.5),
                 )
                 label.setZValue(101)
                 self._plot_item.addItem(label)
                 self._lattice_axis_labels[axis.axis] = label
+            label.setColor(self._axis_color(axis.axis))
             label.setPos(*axis.end)
 
     def _projection_selected(self, index: int) -> None:
@@ -738,11 +730,6 @@ def _shaded_color(name: str, brightness: float, *, alpha: int) -> QColor:
         alpha,
     )
     return result
-
-
-def _assembly_color(identifier: str) -> str:
-    seed = sum((index + 1) * ord(character) for index, character in enumerate(identifier))
-    return _ASSEMBLY_PALETTE[seed % len(_ASSEMBLY_PALETTE)]
 
 
 __all__ = ["CubicLatticeWidget", "LatticeViewBox"]

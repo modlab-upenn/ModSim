@@ -58,7 +58,7 @@ Both applications share a native Studio design with three built-in palettes:
 
 - **Midnight Panels** (default): navy surfaces with teal accents;
 - **Graphite Workbench**: charcoal surfaces with blue accents; and
-- **Light Studio**: light surfaces with blue accents.
+- **Light Studio**: warm ivory surfaces, sand borders, and navy blue accents.
 
 Use the **Theme** picker at the top right of either window to switch immediately.
 The choice is stored in Qt user settings under organization `ModSim`, application
@@ -72,6 +72,9 @@ scrollbars. The authoring viewport background/grid and runtime graph colors
 also follow the palette. Theme changes preserve in-progress edits, document
 selection, viewport cameras, and runtime presentation state. Robot materials,
 geometry, physics, and the native MuJoCo companion viewer are unchanged.
+Charts use separate categorical hues instead of variations of the UI accent.
+The same planner state or assembly keeps its color meaning across themes, with
+darker inks on the light background. Legends show the colors currently in use.
 The styling and small line icons are implemented in Studio itself using the
 existing PySide6 dependency; no external theme or icon package is required.
 
@@ -82,6 +85,18 @@ connector custom metadata can be expanded when needed. The Validation tab
 shows the actual profile result and issue counts, with a read-only issue table
 when there are findings. Viewport layers and **Fit** are above the preview.
 Dock panels remain movable and can be restored through the **View** menu.
+
+The Builder prepares visual/collision geometry and diagnostic layers when a
+module is loaded, then retains their VTK graphics objects. Selecting links or
+joints updates highlights and properties; layer toggles change visibility.
+These interactions preserve the camera and draw at most once, without mesh
+reads or scene reconstruction. Connector edits replace only connector overlays;
+other semantic metadata edits leave mechanical geometry intact. New module
+scenes are constructed with intermediate rendering suppressed. Imported mesh
+data is cached for the active asset, copied before placement/scaling, and
+invalidated when that asset is reopened or reimported. **Fit** explicitly refits
+the camera. Mouse navigation continues to render interactively, while the
+static authoring viewport no longer redraws periodically when idle.
 
 Open, import, asset-root selection, and export use Qt's built-in file dialogs,
 which follow the Studio theme. They bypass the native GTK file picker, avoiding

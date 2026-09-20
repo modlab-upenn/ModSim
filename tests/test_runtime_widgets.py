@@ -492,6 +492,39 @@ def test_runtime_window_keeps_target_speed_visible_across_presentations(
         window.close()
 
 
+def test_runtime_window_stop_keeps_results_and_shows_shutdown_progress(
+    application: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(RuntimeInspectorWindow, "start", lambda _self: None)
+    window = RuntimeInspectorWindow(RuntimeInspectorConfig(pack_path=tmp_path, backend="mock"))
+    running = True
+    stops: list[bool] = []
+    monkeypatch.setattr(window._controller, "is_running", lambda: running)
+    monkeypatch.setattr(window._controller, "request_interruption", lambda: stops.append(True))
+    try:
+        window._apply_presentation(presentation())
+        window._receive_playback_state(False)
+        window.request_stop()
+        assert stops == [True]
+        assert "Stopping simulation" in window.run_state.text()
+        assert not window.stop_button.isEnabled()
+        assert not window.pause_button.isEnabled()
+        # A queued pause acknowledgement must not restore a running/paused banner.
+        window._receive_playback_state(True)
+        assert "Stopping simulation" in window.run_state.text()
+        running = False
+        window._runtime_finished()
+        assert "Simulation stopped" in window.run_state.text()
+        assert window.graph.displayed_node_ids == ("alpha", "beta")
+        assert window.last_error is None
+        assert window.exit_code == 0
+    finally:
+        running = False
+        window.close()
+
+
 def test_runtime_window_pause_control_waits_for_authoritative_acknowledgement(
     application: QApplication,
     monkeypatch: pytest.MonkeyPatch,

@@ -102,6 +102,7 @@ exclude = [
   "tests/test_runtime_planning_widgets.py",
   "tests/test_runtime_widgets.py",
   "tests/test_studio_appearance.py",
+  "tests/test_studio_viewport.py",
   "tests/test_runtime_worker.py",
   # MuJoCo ships no type stubs, so strict mode reports every engine call as
   # partially unknown. Checked separately by pyright-mujoco.json, which runs at

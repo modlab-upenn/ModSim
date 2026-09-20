@@ -1630,7 +1630,13 @@ class MainWindow(QMainWindow):
         selection = selection_after or self._current_selection
         self._rebuild_tree()
         self._refresh_document_panels()
-        self._render_first_module()
+        if (
+            selection is not None
+            and selection[2] in self.project.pack.hardware_catalog.module_types
+        ):
+            self._render_module(selection[2])
+        else:
+            self._render_first_module()
         self._update_title()
         self._logger.info(
             "Applied Robot Pack edit; selection=%s; document_dirty=%s",
