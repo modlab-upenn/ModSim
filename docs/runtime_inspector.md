@@ -67,6 +67,11 @@ so omitting the viewer option opens only the Runtime Inspector. Explicit
 The semantic window still requires a desktop display or Xvfb; use the existing
 non-GUI `modsim run` workflow for a fully headless process.
 
+`modsim run --gui PACK` launches the same inspector as `modsim runtime PACK`,
+with the same demo defaults, physics validation, and `--speed` /
+`--real-time-factor` playback controls. Headless `modsim run` keeps its own
+scene defaults.
+
 The command-line default is backend-aware: omitted means enabled for MuJoCo and
 disabled otherwise. Programmatic `RuntimeInspectorConfig` construction keeps
 `viewer_enabled=False` as its conservative backward-compatible default, so API

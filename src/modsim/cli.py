@@ -45,8 +45,11 @@ from modsim.cli_options import (
     OutputOpt,
     PackPathArg,
     PublishHzOpt,
+    RealTimeFactorOpt,
     RetractOpt,
     RunCountOpt,
+    RunDtOpt,
+    RunGravityOpt,
     RunSpacingOpt,
     ScenarioOptions,
     StepsOpt,
@@ -84,7 +87,6 @@ from modsim.robot_packs import (
     ValidationReport,
 )
 from modsim.runtime import RuntimeDemo, RuntimeInspectorConfig
-from modsim.runtime.inspection import format_event_detail
 from modsim.runtime.momentum_pivot import MAX_MOMENTUM_TIMESTEP_S
 from modsim.runtime.physics_docking import MAX_PHYSICAL_TIMESTEP_S
 from modsim.runtime.reconfiguration import (
@@ -286,17 +288,7 @@ def runtime_command(
         float,
         typer.Option("--publish-hz", help="Maximum inspector refresh frequency."),
     ] = 20.0,
-    real_time_factor: Annotated[
-        float,
-        typer.Option(
-            "--speed",
-            "--real-time-factor",
-            help=(
-                "Wall-clock playback factor (1 = real time, 2 = twice as fast). "
-                "Physics, motors, and simulated duration are unchanged."
-            ),
-        ),
-    ] = 1.0,
+    real_time_factor: RealTimeFactorOpt = 1.0,
     viewer: Annotated[
         bool | None,
         typer.Option(
@@ -1113,18 +1105,19 @@ def run_command(
     spacing_m: RunSpacingOpt = 0.15,
     fixed_connector: FixedConnectorOpt = None,
     moving_connector: MovingConnectorOpt = None,
-    connector_gap_m: ConnectorGapOpt = 0.03,
+    connector_gap_m: ConnectorGapOpt = None,
     orientation_rad: OrientationOpt = 0.0,
     approach_m_s: ApproachOpt = 0.03,
     retract_m_s: RetractOpt = None,
     duration_s: DurationOpt = None,
-    dt_s: DtOpt = 0.002,
+    dt_s: RunDtOpt = None,
     undock_at_s: UndockAtOpt = None,
     backend: BackendOpt = None,
-    gravity: GravityOpt = False,
-    ground: GroundOpt = False,
-    height_m: HeightOpt = 0.0,
+    gravity: RunGravityOpt = None,
+    ground: GroundOpt = None,
+    height_m: HeightOpt = None,
     publish_hz: PublishHzOpt = 20.0,
+    real_time_factor: RealTimeFactorOpt = 1.0,
     view_id: ModelViewOpt = None,
     viewer: ViewerOpt = None,
     output: OutputOpt = OutputFormat.TEXT,
@@ -1147,6 +1140,32 @@ def run_command(
             "Use --view for the headless MuJoCo viewer or --gui for the Runtime "
             "Inspector, not both."
         )
+    if gui:
+        # Share demo defaults and validation with `modsim runtime`; applying
+        # headless defaults first would override the physical demos' settings.
+        runtime_command(
+            pack_path=pack_path,
+            demo=demo,
+            module_type=module_type,
+            fixed_connector=fixed_connector,
+            moving_connector=moving_connector,
+            connector_gap_m=connector_gap_m,
+            orientation_rad=orientation_rad,
+            approach_m_s=approach_m_s,
+            retract_m_s=retract_m_s,
+            duration_s=duration_s,
+            dt_s=dt_s,
+            undock_at_s=undock_at_s,
+            backend="mujoco" if backend is None else backend,
+            gravity=gravity,
+            ground=ground,
+            height_m=height_m,
+            view_id=view_id,
+            publish_hz=publish_hz,
+            real_time_factor=real_time_factor,
+            viewer=viewer,
+        )
+        return
     options = ScenarioOptions(
         pack_path=pack_path,
         demo=demo,
@@ -1155,17 +1174,17 @@ def run_command(
         spacing_m=spacing_m,
         fixed_connector=fixed_connector,
         moving_connector=moving_connector,
-        connector_gap_m=connector_gap_m,
+        connector_gap_m=0.03 if connector_gap_m is None else connector_gap_m,
         orientation_rad=orientation_rad,
         approach_m_s=approach_m_s,
         retract_m_s=retract_m_s,
         duration_s=duration_s,
-        dt_s=dt_s,
+        dt_s=0.002 if dt_s is None else dt_s,
         undock_at_s=undock_at_s,
         backend=backend,
-        gravity=gravity,
-        ground=ground,
-        height_m=height_m,
+        gravity=False if gravity is None else gravity,
+        ground=False if ground is None else ground,
+        height_m=0.0 if height_m is None else height_m,
         publish_hz=publish_hz,
         view_id=view_id,
         viewer=viewer,
@@ -1174,10 +1193,7 @@ def run_command(
         output=output,
     )
     resolved_duration_s = options.validate()
-    if gui:
-        _launch_runtime_inspector(options, resolved_duration_s)
-    else:
-        _run_headless_scenario(options, resolved_duration_s)
+    _run_headless_scenario(options, resolved_duration_s)
 
 
 def _resolve_module_type(pack: RobotPack, requested: str | None) -> str:
@@ -1318,71 +1334,6 @@ def backends_command(
             summary,
         )
     Console(width=120).print(table)
-
-
-def _launch_runtime_inspector(options: ScenarioOptions, resolved_duration_s: float) -> None:
-    """Open the live Runtime Inspector for a scenario (modsim run --gui)."""
-    if options.demo is RuntimeDemo.SMORES_DRIVER_TO_SNAKE:
-        if options.fixed_connector is not None or options.moving_connector is not None:
-            option_error(
-                "--demo smores_driver_to_snake defines its connector actions; "
-                "do not supply --fixed-connector or --moving-connector."
-            )
-        if options.undock_at_s is not None:
-            option_error(
-                "--demo smores_driver_to_snake defines its own releases; do not supply --undock-at."
-            )
-        if options.orientation_rad != 0.0:
-            option_error(
-                "--demo smores_driver_to_snake uses the paper's nominal orientations; "
-                "do not supply --orientation."
-            )
-        if options.gravity or options.ground:
-            option_error(
-                "--demo smores_driver_to_snake currently requires --no-gravity and no "
-                "ground plane; supported locomotion is not implemented yet."
-            )
-
-    backend = options.backend or "mujoco"
-    viewer_enabled = backend == "mujoco" if options.viewer is None else options.viewer
-    if viewer_enabled and backend != "mujoco":
-        option_error(
-            "--viewer requires --backend mujoco; use --no-viewer for the semantic "
-            "Runtime Inspector only."
-        )
-
-    try:
-        from modsim_studio.runtime_app import main as runtime_main
-    except ImportError as error:
-        typer.echo(
-            "Runtime Inspector dependencies are not installed. Install with: "
-            "pip install 'modsim-robotics[studio,mujoco]'",
-            err=True,
-        )
-        raise typer.Exit(code=2) from error
-
-    config = RuntimeInspectorConfig(
-        pack_path=options.pack_path,
-        demo=options.demo,
-        module_type=options.module_type,
-        backend=backend,
-        fixed_connector=options.fixed_connector,
-        moving_connector=options.moving_connector,
-        connector_gap_m=options.connector_gap_m,
-        orientation_rad=options.orientation_rad,
-        approach_m_s=options.approach_m_s,
-        retract_m_s=options.retract_m_s,
-        duration_s=resolved_duration_s,
-        dt_s=options.dt_s,
-        undock_at_s=options.undock_at_s,
-        gravity=options.gravity,
-        ground=options.ground,
-        height_m=options.height_m,
-        view_id=options.view_id,
-        publish_hz=options.publish_hz,
-        viewer_enabled=viewer_enabled,
-    )
-    raise typer.Exit(code=runtime_main(config))
 
 
 def _run_headless_scenario(options: ScenarioOptions, resolved_duration_s: float) -> None:

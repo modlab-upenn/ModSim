@@ -309,19 +309,14 @@ def test_cli_dock_rejects_an_unknown_backend(example_pack_dir: Path) -> None:
 @pytest.mark.parametrize(
     ("command", "option", "value"),
     (
-        ("dock", "--dt", "0"),
-        ("dock", "--dt", "nan"),
-        ("run", "--dt", "0"),
-        ("run", "--duration", "0"),
-        ("run", "--duration", "nan"),
-        ("runtime", "--dt", "0"),
-        ("runtime", "--duration", "0"),
-        ("runtime", "--approach", "nan"),
-        ("runtime", "--publish-hz", "0"),
-        ("runtime", "--speed", "0"),
-        ("runtime", "--speed", "-1"),
-        ("runtime", "--speed", "nan"),
-        ("runtime", "--speed", "inf"),
+        (("runtime",), "--dt", "0"),
+        (("runtime",), "--duration", "0"),
+        (("runtime",), "--approach", "nan"),
+        (("runtime",), "--publish-hz", "0"),
+        (("runtime",), "--speed", "0"),
+        (("runtime",), "--speed", "-1"),
+        (("runtime",), "--speed", "nan"),
+        (("runtime",), "--speed", "inf"),
         (("dock",), "--dt", "0"),
         (("dock",), "--dt", "nan"),
         (("run",), "--dt", "0"),
@@ -331,6 +326,10 @@ def test_cli_dock_rejects_an_unknown_backend(example_pack_dir: Path) -> None:
         (("run", "--gui"), "--duration", "0"),
         (("run", "--gui"), "--approach", "nan"),
         (("run", "--gui"), "--publish-hz", "0"),
+        (("run", "--gui"), "--speed", "0"),
+        (("run", "--gui"), "--speed", "-1"),
+        (("run", "--gui"), "--speed", "nan"),
+        (("run", "--gui"), "--speed", "inf"),
     ),
 )
 def test_cli_rejects_unsafe_time_arguments(
@@ -355,6 +354,7 @@ def test_cli_runtime_requires_both_selected_connectors(example_pack_dir: Path) -
     assert "must be supplied together" in result.output
 
 
+@pytest.mark.parametrize("command", (("runtime",), ("run", "--gui")))
 @pytest.mark.parametrize(
     ("backend", "viewer_arguments", "expected_viewer_enabled"),
     (
@@ -367,6 +367,7 @@ def test_cli_runtime_requires_both_selected_connectors(example_pack_dir: Path) -
 def test_cli_runtime_launches_the_optional_inspector_with_resolved_viewer_mode(
     example_pack_dir: Path,
     monkeypatch: pytest.MonkeyPatch,
+    command: tuple[str, ...],
     backend: str | None,
     viewer_arguments: tuple[str, ...],
     expected_viewer_enabled: bool,
@@ -383,8 +384,7 @@ def test_cli_runtime_launches_the_optional_inspector_with_resolved_viewer_mode(
     monkeypatch.setitem(sys.modules, "modsim_studio.runtime_app", runtime_app)
 
     arguments = [
-        "run",
-        "--gui",
+        *command,
         str(example_pack_dir),
         "--fixed-connector",
         "front",
@@ -412,9 +412,11 @@ def test_cli_runtime_launches_the_optional_inspector_with_resolved_viewer_mode(
     assert config.viewer_enabled is expected_viewer_enabled
 
 
+@pytest.mark.parametrize("command", (("runtime",), ("run", "--gui")))
 def test_cli_runtime_accepts_the_descriptive_real_time_factor_alias(
     example_pack_dir: Path,
     monkeypatch: pytest.MonkeyPatch,
+    command: tuple[str, ...],
 ) -> None:
     captured: dict[str, object] = {}
     runtime_app = ModuleType("modsim_studio.runtime_app")
@@ -429,7 +431,7 @@ def test_cli_runtime_accepts_the_descriptive_real_time_factor_alias(
     result = runner.invoke(
         app,
         [
-            "runtime",
+            *command,
             str(example_pack_dir),
             "--backend",
             "mock",
@@ -445,6 +447,7 @@ def test_cli_runtime_accepts_the_descriptive_real_time_factor_alias(
     assert config.real_time_factor == pytest.approx(0.5)
 
 
+@pytest.mark.parametrize("command", (("runtime",), ("run", "--gui")))
 @pytest.mark.parametrize(
     ("demo", "expected_duration_s"),
     (
@@ -456,6 +459,7 @@ def test_cli_runtime_accepts_the_descriptive_real_time_factor_alias(
 def test_cli_runtime_demo_selects_a_reproducible_default_duration(
     example_pack_dir: Path,
     monkeypatch: pytest.MonkeyPatch,
+    command: tuple[str, ...],
     demo: RuntimeDemo,
     expected_duration_s: float,
 ) -> None:
@@ -472,8 +476,7 @@ def test_cli_runtime_demo_selects_a_reproducible_default_duration(
     result = runner.invoke(
         app,
         [
-            "run",
-            "--gui",
+            *command,
             str(example_pack_dir),
             "--backend",
             "mock",
@@ -490,6 +493,7 @@ def test_cli_runtime_demo_selects_a_reproducible_default_duration(
     assert config.connector_gap_m == pytest.approx(0.02)
 
 
+@pytest.mark.parametrize("command", (("runtime",), ("run", "--gui")))
 @pytest.mark.parametrize(
     ("demo", "expected_duration_s"),
     (
@@ -502,6 +506,7 @@ def test_cli_runtime_demo_selects_a_reproducible_default_duration(
 def test_cli_runtime_physical_smores_demos_supply_physics_defaults(
     smores_pack_dir: Path,
     monkeypatch: pytest.MonkeyPatch,
+    command: tuple[str, ...],
     demo: RuntimeDemo,
     expected_duration_s: float,
 ) -> None:
@@ -518,7 +523,7 @@ def test_cli_runtime_physical_smores_demos_supply_physics_defaults(
     result = runner.invoke(
         app,
         [
-            "runtime",
+            *command,
             str(smores_pack_dir),
             "--demo",
             demo.value,
@@ -561,6 +566,7 @@ def test_cli_runtime_physical_driver_to_snake_rejects_non_mujoco_backend(
     assert "--demo smores_physical_driver_to_snake requires --backend mujoco" in result.output
 
 
+@pytest.mark.parametrize("command", (("runtime",), ("run", "--gui")))
 @pytest.mark.parametrize(
     ("extra_args", "message"),
     (
@@ -575,13 +581,14 @@ def test_cli_runtime_physical_driver_to_snake_rejects_non_mujoco_backend(
 )
 def test_cli_runtime_physical_driver_to_snake_rejects_unsupported_options(
     smores_pack_dir: Path,
+    command: tuple[str, ...],
     extra_args: tuple[str, ...],
     message: str,
 ) -> None:
     result = runner.invoke(
         app,
         [
-            "runtime",
+            *command,
             str(smores_pack_dir),
             "--demo",
             RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE.value,
