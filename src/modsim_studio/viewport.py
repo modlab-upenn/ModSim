@@ -189,7 +189,7 @@ class RobotViewport(QWidget):
             render_window.MakeCurrent()
             shadow_pass.ReleaseGraphicsResources(render_window)
             shadow_pass.GetShadowMapBakerPass().ReleaseGraphicsResources(render_window)
-        except Exception:  # teardown must never raise
+        except Exception:
             pass
 
     def _rebuild(self) -> None:
