@@ -2,11 +2,18 @@
 
 ModSim Studio provides two optional native applications: the Robot Pack Builder
 with its PyVistaQt/VTK authoring viewport, and a lightweight Runtime Inspector
-with a PyQtGraph topology graph and event table. The applications share core
-Robot Pack and model-view contracts but remain separate windows in the current
-slice. A MuJoCo Runtime Inspector launch also opens the backend's native 3D
-viewer as a separate companion window by default; it is not embedded in either
-Studio application.
+with PyQtGraph topology/cubic-lattice views and an event table. The applications
+share core Robot Pack and model-view contracts but remain separate windows in
+the current slice. A MuJoCo Runtime Inspector launch also opens the backend's
+native 3D viewer as a separate companion window by default; it is not embedded
+in either Studio application.
+
+Online SMORES demos show live and target topology side by side in **Runtime state**.
+The **Planning** tab contains physical XY routes, per-action status, and a time-only
+action-history chart. **Event log** has its own tab for simulation events and planner
+decisions. Collapsible/hover legends explain the graphics, and a persistent result
+banner distinguishes completion from failure, stopping, or an exhausted time budget.
+See [Online planar planning](planning.md) for launch commands and scope.
 
 ## Install and launch
 
@@ -45,6 +52,59 @@ The standalone `modsim-studio` command and `python -m modsim_studio` are
 equivalent. Running through `.venv/bin/python -m modsim_studio` is useful while
 developing because the editable install uses the current source tree.
 
+## Appearance and workspace
+
+Both applications share a native Studio design with three built-in palettes:
+
+- **Midnight Panels** (default): navy surfaces with teal accents;
+- **Graphite Workbench**: charcoal surfaces with blue accents; and
+- **Light Studio**: warm ivory surfaces, sand borders, and navy blue accents.
+
+Use the **Theme** picker at the top right of either window to switch immediately.
+The choice is stored in Qt user settings under organization `ModSim`, application
+`Studio`, key `appearance/theme`. Both applications restore that preference on
+their next launch. Windows within the same process update together; an already
+running separate process keeps its current theme until changed or relaunched.
+Appearance preferences are not written into Robot Packs or tracked project files.
+
+The shared styling covers headers, menus, dialogs, fields, tables, tabs, and
+scrollbars. The authoring viewport background/grid and runtime graph colors
+also follow the palette. Theme changes preserve in-progress edits, document
+selection, viewport cameras, and runtime presentation state. Robot materials,
+geometry, physics, and the native MuJoCo companion viewer are unchanged.
+Charts use separate categorical hues instead of variations of the UI accent.
+The same planner state or assembly keeps its color meaning across themes, with
+darker inks on the light background. Legends show the colors currently in use.
+The styling and small line icons are implemented in Studio itself using the
+existing PySide6 dependency; no external theme or icon package is required.
+
+The Builder has an Open/Import/Save/Validate toolbar, a searchable project tree,
+and a scrollable Inspector. Connector pose inputs separate XYZ and RPY
+components. Connector and connector-type fields are grouped by purpose;
+connector custom metadata can be expanded when needed. The Validation tab
+shows the actual profile result and issue counts, with a read-only issue table
+when there are findings. Viewport layers and **Fit** are above the preview.
+Dock panels remain movable and can be restored through the **View** menu.
+
+The Builder prepares visual/collision geometry and diagnostic layers when a
+module is loaded, then retains their VTK graphics objects. Selecting links or
+joints updates highlights and properties; layer toggles change visibility.
+These interactions preserve the camera and draw at most once, without mesh
+reads or scene reconstruction. Connector edits replace only connector overlays;
+other semantic metadata edits leave mechanical geometry intact. New module
+scenes are constructed with intermediate rendering suppressed. Imported mesh
+data is cached for the active asset, copied before placement/scaling, and
+invalidated when that asset is reopened or reimported. **Fit** explicitly refits
+the camera. Mouse navigation continues to render interactively, while the
+static authoring viewport no longer redraws periodically when idle.
+
+Open, import, asset-root selection, and export use Qt's built-in file dialogs,
+which follow the Studio theme. They bypass the native GTK file picker, avoiding
+process aborts caused by incompatible GTK/pixbuf libraries inherited from a
+Snap-packaged terminal (for example, a loader requiring a newer system glibc).
+Native dialog helpers are disabled application-wide before dialogs are created;
+setting only the individual file-dialog option is too late on some Qt/GTK paths.
+
 ## Current feature inventory
 
 The current Studio MVP provides:
@@ -57,14 +117,16 @@ The current Studio MVP provides:
 - explicit connector-type creation and reference-safe removal, plus connector
   reassignment to an existing type and an imported URDF body/link;
 - connector-type fields for gender, compatibility, allowed orientations,
-  acceptance tolerances, physical constraints, compliance, load limits, and
-  undocking support, plus optional runtime docking policy;
+  acceptance tolerances, physical constraints, compliance, hinge axis/anchor
+  geometry, load limits, and undocking support, plus optional runtime docking
+  policy;
 - a Model Views catalog for adding, editing, and removing named builder
   recipes, supported modes, default selection hints, and JSON configuration;
 - a separate Runtime Inspector that runs named two-module or seven-module
-  scenarios, draws the live module-topology graph, retains the ordered
-  canonical event log, and can supervise a native MuJoCo companion window
-  showing that same runtime;
+  scenarios plus larger M-Blocks routes, draws the live module-topology or
+  cubic-lattice view, supports module-label visibility and lattice pan/orbit/
+  zoom controls, retains the ordered canonical event log, and can supervise a
+  native MuJoCo companion window showing that same runtime;
 - a read-only preview of the canonical split-YAML documents;
 - authoring validation with `F6` and stricter structural
   simulation-readiness validation with `F7`;
@@ -191,6 +253,14 @@ explicit policy and restores the documented runtime defaults. Applying any
 other connector-type edit preserves both a declared docking policy and custom
 metadata.
 
+Selecting `hinge` as the physical constraint enables **Hinge axis (x, y, z)**
+and **Hinge anchor separation (m)**. The axis must be a unit vector and is
+expressed in that connector's own frame, not the parent-link frame used by the
+connector's docking and approach axes. Anchor separation must be positive.
+Both compatible hinge types must define the same values. Selecting a different
+constraint disables and removes hinge geometry when the edit is applied; a
+hinge cannot be saved with either required field missing.
+
 To add a connector, select a concrete link row under **Module Types → module →
 Links**. The link's Properties panel contains **Add connector to this link**.
 The dialog requires a schema-valid lower-case identifier, an existing type
@@ -291,21 +361,22 @@ These are current-source limitations, not intended long-term behavior:
   roots, connector parents, source joints, named frames, or backend mapping
   names after the URDF is changed externally.
 - **Viewport coverage is intentionally limited.** Acceptance-region geometry
-  is editable but not rendered. The viewport shows one module type rather than
-  a multi-module assembly, has no joint animation, and does not display
+  and physical hinge axes/anchors are editable but not rendered. The viewport
+  shows one module type rather than a multi-module assembly, has no joint
+  animation, and does not display
   contacts, physics, docking execution, generated model-view previews, or
   runtime state. The separate Runtime Inspector renders the generated logical
   graph and events; its optional MuJoCo companion window renders 3D physics
   without embedding the backend viewer in Studio. A document edit rebuilds
   the scene, resets the camera, and currently returns multi-module documents
   to the first renderable module.
-- **Native authoring regression coverage remains limited.** Runtime presenter,
-  graph/event widgets, and worker shutdown have focused automated coverage.
-  Document-model tests cover connector/type mutation, URDF-body association,
-  metadata persistence, and selection-supporting state changes, but there are
-  no automated MainWindow/viewport tests for the corresponding dialogs,
-  tree-selection lifecycle, or 3D interaction. Treat manual reproduction steps
-  and the session log as required evidence when reporting those authoring issues.
+- **Native authoring regression coverage remains limited.** Focused Builder
+  tests cover appearance, pending connector edits, project filtering, and file
+  picker acceptance/cancellation with a stub viewport. The native launch smoke
+  test checks camera/material preservation when switching themes. Full 3D
+  interaction and all editing dialogs still need manual reproduction and session
+  logs. Document-model tests separately cover connector/type mutation,
+  URDF-body association, and metadata persistence.
 
 ## Import support and limitations
 

@@ -1,0 +1,129 @@
+<mujoco model="smores_ep">
+  <!--
+    Physics-oriented SMORES-EP model.
+
+    Geometry and inertials come from the repository's Fusion 360 URDF export.
+    Tire/skid friction, joint damping/armature, and the skid geometry are
+    provisional simulation parameters chosen for the first dynamics demo.
+    Detailed STL meshes are visual-only; simple primitives carry contact.
+  -->
+  <compiler angle="radian" meshdir="../meshes"/>
+
+  <asset>
+    <material name="body_material" rgba="0.68 0.70 0.74 1" metallic="0.25" roughness="0.38"/>
+    <material name="wheel_material" rgba="0.16 0.18 0.21 1" metallic="0.05" roughness="0.72"/>
+    <material name="front_material" rgba="0.58 0.61 0.66 1" metallic="0.2" roughness="0.42"/>
+
+    <mesh name="base_link_mesh" file="base_link.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="left_wheel_mesh" file="left_wheel_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="right_wheel_mesh" file="right_wheel_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="tilt_body_mesh" file="tilt_body_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="front_wheel_mesh" file="front_wheel_1.stl" scale="0.001 0.001 0.001"/>
+  </asset>
+
+  <default>
+    <default class="visual">
+      <geom type="mesh" contype="0" conaffinity="0" group="1" density="0"/>
+    </default>
+    <default class="tire_ground_contact">
+      <geom type="cylinder" contype="1" conaffinity="1" condim="4" group="3"
+            friction="1.0 0.01 0.0001" solref="0.01 1" solimp="0.95 0.99 0.001"
+            rgba="0.12 0.12 0.12 0.35" density="0"/>
+      <!-- Explicit pairs are required for distinct lateral/rolling friction.
+           The scene composer instantiates this pair default against its one
+           shared ground geom for every module copy. -->
+      <pair condim="4" friction="0.05 1.0 0.01 0.0001 0.0001"
+            solref="0.01 1" solimp="0.95 0.99 0.001"/>
+    </default>
+    <default class="skid_ground_contact">
+      <geom type="sphere" contype="1" conaffinity="1" condim="3" group="3"
+            friction="0.08 0.005 0.0001" solref="0.01 1" solimp="0.95 0.99 0.001"
+            rgba="0.2 0.2 0.2 0.35" density="0"/>
+      <pair condim="3" friction="0.08 0.08 0.005 0.0001 0.0001"
+            solref="0.01 1" solimp="0.95 0.99 0.001"/>
+    </default>
+    <default class="face_contact">
+      <!-- Contact bit 2 lets docking faces contact one another but not the bit-1 floor. -->
+      <geom type="box" contype="2" conaffinity="2" condim="3" group="3"
+            friction="0.35 0.01 0.0001" solref="0.01 1" solimp="0.95 0.99 0.001"
+            rgba="0.2 0.55 0.9 0.25" density="0"/>
+    </default>
+  </default>
+
+  <worldbody>
+    <body name="base_link">
+      <inertial pos="0.0031489501883319535 -0.00016602533535364005 0.00003359366217456069"
+                mass="0.21126729893698074"
+                fullinertia="0.000219 0.000154 0.000153 0.000001 0 0"/>
+      <geom name="base_visual" class="visual" mesh="base_link_mesh" material="body_material"/>
+      <geom name="bottom_face_proxy" class="face_contact"
+            pos="-0.006741577148 0 0" size="0.004 0.03255 0.0354428"/>
+      <geom name="rear_skid" class="skid_ground_contact" pos="-0.010 0 -0.036" size="0.004"/>
+
+      <body name="left_wheel_1" pos="0.034458 0 0">
+        <joint name="joint_left_wheel" type="hinge" axis="0 1 0"
+               damping="0.001" armature="0.0005"/>
+        <inertial pos="0.000014285802414214233 0.039323422658391796 0.000011707051038491707"
+                  mass="0.07722957032161351"
+                  fullinertia="0.000018 0.000033 0.000018 0 0 0"/>
+        <geom name="left_wheel_visual" class="visual" mesh="left_wheel_mesh"
+              pos="-0.034458 0 0" material="wheel_material"/>
+        <geom name="left_tire_contact" class="tire_ground_contact"
+              pos="0 0.03360 0" quat="0.7071067811865476 0.7071067811865475 0 0"
+              size="0.04 0.01045"/>
+        <!-- This face rotates with the wheel. A coaxial disk preserves its
+             circular swept volume; a box grows rotating corners that collide
+             with an otherwise valid docked neighbour. -->
+        <geom name="left_face_proxy" class="face_contact"
+              type="cylinder" pos="0 0.04005 0"
+              quat="0.7071067811865476 0.7071067811865475 0 0"
+              size="0.0375 0.004"/>
+      </body>
+
+      <body name="right_wheel_1" pos="0.034458 0 0">
+        <joint name="joint_right_wheel" type="hinge" axis="0 1 0"
+               damping="0.001" armature="0.0005"/>
+        <inertial pos="0.000014282394199163773 -0.039323422411277516 -0.000011710095128829764"
+                  mass="0.07722950784796127"
+                  fullinertia="0.000018 0.000033 0.000018 0 0 0"/>
+        <geom name="right_wheel_visual" class="visual" mesh="right_wheel_mesh"
+              pos="-0.034458 0 0" material="wheel_material"/>
+        <geom name="right_tire_contact" class="tire_ground_contact"
+              pos="0 -0.03360 0" quat="0.7071067811865476 0.7071067811865475 0 0"
+              size="0.04 0.01045"/>
+        <geom name="right_face_proxy" class="face_contact"
+              type="cylinder" pos="0 -0.04005 0"
+              quat="0.7071067811865476 0.7071067811865475 0 0"
+              size="0.0375 0.004"/>
+      </body>
+
+      <body name="tilt_body_1" pos="0.034458 0 0">
+        <!-- Reflected drivetrain inertia/damping are provisional. They keep
+             the 1000:1 pan/tilt stages controllable instead of behaving like
+             ideal bare hinges. -->
+        <joint name="joint_tilt" type="hinge" axis="0 1 0"
+               range="-1.570796 1.570796" limited="true"
+               damping="0.01" armature="0.0002"/>
+        <inertial pos="0.018880520013409244 -0.00021423502177737798 0.0000695488508724099"
+                  mass="0.041194439942392795"
+                  fullinertia="0.000032 0.000024 0.000033 0 0 0"/>
+        <geom name="tilt_body_visual" class="visual" mesh="tilt_body_mesh"
+              pos="-0.034458 0 0" material="body_material"/>
+
+        <body name="front_wheel_1" pos="0.039912 0 0">
+          <joint name="joint_pan" type="hinge" axis="1 0 0"
+                 damping="0.01" armature="0.0002"/>
+          <inertial pos="0.0006570820646822212 0.000028637889182632384 -0.00005061828486081427"
+                    mass="0.031715980738751155"
+                    fullinertia="0.000023 0.000012 0.000012 0 0 0"/>
+          <geom name="front_wheel_visual" class="visual" mesh="front_wheel_mesh"
+                pos="-0.07437 0 0" material="front_material"/>
+          <geom name="pan_face_proxy" class="face_contact"
+                type="cylinder" pos="0.001762 0 0"
+                quat="0.7071067811865476 0 0.7071067811865475 0"
+                size="0.035 0.004"/>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+</mujoco>

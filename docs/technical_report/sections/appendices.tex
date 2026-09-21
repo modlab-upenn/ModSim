@@ -1,0 +1,327 @@
+\section{Robot Pack Schema Summary}
+\label{app:schema}
+
+This appendix summarizes the implemented format. The normative contract remains
+\pathcode{docs/robot_pack_spec.md} and the Pydantic models under
+\pathcode{src/modsim/robot_packs/schema.py}.
+
+\begin{longtable}{L{0.24\textwidth}L{0.25\textwidth}L{0.39\textwidth}}
+\caption{Robot Pack 0.1 principal documents and fields.}
+\label{tab:schema-summary}\\
+\toprule
+Entity & Principal fields & Purpose \\
+\midrule
+\endfirsthead
+\toprule
+Entity & Principal fields & Purpose \\
+\midrule
+\endhead
+Manifest & schema version, ID/name/version, metadata, views, assets, split paths,
+mappings & Root identity and cross-document catalog \\
+Asset manifest & URDF list, mesh directories, MuJoCo assets, Isaac assets, thumbnails &
+Declared mechanical/visual resources \\
+Module type & asset reference, root link, mass, joints, connectors, capabilities &
+Reusable semantic hardware unit \\
+Joint & source name, type, parent/child, axis, control modes, limits &
+Semantic articulation and controller contract \\
+Connector instance & type, parent link, frame/local pose, docking/approach axes,
+metadata & Physical port placement \\
+Connector type & activity, gender, compatibility, orientations, acceptance, physical
+intent, limits, policy, metadata & Shared mating and lifecycle contract \\
+Capability & kind, description, connector requirements & Advertised action/behavior \\
+Model-view recipe & builder, modes, default, configuration & Portable view-generation request \\
+Backend mapping & asset catalog and module link/joint/frame/constraint maps &
+Semantic-to-backend name translation \\
+\bottomrule
+\end{longtable}
+
+\subsection{Identifier grammar}
+
+Most semantic IDs match
+\code{\^{}[a-z][a-z0-9]*(?:\_[a-z0-9]+)*\$} and have a maximum length of 64.
+Runtime compound identifiers use \code{<module>/<local>} for connectors/joints and a
+canonical sorted pair for connection IDs. Display names are not IDs.
+
+\subsection{Units}
+
+Fields include units in their names wherever ambiguity is likely:
+\code{mass\_kg}, \code{xyz\_m}, \code{rpy\_rad},
+\code{position\_tolerance\_m}, \code{orientation\_tolerance\_rad},
+\code{max\_relative\_velocity\_m\_s}, \code{effort\_nm}, and related forms.
+Runtime commands and snapshots use SI.
+
+\subsection{Connector policy defaults}
+
+The effective default is explicit command required, measured alignment, no redock
+cooldown, and no break force. Defaults are serialized and round-trip tested so Studio
+editing does not silently erase connector-type metadata or policy.
+
+\section{Runtime Events and State Transitions}
+\label{app:events}
+
+\begin{longtable}{L{0.27\textwidth}L{0.58\textwidth}}
+\caption{Canonical semantic event taxonomy.}
+\label{tab:event-taxonomy}\\
+\toprule
+Event & Meaning \\
+\midrule
+\endfirsthead
+\toprule
+Event & Meaning \\
+\midrule
+\endhead
+\code{DockCandidateDetected} & A compatible pair entered candidate evaluation; emitted
+on transition rather than every step. \\
+\code{DockCommitted} & Backend created a physical constraint and the logical connection
+was committed. \\
+\code{DockFailed} & An explicit attempt failed compatibility, acceptance, guard, or
+backend execution. \\
+\code{AssemblyMerged} & A committed dock joined two previously separate components. \\
+\code{UndockCommitted} & Backend removed the constraint and logical connection. \\
+\code{UndockFailed} & Requested release did not execute. \\
+\code{AssemblySplit} & An undock separated one connected component into multiple components. \\
+\code{ConnectorOverloaded} & Reported physical load exceeded the weaker break-force policy. \\
+\bottomrule
+\end{longtable}
+
+The actively used connector lifecycle states include free, candidate detected,
+in-acceptance, latching, docked, releasing, and failed. The broader vocabulary also
+contains aligning and load-bearing states for future richer execution. A failed
+transient is cleared on the next backend ingest, while cooldown prevents immediate
+retries where configured.
+
+\subsection{Successful dock pseudocode}
+
+\begin{lstlisting}[language=Python]
+snapshot = adapter.snapshot()
+world.ingest(snapshot)
+
+for pair in sorted(candidate_pairs(world)):
+    compatibility = check_compatibility(pair)
+    acceptance = evaluate_acceptance(pair, world)
+    guards = evaluate_guards(pair, world, commands)
+    if not (compatibility.ok and acceptance.ok and guards.ok):
+        report_commanded_failure_if_needed()
+        continue
+
+    request = build_connection_request(pair, acceptance)
+    outcome = adapter.create_physical_connection(request)
+    if outcome.accepted:
+        world.apply(DockCommitted(..., handle=outcome.handle))
+        world.apply(AssemblyMerged(...))  # only if components differed
+    else:
+        world.apply(DockFailed(reason="backend_refused", ...))
+\end{lstlisting}
+
+\section{SMORES-EP Parameters and Provenance}
+\label{app:parameters}
+
+\begin{longtable}{L{0.33\textwidth}L{0.22\textwidth}L{0.31\textwidth}}
+\caption{Key \smoresep{} model and controller values.}
+\label{tab:parameter-provenance}\\
+\toprule
+Quantity & Value & Provenance/status \\
+\midrule
+\endfirsthead
+\toprule
+Quantity & Value & Provenance/status \\
+\midrule
+\endhead
+Module mass & \SI{0.4386368}{kg} & Fusion-derived geometry/inertial export \\
+Wheel radius & \SI{0.040}{m} & Fusion-derived \\
+Track width & \SI{0.0672}{m} & Fusion-derived \\
+Wheel angular-speed cap & $\pi/2\,\mathrm{rad/s}$ & Published platform value \\
+Wheel effort cap & \SI{0.04}{N.m} & Provisional simulation value \\
+PAN/TILT effort cap & \SI{0.10}{N.m} & Provisional simulation value \\
+Wheel velocity gain & $0.1\,\mathrm{N,m/(rad/s)}$ & Provisional simulation value \\
+Hold $P,D$ & $1.0,0.02$ & Provisional simulation value \\
+Solver/controller period & \SI{0.002}{s} default & Provisional tuned value \\
+Maximum accepted timestep & \SI{0.005}{s} & Scenario safety bound \\
+Connector position tolerance & \SI{0.006}{m} & Conservative semantic proxy \\
+Pair near-contact gate & \SI{0.001}{m} & Two-module simulation choice \\
+Physical-snake latch gate & \SI{0.006}{m} & Uses pack acceptance envelope \\
+Orientation tolerance & \SI{25}{\degree} & Literature-motivated, not fully calibrated \\
+Relative-speed tolerance & \SI{0.05}{m/s} & Pack semantic value \\
+Redock cooldown & \SI{0.1}{s} & Pack semantic value \\
+Release delay & \SI{0.08}{s} & Literature-derived switching delay model \\
+Normal/shear/bending limits & 100 N / 50 N / 2 N m & Explicitly unverified/provisional \\
+Tire friction tuple & $(0.05,1,0.01,10^{-4},10^{-4})$ & Provisional anisotropic contact \\
+Skid friction tuple & $(0.08,0.08,0.005,10^{-4},10^{-4})$ & Provisional contact \\
+Rigid-allocation residual cap & \SI{0.08}{m/s} & Provisional controller safety bound \\
+\bottomrule
+\end{longtable}
+
+\section{Driver-to-Snake Topology and Routes}
+\label{app:routes}
+
+\subsection{Initial topology}
+
+The six initial connector edges are:
+
+\begin{enumerate}
+  \item \code{module\_1/bottom}--\code{module\_2/pan};
+  \item \code{module\_2/bottom}--\code{module\_3/pan};
+  \item \code{module\_2/right}--\code{module\_4/left};
+  \item \code{module\_4/right}--\code{module\_5/left};
+  \item \code{module\_5/pan}--\code{module\_6/bottom}; and
+  \item \code{module\_5/bottom}--\code{module\_7/pan}.
+\end{enumerate}
+
+\subsection{Physical route parameters}
+
+Waypoints are $(f,l,h,d,\epsilon)$: forward offset, left offset, heading offset,
+drive direction, and position tolerance, all relative to the action's final moving-root
+pose. Heading tolerance is $\pi$ in the current route helper unless explicit alignment
+is enabled.
+
+\begin{longtable}{L{0.08\textwidth}L{0.72\textwidth}L{0.10\textwidth}}
+\caption{Authored target-relative Driver-to-Snake routes.}
+\label{tab:route-details}\\
+\toprule
+Action & Waypoints $(f,l,h,d,\epsilon)$ & Approach \\
+\midrule
+\endfirsthead
+\toprule
+Action & Waypoints $(f,l,h,d,\epsilon)$ & Approach \\
+\midrule
+\endhead
+1 & $(0.34,0,0,+1,0.03)$; $(0.34,0.13,\pi/2,+1,0.03)$;
+$(-0.06,0.13,\pi,+1,0.03)$; $(-0.06,0,-\pi/2,+1,0.03)$;
+$(-0.03,0,0,+1,0.01)$ & forward \\
+2 & $(-0.34,0,0,-1,0.03)$; $(-0.34,-0.13,-\pi/2,+1,0.03)$;
+$(0.06,-0.13,0,+1,0.03)$; $(0.06,0,\pi/2,+1,0.03)$;
+$(0.12,0,0,+1,0.015)$ & reverse \\
+3 & $(-0.27,0.088,0,-1,0.03)$; $(-0.03,0,-0.35,+1,0.01)$ & forward \\
+4 & $(0.27,-0.088,0,+1,0.075)$; $(0.03,0.008,-0.35,-1,0.01)$ & reverse \\
+\bottomrule
+\end{longtable}
+
+The action-4 \SI{8}{mm} prebias and \SI{75}{mm} clearance tolerance are empirical
+simulation tuning. They should be replaced by planned, feedback-corrected paths in a
+general controller.
+
+\section{Reproduction Commands}
+\label{app:commands}
+
+\subsection{Environment}
+
+\begin{lstlisting}[language=bash]
+uv sync --locked --extra dev --extra studio --extra mujoco --python 3.12
+uv run --no-sync modsim --version
+\end{lstlisting}
+
+Equivalent editable pip installation:
+
+\begin{lstlisting}[language=bash]
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -e ".[studio,mujoco,dev]"
+\end{lstlisting}
+
+\subsection{Pack inspection and Studio}
+
+\begin{lstlisting}[language=bash]
+modsim pack inspect examples/robot_packs/smores_ep
+modsim pack validate examples/robot_packs/smores_ep
+modsim pack validate examples/robot_packs/smores_ep --profile simulation
+modsim studio examples/robot_packs/smores_ep
+\end{lstlisting}
+
+\subsection{Physical two-module demonstration}
+
+\begin{lstlisting}[language=bash]
+modsim runtime examples/robot_packs/smores_ep \
+  --backend mujoco \
+  --demo smores_diff_drive_dock_undock \
+  --model-view smores_topology
+\end{lstlisting}
+
+\subsection{Kinematic Driver-to-Snake}
+
+\begin{lstlisting}[language=bash]
+modsim runtime examples/robot_packs/smores_ep \
+  --backend mujoco \
+  --demo smores_driver_to_snake \
+  --model-view smores_topology \
+  --duration 14 \
+  --dt 0.002 \
+  --no-gravity
+\end{lstlisting}
+
+\subsection{Physical Driver-to-Snake}
+
+\begin{lstlisting}[language=bash]
+modsim runtime examples/robot_packs/smores_ep \
+  --backend mujoco \
+  --demo smores_physical_driver_to_snake \
+  --model-view smores_topology \
+  --speed 4
+\end{lstlisting}
+
+Omit \code{--speed} for real-time pacing. The factor is fixed at launch. Both windows
+retain the final state until Stop or close.
+
+\subsection{Verification}
+
+\begin{lstlisting}[language=bash]
+uv lock --check
+uv run --no-sync ruff check .
+uv run --no-sync ruff format --check .
+uv run --no-sync pyright
+uv run --no-sync pyright --project pyright-mujoco.json
+uv run --no-sync pyright --project pyright-studio.json
+uv run --no-sync pytest
+\end{lstlisting}
+
+Focused physical tests:
+
+\begin{lstlisting}[language=bash]
+uv run --no-sync pytest tests/test_mujoco_physical_docking.py
+uv run --no-sync pytest tests/test_mujoco_physical_reconfiguration.py
+uv run --no-sync pytest tests/test_mujoco_contact_mechanics.py
+\end{lstlisting}
+
+\section{Requirement-to-Evidence Traceability}
+\label{app:traceability}
+
+\begin{longtable}{L{0.11\textwidth}L{0.35\textwidth}L{0.40\textwidth}}
+\caption{Traceability from \cref{tab:requirements} to principal implementation evidence.}
+\label{tab:traceability}\\
+\toprule
+Req. & Implementation & Principal regression areas \\
+\midrule
+\endfirsthead
+\toprule
+Req. & Implementation & Principal regression areas \\
+\midrule
+\endhead
+R1--R2 & schema, loader, validator & schema, loader, validator, SMORES example pack \\
+R3 & backend base/registry, mock, MuJoCo adapter & registry, backend conformance \\
+R4 & broad phase, acceptance, guards, docking & acceptance and docking suites \\
+R5 & connection request/outcome and event commit & docking, MuJoCo weld, refusal tests \\
+R6 & world revisions, assemblies, model topology & assemblies, revisions, model views \\
+R7 & joint IDs/commands/session validation, MuJoCo effort & joint commands, MuJoCo backend \\
+R8 & inspection DTO/protocol/presenter/process/window & runtime inspection/process/widgets/worker \\
+R9 & safe paths, writer staging/rollback, Studio project & loader, writer, Studio project \\
+R10 & backend and model-view registries & registry and model-view factory tests \\
+Physical pair & differential-drive scenario and MJCF contact & physical docking/contact tests \\
+Physical snake & physical reconfiguration and authored routes & full MuJoCo physical reconfiguration \\
+\bottomrule
+\end{longtable}
+
+\section{Artifact Checklist}
+\label{app:artifact}
+
+For an archival release accompanying a future publication, include:
+
+\begin{itemize}
+  \item tagged commit, version, lock file, and built wheel/source distribution;
+  \item explicit software LICENSE, asset license/NOTICE, and CITATION.cff;
+  \item pinned TeX toolchain and rendered report PDF;
+  \item exact command configurations and source-checkout scenarios;
+  \item raw trace files with hashes;
+  \item machine/OS/CPU/GPU disclosure in a separate benchmark manifest;
+  \item videos synchronized with event sequence and simulated time;
+  \item calibration data and hardware experimental protocol; and
+  \item expected terminal metrics and tolerance bands.
+\end{itemize}
+

@@ -108,6 +108,7 @@ def _connection_edge(connection: ConnectionRuntime) -> DockedConnectionEdge:
         target=target,
         connector_a=connector_a,
         connector_b=connector_b,
+        constraint=connection.constraint,
         orientation_rad=connection.orientation_rad,
         orientation_index=connection.orientation_index,
         created_at_s=connection.created_at_s,

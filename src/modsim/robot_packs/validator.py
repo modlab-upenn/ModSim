@@ -358,7 +358,6 @@ class RobotPackValidator:
                 connector_type.physical_connection is not None
                 and connector_type.physical_connection.constraint
                 in {
-                    PhysicalConstraintType.HINGE,
                     PhysicalConstraintType.BALL,
                     PhysicalConstraintType.CUSTOM,
                 }
@@ -380,7 +379,7 @@ class RobotPackValidator:
                         ),
                         entity_ref=connector_ref,
                         suggested_fix=(
-                            "Use a fixed or compliant connection for Phase 1, or keep "
+                            "Use a fixed, compliant, or hinge connection, or keep "
                             "this pack in the authoring profile."
                         ),
                     )

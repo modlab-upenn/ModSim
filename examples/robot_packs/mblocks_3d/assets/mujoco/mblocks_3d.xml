@@ -1,0 +1,55 @@
+<mujoco model="mblocks_3d_cad_proxy">
+  <!--
+    One-plane physics bootstrap for the imported CAD model. Detailed STL
+    meshes remain visual-only and a nominal 50 mm box carries contact. The
+    physical mass, flywheel axial inertia, speed ceiling, and effort ceilings
+    follow the published reference values; unreported contact and damping
+    values remain provisional.
+  -->
+  <compiler angle="radian" meshdir="../meshes" />
+
+  <asset>
+    <material name="shell_material" rgba="0.23 0.27 0.32 1" metallic="0.32" roughness="0.42" />
+    <material name="carrier_material" rgba="0.70 0.72 0.76 1" metallic="0.55" roughness="0.32" />
+    <material name="flywheel_material" rgba="0.74 0.43 0.18 1" metallic="0.62" roughness="0.30" />
+    <mesh name="base_link_mesh" file="base_link.stl" scale="0.001 0.001 0.001" />
+    <mesh name="actuator_carrier_mesh" file="actuator_carrier_link_1.stl" scale="0.001 0.001 0.001" />
+    <mesh name="flywheel_mesh" file="flywheel_link_1.stl" scale="0.001 0.001 0.001" />
+  </asset>
+
+  <default>
+    <default class="visual">
+      <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" />
+    </default>
+    <default class="module_contact">
+      <geom type="box" contype="1" conaffinity="1" condim="4" group="3"
+            friction="0.9 0.01 0.0001" solref="0.006 1"
+            solimp="0.95 0.99 0.001" rgba="0.22 0.50 0.82 0.25" density="0" />
+    </default>
+  </default>
+
+  <worldbody>
+    <body name="base_link">
+      <inertial pos="0 0 0" mass="0.129"
+                fullinertia="0.00005375 0.00005375 0.00005375 0 0 0" />
+      <geom name="base_visual" class="visual" mesh="base_link_mesh" material="shell_material" />
+      <geom name="base_collision_proxy" class="module_contact" size="0.025 0.025 0.025" />
+
+      <body name="actuator_carrier_link_1">
+        <inertial pos="0 0 0" mass="0.001"
+                  fullinertia="0.0000001 0.0000001 0.0000001 0 0 0" />
+        <geom name="carrier_visual" class="visual" mesh="actuator_carrier_mesh"
+              material="carrier_material" />
+
+        <body name="flywheel_link_1">
+          <joint name="flywheel_joint" type="hinge"
+                 axis="0 1 0" damping="0.000001" />
+          <inertial pos="0 0 0" mass="0.020"
+                    fullinertia="0.0000043 0.0000084 0.0000043 0 0 0" />
+          <geom name="flywheel_visual" class="visual" mesh="flywheel_mesh"
+                material="flywheel_material" />
+        </body>
+      </body>
+    </body>
+  </worldbody>
+</mujoco>

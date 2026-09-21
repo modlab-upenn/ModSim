@@ -351,18 +351,34 @@ class ComplianceSpec(StrictModel):
         return self
 
 
+class HingeConstraintSpec(StrictModel):
+    """Geometry required to realise a hinge between two connector frames."""
+
+    axis: UnitVector3 = Field(
+        description=("Shared unit hinge axis expressed in each endpoint connector frame."),
+    )
+    anchor_separation_m: PositiveFloat = Field(
+        description="Distance between the two hinge anchors along the local hinge axis.",
+    )
+
+
 class PhysicalConnectionSpec(StrictModel):
     """Physical constraint requested from a simulation backend."""
 
     constraint: PhysicalConstraintType
     compliance: ComplianceSpec | None = None
+    hinge: HingeConstraintSpec | None = None
 
     @model_validator(mode="after")
-    def validate_compliance(self) -> Self:
+    def validate_constraint_parameters(self) -> Self:
         if self.constraint is PhysicalConstraintType.COMPLIANT and self.compliance is None:
             raise ValueError("compliant constraints require compliance parameters")
         if self.constraint is not PhysicalConstraintType.COMPLIANT and self.compliance is not None:
             raise ValueError("compliance parameters require a compliant constraint")
+        if self.constraint is PhysicalConstraintType.HINGE and self.hinge is None:
+            raise ValueError("hinge constraints require hinge parameters")
+        if self.constraint is not PhysicalConstraintType.HINGE and self.hinge is not None:
+            raise ValueError("hinge parameters require a hinge constraint")
         return self
 
 

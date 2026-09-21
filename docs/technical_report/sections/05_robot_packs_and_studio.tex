@@ -1,0 +1,189 @@
+\section{Robot Packs, Validation, Persistence, and Studio}
+\label{sec:robotpacks}
+
+\subsection{Robot Pack as the portable unit}
+
+A \robotpack{} is a directory whose root document is
+\pathcode{robot_pack.yaml}. It contains split semantic specifications, backend mapping
+documents, and declared local assets. The current schema version is 0.1. The pack is the
+unit a collaborator should copy, validate, open in Studio, and instantiate in a
+runtime. It is not merely a pointer to a machine-local URDF tree.
+
+\begin{lstlisting}[language={},caption={Representative Robot Pack layout.}]
+smores_ep/
+  robot_pack.yaml
+  specs/
+    module_types.yaml
+    connector_types.yaml
+    capabilities.yaml
+  mappings/
+    urdf_mapping.yaml
+  assets/
+    urdf/smores_ep.urdf
+    mujoco/smores_ep.xml
+    meshes/*.stl
+    collision_meshes/*.obj
+\end{lstlisting}
+
+The root manifest defines identity, semantic version, description, bounded JSON-safe
+metadata, model-view recipes, asset catalogs, split-document paths, and mappings. Split
+documents keep frequently edited catalogs readable and give validation issues a
+specific document and JSON-pointer-like path.
+
+\subsection{Strict schema and stable identifiers}
+
+Pydantic models are strict, frozen, and reject unknown fields. Coercion, non-finite
+numbers, and invalid paths fail rather than being normalized silently. Semantic IDs use
+lowercase snake case, begin with a letter, and are at most 64 characters. This is why a
+connector type ID such as \code{EP} is invalid while \code{ep\_face} is valid. Display
+names remain free-form and human-readable.
+
+The distinction matters operationally. IDs appear in cross-references, runtime
+instance IDs, mappings, graph keys, and events, so casual renaming is disruptive.
+Names are presentation. Studio turns raw schema messages into this distinction and
+suggests a normalized ID where possible.
+
+\subsection{Module, joint, and connector semantics}
+
+A module type selects a mechanical asset, identifies its root link, optionally records
+mass, declares semantic joints and connector instances, and advertises capabilities.
+It does not replicate all URDF links. A joint records source name, joint type,
+parent/child link, normalized axis, exposed control modes, and unit-bearing limits.
+The schema can express position, velocity, and effort; the current \mujoco{} adapter
+implements effort only.
+
+A connector instance includes:
+
+\begin{itemize}
+  \item stable ID and connector type reference;
+  \item parent link;
+  \item a named frame and/or numeric local pose;
+  \item docking and approach axes expressed in the parent-link frame; and
+  \item bounded custom metadata.
+\end{itemize}
+
+A connector type contains the shared mating contract: active flag, gender, mutual
+compatibility catalog, discrete or continuous roll orientations, capture shape and
+tolerances, physical connection intent, compliance/load data, undocking support,
+docking policy, and metadata. Current connection intent vocabulary includes fixed,
+compliant, hinge, ball, and custom; runtime support is narrower. This is deliberate:
+the schema can preserve future intent while validation and capability checks refuse
+unsupported execution.
+
+\subsection{Custom metadata}
+
+Metadata is intentionally JSON-compatible rather than an unbounded YAML escape hatch.
+It is supported at the manifest, connector type, connector instance, and model-view
+configuration levels. This allows platform provenance, calibration notes, UI hints,
+and external identifiers without weakening standard fields. Metadata does not alter
+docking semantics unless a registered consumer interprets it. The schema presently has
+no arbitrary module-type metadata field, which prevents the report from overstating
+the scope of the feature.
+
+\subsection{Backend mappings and capabilities}
+
+Mappings associate a semantic module with a selected asset and provide link, joint,
+connector-frame, and constraint name translations. The design anticipates different
+naming schemes in URDF, MJCF, and a future USD backend. Current \mujoco{} support does
+not yet consume the full mapping vocabulary and generally expects semantic names to
+match the selected asset. Named-frame-only connectors are refused; numeric local poses
+are required for the current path.
+
+Capabilities are either primitive actions or higher-level behaviors. They can require
+connector types and can be advertised by modules. In version 0.1 they are validated
+descriptions, not executable command signatures. This distinction prevents a pack from
+claiming that a runtime behavior engine already exists.
+
+\subsection{Safety and loading}
+
+The loader uses safe YAML, rejects duplicate keys, checks schema version, and injects
+catalog-key IDs before model validation. Pack and split-document symlinks are rejected.
+Paths must be relative, normalized, contained under the pack root, and free of home,
+absolute, Windows-drive, backslash, control-character, and parent-traversal forms.
+Network asset retrieval is not permitted during load.
+
+These restrictions serve two purposes. They make a pack genuinely portable, and they
+prevent a downloaded data package from reading arbitrary files. Robot Packs also name
+builders and backends by stable IDs; they do not contain executable Python import
+paths.
+
+\subsection{Validation profiles}
+
+Validation produces deterministic, structured issues with severity, stable code,
+document, path, entity, explanation, and suggested fix. The \emph{authoring} profile
+permits incomplete data with warnings so a draft can be opened and refined. The
+\emph{simulation} profile promotes missing connector limits, joint limits, or mappings
+to errors where structural readiness requires them.
+
+Simulation validation must not be confused with a solver run. It does not parse every
+referenced URDF name, load a backend, prove collision quality, or guarantee controller
+stability. It states that the semantic package is complete enough to attempt a
+simulation.
+
+\subsection{Canonical writing and atomic update}
+
+The writer revalidates the in-memory model, renders deterministic split YAML, copies
+declared assets without following symlinks or special entries, stages the result,
+reloads it, and compares semantics before publication. A new \code{write} refuses an
+existing destination. An \code{update} builds a sibling staging directory, renames the
+original to a backup, publishes the new tree, and attempts rollback if publication
+fails.
+
+Canonical output intentionally discards comments, anchors, hand formatting, and unknown
+files. This is the cost of treating the schema model, rather than arbitrary YAML text,
+as authoring state. Studio's Save and Export commands use the same path, so CLI and GUI
+do not generate subtly different packs.
+
+\subsection{URDF import}
+
+The dependency-light URDF importer caps input size, forbids symlinks, DTDs, and entity
+declarations, and parses robot/link/joint trees, origins, axes, limits, masses, basic
+geometry, mesh references, and material colors. It resolves relative, local
+\code{file://}, and \code{package://} meshes against explicit roots; it never downloads
+HTTP assets. The draft builder copies resolved meshes, rewrites URDF references,
+creates an initial mapping, and derives module mass.
+
+Connectors cannot be inferred reliably from ordinary URDF. Their semantics and precise
+mating frames are authored afterward. Xacro expansion, transmissions, simulator
+extensions, comprehensive OBJ/DAE sidecars, and texture copying remain future work.
+
+\subsection{Robot Pack Studio}
+
+Studio is a native PySide6 application with a PyVista/PyVistaQt viewport. Its Qt-free
+\code{StudioProject} treats each edit functionally: dump the existing pack, apply a
+bounded change, revalidate, and return a dirty replacement. This centralizes
+referential integrity outside individual widgets.
+
+The current interface supports:
+
+\begin{itemize}
+  \item opening a pack or creating one from URDF;
+  \item project and URDF tree navigation;
+  \item pack, connector-type, connector-instance, joint, and model-view property
+        editing;
+  \item connector-type add/edit/reference-safe removal;
+  \item connector-instance add/edit/remove and parent-link association;
+  \item row-oriented JSON metadata editing;
+  \item authoring and simulation-profile validation;
+  \item canonical YAML preview;
+  \item atomic Save and non-overwriting Export As; and
+  \item a per-launch local session log truncated at startup.
+\end{itemize}
+
+The viewport renders the URDF at zero joint configuration with detailed visual meshes,
+material or fallback colors, smooth/PBR shading, multiple lights, shadows, an expanded
+ground grid, link frames, joint axes, connector glyphs, and optional red wireframe
+collision proxies. Selecting a link can initiate connector creation, and link selection
+is highlighted.
+
+\subsection{Studio limitations}
+
+Studio currently visualizes one module at zero configuration. It does not animate
+joints, render multi-module assemblies, pick connector glyphs in 3-D, provide a
+connector transform gizmo, draw capture volumes, render named-frame-only connectors,
+or show live contacts and forces. Texture images and normal maps are not bundled or
+rendered. Rebuilding after an edit may reset the camera, and UI-level regression
+coverage is lighter than core model coverage. These limitations motivate future
+integration between the authoring and runtime shells but do not change the current
+authority boundary.
+

@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot name="mblocks_3d_cad_proxy">
+  <!--
+    Expanded from the user-provided M-Block_description Xacro. The original
+    package-local substitutions and ROS/Gazebo includes are intentionally
+    removed so this Robot Pack is self-contained. CAD meshes are preserved;
+    inertial and flywheel-axis values implement the paper-reference one-plane
+    physics bootstrap and the base collision is a nominal 50 mm cube proxy.
+  -->
+  <mujoco>
+    <compiler discardvisual="false" />
+  </mujoco>
+
+  <material name="mblock_shell">
+    <color rgba="0.23 0.27 0.32 1.0" />
+  </material>
+  <material name="mblock_carrier">
+    <color rgba="0.70 0.72 0.76 1.0" />
+  </material>
+  <material name="mblock_flywheel">
+    <color rgba="0.74 0.43 0.18 1.0" />
+  </material>
+
+  <link name="base_link">
+    <inertial>
+      <origin xyz="5.249508125511573e-15 -4.303656757228877e-18 -4.491513206544896e-15" rpy="0 0 0" />
+      <mass value="0.129" />
+      <inertia ixx="5.375e-05" iyy="5.375e-05" izz="5.375e-05" ixy="0" iyz="0" ixz="0" />
+    </inertial>
+    <visual name="base_visual">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/base_link.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+      <material name="mblock_shell" />
+    </visual>
+    <collision name="base_collision_proxy">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <box size="0.05 0.05 0.05" />
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="actuator_carrier_link_1">
+    <inertial>
+      <origin xyz="2.5613860044114445e-13 -1.2806941233106696e-13 -1.2806883388667827e-13" rpy="0 0 0" />
+      <mass value="0.001" />
+      <inertia ixx="1e-07" iyy="1e-07" izz="1e-07" ixy="0" iyz="0" ixz="0" />
+    </inertial>
+    <visual name="carrier_visual">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/actuator_carrier_link_1.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+      <material name="mblock_carrier" />
+    </visual>
+  </link>
+
+  <link name="flywheel_link_1">
+    <inertial>
+      <origin xyz="1.6193069678265327e-18 1.4840892994854594e-17 -1.1602279059201533e-17" rpy="0 0 0" />
+      <mass value="0.020" />
+      <inertia ixx="4.3e-06" iyy="8.4e-06" izz="4.3e-06" ixy="0" iyz="0" ixz="0" />
+    </inertial>
+    <visual name="flywheel_visual">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/flywheel_link_1.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+      <material name="mblock_flywheel" />
+    </visual>
+  </link>
+
+  <joint name="carrier_joint" type="fixed">
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <parent link="base_link" />
+    <child link="actuator_carrier_link_1" />
+  </joint>
+
+  <joint name="flywheel_joint" type="continuous">
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <parent link="actuator_carrier_link_1" />
+    <child link="flywheel_link_1" />
+    <axis xyz="0 1 0" />
+    <limit effort="2.6" velocity="2094.3951023931954" />
+    <dynamics damping="0.000001" friction="0" />
+  </joint>
+</robot>

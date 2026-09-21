@@ -5,8 +5,10 @@ from __future__ import annotations
 import io
 import math
 import os
+import queue
 from contextlib import suppress
 from pathlib import Path
+from threading import Event as ThreadEvent
 from threading import enumerate as enumerate_threads
 from typing import Any
 
@@ -21,7 +23,9 @@ from modsim.runtime.inspection_protocol import (
     RuntimeFrame,
     RuntimeHello,
     RuntimeInitialize,
+    RuntimePlaybackState,
     RuntimeProtocolFramer,
+    RuntimeSetPaused,
     RuntimeStatus,
     RuntimeStop,
     encode_runtime_message,
@@ -79,7 +83,15 @@ def test_process_streams_frames_from_the_same_mujoco_runtime(
     read_descriptor, write_descriptor = os.pipe()
     control = os.fdopen(read_descriptor, "rb")
     parent_control = os.fdopen(write_descriptor, "wb")
-    parent_control.write(_initialize(_config(example_pack_dir)))
+    expected_real_time_factor = 3.0
+    parent_control.write(
+        _initialize(
+            _config(
+                example_pack_dir,
+                real_time_factor=expected_real_time_factor,
+            )
+        )
+    )
     parent_control.flush()
     output = _TerminalClosingOutput(parent_control)
     diagnostics = io.StringIO()
@@ -89,16 +101,25 @@ def test_process_streams_frames_from_the_same_mujoco_runtime(
         *,
         duration_s: float,
         step_once: Any,
+        real_time_factor: float,
         hold: bool,
         stop_requested: Any,
+        pause_requested: Any,
+        execution_finished: Any,
+        key_callback: Any,
         on_started: Any,
         after_step: Any,
+        on_pause_changed: Any,
         on_scenario_complete: Any,
         on_stopped: Any,
     ) -> tuple[()]:
         del session
         assert hold
+        assert real_time_factor == expected_real_time_factor
+        assert not pause_requested()
+        assert callable(key_callback)
         on_started()
+        on_pause_changed(False)
         for _ in range(math.ceil(duration_s / 0.01)):
             if stop_requested():
                 break
@@ -127,6 +148,7 @@ def test_process_streams_frames_from_the_same_mujoco_runtime(
     assert diagnostics.getvalue() == ""
     assert isinstance(messages[0], RuntimeHello)
     assert any(isinstance(message, RuntimeStatus) for message in messages)
+    assert any(message == RuntimePlaybackState(paused=False) for message in messages)
     assert frames[0].view.edges == ()
     assert len(frames[-1].view.edges) == 1
     assert [row.kind for frame in frames for row in frame.events] == [
@@ -157,12 +179,14 @@ def test_process_treats_parent_stop_as_cooperative(
     def run_until_stopped(
         session: object,
         *,
+        real_time_factor: float,
         stop_requested: Any,
         on_started: Any,
         on_stopped: Any,
         **callbacks: Any,
     ) -> tuple[()]:
         del session, callbacks
+        assert real_time_factor == 1.0
         on_started()
         assert stop_requested()
         on_stopped()
@@ -210,12 +234,14 @@ def test_process_reports_invalid_post_initialization_control(
     def run_until_stopped(
         session: object,
         *,
+        real_time_factor: float,
         stop_requested: Any,
         on_started: Any,
         on_stopped: Any,
         **callbacks: Any,
     ) -> tuple[()]:
         del session, callbacks
+        assert real_time_factor == 1.0
         on_started()
         assert stop_requested()
         on_stopped()
@@ -231,6 +257,36 @@ def test_process_reports_invalid_post_initialization_control(
     messages = _messages(output)
     assert exit_code == 1
     assert isinstance(messages[-2], RuntimeError)
-    assert "accepts only stop messages" in messages[-2].message
+    assert "accepts only set_paused or stop messages" in messages[-2].message
     assert messages[-1] == RuntimeFinished(reason=RuntimeFinishedReason.FAILED)
     assert "RuntimeProtocolError" in diagnostics.getvalue()
+
+
+def test_control_reader_applies_pause_requests_in_order_before_stop() -> None:
+    class PlaybackSpy:
+        def __init__(self) -> None:
+            self.values: list[bool] = []
+
+        def set_paused(self, paused: bool) -> None:
+            self.values.append(paused)
+
+    playback = PlaybackSpy()
+    stop_requested = ThreadEvent()
+    errors: queue.SimpleQueue[Exception] = queue.SimpleQueue()
+    stream = io.BytesIO(
+        encode_runtime_message(RuntimeSetPaused(paused=True))
+        + encode_runtime_message(RuntimeSetPaused(paused=False))
+        + encode_runtime_message(RuntimeStop())
+    )
+
+    runtime_process._watch_control_stream(
+        stream,
+        stop_requested,
+        playback,  # type: ignore[arg-type]
+        ThreadEvent(),
+        errors,
+    )
+
+    assert playback.values == [True, False]
+    assert stop_requested.is_set()
+    assert errors.empty()

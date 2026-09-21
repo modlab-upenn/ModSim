@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from modsim.model_views import CubicLatticeView
 from modsim.runtime import (
     ReconfigurationPhase,
     ReconfigurationStatus,
@@ -23,13 +24,18 @@ from modsim.runtime.inspection_protocol import (
     RuntimeFrame,
     RuntimeHello,
     RuntimeInitialize,
+    RuntimePlaybackState,
     RuntimeProtocolError,
     RuntimeProtocolFramer,
+    RuntimeSetPaused,
     RuntimeStatus,
     RuntimeStop,
     decode_runtime_message,
     encode_runtime_message,
 )
+
+_ROOT = Path(__file__).resolve().parents[1]
+_MBLOCKS_PACK_PATH = _ROOT / "examples" / "robot_packs" / "mblocks_3d"
 
 
 def test_protocol_round_trips_every_message_and_nested_path(
@@ -40,6 +46,7 @@ def test_protocol_round_trips_every_message_and_nested_path(
         demo=RuntimeDemo.DOCK_UNDOCK,
         backend="mock",
         viewer_enabled=True,
+        real_time_factor=4.0,
     )
     runner = RuntimeInspectorRunner.create(config)
     try:
@@ -50,6 +57,8 @@ def test_protocol_round_trips_every_message_and_nested_path(
     messages = (
         RuntimeHello(),
         RuntimeInitialize(config=config),
+        RuntimeSetPaused(paused=True),
+        RuntimePlaybackState(paused=True),
         RuntimeStop(),
         RuntimeStatus(message="Loading"),
         RuntimeFrame(frame=frame),
@@ -64,10 +73,36 @@ def test_protocol_round_trips_every_message_and_nested_path(
     assert isinstance(initialize, RuntimeInitialize)
     assert isinstance(initialize.config.pack_path, Path)
     assert initialize.config.viewer_enabled
+    assert initialize.config.real_time_factor == pytest.approx(4.0)
     assert initialize.config.demo is RuntimeDemo.DOCK_UNDOCK
-    transported = decoded[4]
+    transported = next(message for message in decoded if isinstance(message, RuntimeFrame))
     assert isinstance(transported, RuntimeFrame)
     assert transported.frame == frame
+
+
+def test_protocol_defaults_a_legacy_initialize_without_real_time_factor(
+    example_pack_dir: Path,
+) -> None:
+    encoded = encode_runtime_message(
+        RuntimeInitialize(
+            config=RuntimeInspectorConfig(
+                pack_path=example_pack_dir,
+                backend="mock",
+            )
+        )
+    )
+    document = json.loads(encoded.removeprefix(RUNTIME_PROTOCOL_PREFIX.encode()).decode())
+    assert document["config"].pop("real_time_factor") == 1.0
+    legacy = (
+        RUNTIME_PROTOCOL_PREFIX.encode()
+        + json.dumps(document, separators=(",", ":")).encode()
+        + b"\n"
+    )
+
+    decoded = decode_runtime_message(legacy)
+
+    assert isinstance(decoded, RuntimeInitialize)
+    assert decoded.config.real_time_factor == 1.0
 
 
 def test_reconfiguration_status_round_trips_as_a_strict_runtime_frame(
@@ -110,10 +145,36 @@ def test_reconfiguration_status_round_trips_as_a_strict_runtime_frame(
         decode_runtime_message(malformed)
 
 
+def test_protocol_round_trips_a_concrete_cubic_lattice_frame() -> None:
+    runner = RuntimeInspectorRunner.create(
+        RuntimeInspectorConfig(
+            pack_path=_MBLOCKS_PACK_PATH,
+            demo=RuntimeDemo.MBLOCKS_FIVE_MODULE_PIVOT,
+            backend="mock",
+            duration_s=0.01,
+            dt_s=0.01,
+        )
+    )
+    try:
+        frame = runner.frame()
+    finally:
+        runner.shutdown()
+
+    decoded = decode_runtime_message(encode_runtime_message(RuntimeFrame(frame=frame)))
+
+    assert isinstance(decoded, RuntimeFrame)
+    assert isinstance(decoded.frame.view, CubicLatticeView)
+    assert isinstance(frame.view, CubicLatticeView)
+    assert decoded.frame == frame
+    assert decoded.frame.view.orientation_catalog == frame.view.orientation_catalog
+
+
 def test_protocol_framer_preserves_fragmented_message_order() -> None:
     encoded = b"".join(
         (
             encode_runtime_message(RuntimeHello()),
+            encode_runtime_message(RuntimeSetPaused(paused=True)),
+            encode_runtime_message(RuntimePlaybackState(paused=True)),
             encode_runtime_message(RuntimeStatus(message="Ready")),
             encode_runtime_message(RuntimeFinished(reason=RuntimeFinishedReason.COMPLETED)),
         )
@@ -127,6 +188,8 @@ def test_protocol_framer_preserves_fragmented_message_order() -> None:
     assert first == ()
     assert [type(message) for message in second + third] == [
         RuntimeHello,
+        RuntimeSetPaused,
+        RuntimePlaybackState,
         RuntimeStatus,
         RuntimeFinished,
     ]
@@ -134,19 +197,34 @@ def test_protocol_framer_preserves_fragmented_message_order() -> None:
     assert framer.finish() == ()
 
 
+@pytest.mark.parametrize("kind", ("set_paused", "playback_state"))
+def test_protocol_pause_state_requires_a_strict_boolean(kind: str) -> None:
+    malformed = (
+        RUNTIME_PROTOCOL_PREFIX.encode()
+        + json.dumps(
+            {"protocol_version": 2, "kind": kind, "paused": 1},
+            separators=(",", ":"),
+        ).encode()
+        + b"\n"
+    )
+
+    with pytest.raises(RuntimeProtocolError, match="invalid runtime protocol"):
+        decode_runtime_message(malformed)
+
+
 @pytest.mark.parametrize(
     "record, expected",
     [
-        (b'{"protocol_version":1,"kind":"hello"}\n', "must begin"),
+        (b'{"protocol_version":2,"kind":"hello"}\n', "must begin"),
         (
-            b'MODSIM_RUNTIME/1 {"protocol_version":2,"kind":"hello"}\n',
+            b'MODSIM_RUNTIME/2 {"protocol_version":1,"kind":"hello"}\n',
             "invalid runtime protocol",
         ),
         (
-            b'MODSIM_RUNTIME/1 {"protocol_version":1,"kind":"hello","extra":1}\n',
+            b'MODSIM_RUNTIME/2 {"protocol_version":2,"kind":"hello","extra":1}\n',
             "invalid runtime protocol",
         ),
-        (b'MODSIM_RUNTIME/1 {"protocol_version":1,"kind":"hello"}', "end with"),
+        (b'MODSIM_RUNTIME/2 {"protocol_version":2,"kind":"hello"}', "end with"),
     ],
 )
 def test_protocol_rejects_malformed_or_unsupported_records(
@@ -163,7 +241,7 @@ def test_protocol_framer_bounds_unterminated_input_and_rejects_eof_fragment() ->
         framer.feed(b"x" * MAX_RUNTIME_MESSAGE_BYTES)
     assert framer.buffered_bytes == 0
 
-    framer.feed(b"MODSIM_RUNTIME/1 ")
+    framer.feed(b"MODSIM_RUNTIME/2 ")
     with pytest.raises(RuntimeProtocolError, match="unterminated"):
         framer.finish()
     assert framer.buffered_bytes == 0

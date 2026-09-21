@@ -16,8 +16,8 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 from modsim.runtime.inspection import RuntimeInspectorFrame
 from modsim.runtime.inspector_runner import RuntimeInspectorConfig
 
-RUNTIME_PROTOCOL_VERSION = 1
-RUNTIME_PROTOCOL_PREFIX = "MODSIM_RUNTIME/1 "
+RUNTIME_PROTOCOL_VERSION = 2
+RUNTIME_PROTOCOL_PREFIX = "MODSIM_RUNTIME/2 "
 MAX_RUNTIME_MESSAGE_BYTES = 8 * 1024 * 1024
 
 _PREFIX_BYTES = RUNTIME_PROTOCOL_PREFIX.encode("ascii")
@@ -46,7 +46,7 @@ class _RuntimeProtocolDTO(BaseModel):
         validate_default=True,
     )
 
-    protocol_version: Literal[1] = RUNTIME_PROTOCOL_VERSION
+    protocol_version: Literal[2] = RUNTIME_PROTOCOL_VERSION
 
 
 class RuntimeHello(_RuntimeProtocolDTO):
@@ -68,6 +68,13 @@ class RuntimeStop(_RuntimeProtocolDTO):
     kind: Literal["stop"] = "stop"
 
 
+class RuntimeSetPaused(_RuntimeProtocolDTO):
+    """Parent-to-child request to pause or resume authoritative stepping."""
+
+    kind: Literal["set_paused"] = "set_paused"
+    paused: bool
+
+
 class RuntimeStatus(_RuntimeProtocolDTO):
     """Concise child execution status suitable for the Inspector header."""
 
@@ -80,6 +87,13 @@ class RuntimeFrame(_RuntimeProtocolDTO):
 
     kind: Literal["frame"] = "frame"
     frame: RuntimeInspectorFrame
+
+
+class RuntimePlaybackState(_RuntimeProtocolDTO):
+    """Child-to-parent acknowledgement of authoritative playback state."""
+
+    kind: Literal["playback_state"] = "playback_state"
+    paused: bool
 
 
 class RuntimeError(_RuntimeProtocolDTO):
@@ -100,8 +114,10 @@ RuntimeProtocolMessage: TypeAlias = Annotated[
     RuntimeHello
     | RuntimeInitialize
     | RuntimeStop
+    | RuntimeSetPaused
     | RuntimeStatus
     | RuntimeFrame
+    | RuntimePlaybackState
     | RuntimeError
     | RuntimeFinished,
     Field(discriminator="kind"),
@@ -210,8 +226,10 @@ class RuntimeProtocolFramer:
 RuntimeHelloMessage = RuntimeHello
 RuntimeInitMessage = RuntimeInitialize
 RuntimeStopMessage = RuntimeStop
+RuntimeSetPausedMessage = RuntimeSetPaused
 RuntimeStatusMessage = RuntimeStatus
 RuntimeFrameMessage = RuntimeFrame
+RuntimePlaybackStateMessage = RuntimePlaybackState
 RuntimeErrorMessage = RuntimeError
 RuntimeFinishedMessage = RuntimeFinished
 RuntimeProtocolDecoder = RuntimeProtocolFramer
@@ -232,10 +250,14 @@ __all__ = [
     "RuntimeHelloMessage",
     "RuntimeInitMessage",
     "RuntimeInitialize",
+    "RuntimePlaybackState",
+    "RuntimePlaybackStateMessage",
     "RuntimeProtocolDecoder",
     "RuntimeProtocolError",
     "RuntimeProtocolFramer",
     "RuntimeProtocolMessage",
+    "RuntimeSetPaused",
+    "RuntimeSetPausedMessage",
     "RuntimeStatus",
     "RuntimeStatusMessage",
     "RuntimeStop",

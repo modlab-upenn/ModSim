@@ -1,0 +1,166 @@
+\section{Backend Contract and MuJoCo Physics Realization}
+\label{sec:backends}
+
+\subsection{Adapter contract}
+
+The base adapter contract contains seven responsibilities: advertise capabilities,
+load a pack and scene, step, snapshot, create a physical connection, remove it, and
+shutdown. The snapshot is intentionally small: time, link poses and twists, scalar
+joint state, optional measured connector frames, and optional constraint-force
+magnitudes. Contacts, solver internals, renderer objects, and engine arrays do not leak
+into canonical core state.
+
+Optional structural protocols add joint commands and direct module kinematics. Direct
+pose/twist/wrench methods are useful for deterministic scene staging and kinematic
+fixtures, but physical demonstrations enforce that these are not called after initial
+placement.
+
+\subsection{Lazy registration and selection}
+
+Backends register a name, summary, loader, and installation hint. Resolution is an
+explicit argument, then \code{MODSIM\_BACKEND}, then \code{mock}. Loading is lazy, so a
+base installation can import the entire core without importing \mujoco{}. A backend
+implementation can live in a separate distribution and register through the same
+mechanism.
+
+\subsection{Mock backend}
+
+The mock backend is kinematic and dependency-free. It has no gravity, contact, or
+articulated link motion. It nonetheless implements the semantic behaviors core needs:
+module placement, world-frame twist integration, physical-connection success/failure,
+rigid propagation of connected groups, release, injected loads, and snapshot
+generation. It is therefore a reference semantics backend, not a low-fidelity physics
+claim.
+
+\subsection{MuJoCo scene composition}
+
+The \mujoco{} adapter composes all module placements into one model. For each instance
+it:
+
+\begin{enumerate}
+  \item selects a same-ID MJCF asset when available, otherwise imports URDF;
+  \item attaches the module under a namespace prefix \code{<module>/};
+  \item adds a free joint to the module root;
+  \item creates connector sites from authored local poses;
+  \item creates bounded unit-gear motors for declared effort-controlled scalar joints;
+  \item reserves inactive weld and contact-exclusion slots; and
+  \item compiles and indexes bodies, joints, sites, actuators, and assets.
+\end{enumerate}
+
+The default gravity vector is $(0,0,-9.81)\,\mathrm{m/s^2}$. An optional engine plane is
+physically infinite; its visual half-extent is ten meters. Visual, environment, and
+debug collision geoms use distinct groups. When importing URDF, the adapter retains
+visual geometry unless the asset explicitly requests otherwise. Collision geoms are
+placed in hidden group 3 when separate visuals exist, so physics remains active without
+opaque proxies obscuring the robot.
+
+\subsection{Time stepping and snapshots}
+
+The backend covers a requested duration with rounded whole solver steps and reports the
+actual engine time. Snapshot extraction resolves world body motion, connector site
+frames, joint position/velocity, and actuator effort. For anisotropic \smoresep{} tire
+contacts, stepping is split so the contact tangent basis can be oriented with the
+current wheel axle before constraint solution.
+
+\subsection{Runtime weld pool}
+
+\mujoco{} model topology is compiled, so a runtime dock claims a preallocated inactive
+weld rather than adding a new equality object. Each slot has a paired precompiled body
+contact exclusion. Claiming a connection sets the equality body operands, relative
+transform data, and active flag; it publishes a sorted exclusion signature so the
+welded body pair does not simultaneously fight a contact constraint. Release
+deactivates and returns both resources.
+
+The connector-relative request must be converted to a body-relative weld:
+
+\begin{equation}
+\mathbf T_{B_aB_b}=
+\mathbf T_{B_aC_a}
+\mathbf T_{C_aC_b}
+\mathbf T_{C_bB_b}.
+\label{eq:weld-transform}
+\end{equation}
+
+The implementation isolates this transformation in a testable module. Nominal snapping
+also accounts for connectors on articulated child bodies: it measures root-to-child
+transform, solves the desired root pose, clears root and articulated velocity, and only
+then activates the weld.
+
+Pool exhaustion and unsupported connection types are ordinary backend refusals. They
+propagate to \code{DockFailed} rather than a logical-only success. The current adapter
+supports fixed connections only. Compliance, hinge, ball, and custom constraints remain
+future work.
+
+\subsection{Effort actuation and state}
+
+The adapter advertises the effort control mode. Scene composition creates one actuator
+for each semantically declared effort-controlled joint with a finite effort limit.
+Atomic commands resolve all IDs and bounds before writing \code{data.ctrl}. Values
+persist until replaced or cleared. Snapshots report position, velocity, and actuator
+effort using stable semantic joint IDs.
+
+The architecture can represent position and velocity modes, but the adapter does not
+yet implement them. Likewise, the current system does not infer arbitrary transmissions
+from URDF. A future actuator catalog should make motor, gear, and controller dynamics
+explicit.
+
+\subsection{Native viewer and pacing}
+
+The native passive viewer starts with collision debug group 3 hidden and preserves the
+final state for inspection. On macOS, \mujoco{} requires \code{mjpython} for passive
+viewer main-thread ownership \citep{mujocoPythonDocs}; the Runtime Inspector resolves a
+sibling environment executable automatically.
+
+The launch-time real-time factor $\rho>0$ changes only a wall-clock deadline:
+
+\begin{equation}
+t_w^{\mathrm{deadline}} = t_{w,0}+\frac{\Delta t_s}{\rho}.
+\label{eq:pacing}
+\end{equation}
+
+Simulation timestep, number of steps, motor targets, event timestamps, and simulated
+duration remain unchanged. Values below one create slow motion; values above one request
+accelerated playback. If physics and rendering cannot keep up, execution proceeds as
+fast as possible without skipping physics steps.
+
+At the current head commit, passive viewer synchronization is capped at approximately
+30 Hz rather than occurring at every solver step. Synchronization is scheduled from
+completion so an expensive render does not trigger another render on the immediately
+following physics step, and a final synchronization is guaranteed when the run ends
+between refreshes. This decoupling is important at a \SI{2}{ms}-style solver step,
+where sync-per-step would attempt 500 visual refreshes per simulated second.
+
+\subsection{Backend comparison}
+
+\begin{table}[htbp]
+\centering
+\caption{Implemented backend capabilities.}
+\label{tab:backend-comparison}
+\begin{tabularx}{\textwidth}{L{0.30\textwidth}YY}
+\toprule
+Capability & Mock & MuJoCo \\
+\midrule
+Dependencies & Base only & Optional \code{mujoco} and NumPy \\
+Dynamics/contact/gravity & No & Yes \\
+Articulated kinematics & No & Yes \\
+Joint feedback & No & Position, velocity, effort \\
+Joint command & No & Effort \\
+Measured connector frames & Composed & Connector sites \\
+Runtime fixed connection & Yes & Preallocated weld \\
+Runtime release & Yes & Weld deactivation \\
+Paired contact exclusion & Not applicable & Yes \\
+Constraint force reporting & Injectable test value & Not yet \\
+Native 3-D viewer & No & Yes \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Conformance}
+
+Cross-backend tests run a common pack and scenario with gravity disabled and compare
+semantic modules, assemblies, connector frames, connection identities, mating
+orientation, and committed event sequence. This isolates adapter correctness from
+expected physical trajectory differences. The mock is not evidence of a second
+physical solver, but it is a valuable executable specification of the semantic
+contract.
+

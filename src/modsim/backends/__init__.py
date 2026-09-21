@@ -7,6 +7,7 @@ from modsim.backends.base import (
     BackendHandleRegistry,
     ConnectionOutcome,
     ConnectionRequest,
+    SupportsJointCommands,
 )
 from modsim.backends.mock import MOCK_BACKEND_NAME, MockBackendAdapter
 from modsim.backends.registry import (
@@ -37,6 +38,7 @@ __all__ = [
     "ConnectionOutcome",
     "ConnectionRequest",
     "MockBackendAdapter",
+    "SupportsJointCommands",
     "UnknownBackendError",
     "available_backends",
     "backend_entry",

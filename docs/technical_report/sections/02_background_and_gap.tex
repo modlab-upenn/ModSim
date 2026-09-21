@@ -1,0 +1,137 @@
+\section{Background, Related Work, and the Addressed Gap}
+\label{sec:background}
+
+\subsection{Modular self-reconfigurable robots}
+
+Modular self-reconfigurable robot systems combine repeated hardware units with
+mechanisms for changing connectivity. Their potential benefits include functional
+reuse, task-dependent morphology, redundancy, repair, and scalable manufacturing;
+their enduring challenges include mechanical connection, configuration planning,
+control, communication, and the combinatorial growth of possible morphologies
+\citep{yim2007modular}. A configuration is naturally represented by a graph whose
+vertices denote modules and whose edges denote connections, but a useful physical
+description must also preserve connection faces, orientation, joint state, spatial
+frames, and actuation.
+
+SMORES and \smoresep{} are mobile-style modular robots whose left and right faces also
+serve as wheels. The original SMORES design demonstrated locomotion and
+reconfiguration \citep{davey2012smores}. \smoresep{} adds electro-permanent-magnet
+connectors. Each module has four active rotational degrees of freedom---LEFT, RIGHT,
+PAN, and TILT---and four mating faces---LEFT, RIGHT, TOP, and BOTTOM
+\citep{liu2020parallel,liu2023smoresep,modlabSmoresEp}. LEFT and RIGHT provide
+differential-drive locomotion; LEFT, RIGHT, and PAN rotate continuously, while TILT is
+bounded.
+
+The EP-Face was designed as a planar, genderless, switchable connector. Published
+characterization reports high holding force, rapid state switching, and tolerance to
+position error \citep{tosun2016epface}. These properties motivate a simulation model
+with explicit connector frames, capture conditions, release timing, and post-capture
+constraints. They also illustrate why a bare URDF joint tree is insufficient: a
+connector's compatibility, allowable roll orientations, capture region, and release
+policy are not standard URDF concepts.
+
+\subsection{Planning topology versus executing motion}
+
+Liu, Whitzer, and Yim formulate reconfiguration as a sequence of connector changes and
+demonstrate a distributed planning approach \citep{liu2019distributed}. Their
+Driver-to-Snake example gives an initial and target configuration and four connector
+replacement actions. This is valuable topology-level ground truth, but it does not
+fully specify motor torques, contact coefficients, obstacle-clearance routes, or a
+time-parameterized trajectory for the entire Driver-to-Snake sequence. Later SMORES
+self-assembly work develops navigation, pose adjustment, and straight-approach control
+and demonstrates hardware behaviors \citep{liu2020parallel,liu2023smoresep}.
+
+The distinction between \emph{what connections should change} and \emph{how bodies
+should move} is central to \modsim{}. A \code{ReconfigurationPlan} describes connector
+replacements. A physical scenario supplies platform mechanics, control parameters, and
+routes. The semantic runtime remains responsible for validating and committing the
+connection. This separation allows future planners to replace authored routes without
+changing the docking or event model.
+
+\subsection{Physics engines and robot-description formats}
+
+Modern simulators already solve difficult numerical problems: articulated dynamics,
+contact, equality constraints, actuators, sensors, and visualization. \mujoco{} is
+designed for efficient model-based control and represents multijoint dynamics in
+generalized coordinates \citep{todorov2012mujoco}. Its native MJCF language can express
+rich dynamic models, and its compiler can also import URDF
+\citep{mujocoModelingDocs,urdfFormat}. Isaac Sim and related USD-based workflows offer
+another path to high-fidelity scene composition and rendering. Gazebo/SDF, Webots, and
+CoppeliaSim provide still other combinations of physics, scene, and control tooling.
+
+These engines intentionally operate below the domain model proposed here. A weld
+constraint can hold two bodies together, but it does not by itself establish:
+
+\begin{itemize}
+  \item that two surfaces are semantically compatible;
+  \item that their approach axes and roll orientations satisfy a connector contract;
+  \item that a runtime command or auto-latch policy allows connection;
+  \item that the logical module graph should gain a particular stable edge; or
+  \item that downstream algorithms should receive a canonical dock event.
+\end{itemize}
+
+URDF has a complementary limitation. It is widely supported as a mechanical
+description of links, joints, inertial data, and geometry, but it does not standardize
+modular-robot docking semantics. MJCF can encode engine-specific contact and actuator
+details, but using MJCF alone would make the portable semantic package engine-specific.
+\modsim{} therefore treats URDF/MJCF as mechanical assets referenced by a separate
+semantic package.
+
+\subsection{Why an engine-independent semantic layer is needed}
+
+The addressed gap lies between a robot asset and a modular-robot application. The asset
+describes what can move and collide. The application needs stable identities,
+compatibility rules, topology, lifecycle events, validation, and generated views.
+Embedding those concepts directly in a backend creates several failure modes:
+
+\begin{enumerate}
+  \item \textbf{Duplicated truth.} A graph, a scene graph, and a controller each carry a
+        different list of active docks.
+  \item \textbf{Optimistic commit.} The application records a dock even though the
+        engine refuses or cannot allocate a physical constraint.
+  \item \textbf{Frame drift.} A connector pose authored in one tool is recomposed
+        differently by another tool, so visual alignment and physical acceptance
+        disagree.
+  \item \textbf{Non-portable scenes.} Connector semantics are hidden in simulator
+        scripts and cannot be validated before that simulator is installed.
+  \item \textbf{Uninspectable failures.} A boolean docking result omits which criterion
+        failed and by how much.
+  \item \textbf{Unsafe extensibility.} A data package contains arbitrary executable
+        plugin paths rather than stable builder or backend identifiers.
+\end{enumerate}
+
+\subsection{Positioning relative to existing simulators}
+
+\Cref{tab:positioning} summarizes the intended division of responsibility. The table
+does not claim that general simulators cannot be extended to provide these features;
+rather, it identifies the contract \modsim{} adds above their native physical model.
+
+\begin{table}[htbp]
+\centering
+\caption{Conceptual positioning of \modsim{} relative to a physics engine.}
+\label{tab:positioning}
+\begin{tabularx}{\textwidth}{L{0.25\textwidth}YY}
+\toprule
+Concern & Physics engine or robot asset & \modsim{} semantic layer \\
+\midrule
+Rigid-body state & Integrates generalized coordinates, contact, and constraints &
+Ingests observations into stable module/link/connector identities \\
+Mechanical description & URDF, MJCF, or a future USD asset &
+References assets and adds portable module semantics \\
+Dock validity & Can test distance or create a raw constraint &
+Defines compatibility, acceptance, policy, lifecycle, and failure detail \\
+Dynamic connection & Activates/deactivates an equality or joint &
+Uses two-phase commit before mutating logical topology \\
+Configuration & Scene/body graph & Canonical module multigraph and assemblies \\
+History & Engine-dependent logging & Ordered semantic event log and metrics \\
+Visualization & Native 3-D scene & Derived, immutable topology and event views \\
+Authoring & Engine-specific editor or XML & Schema-aware Robot Pack Studio \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The resulting architecture is intentionally compositional. \modsim{} benefits from a
+mature solver instead of reimplementing one; the solver benefits from a structured
+domain layer that can be tested independently. A future C++ execution core, browser
+client, or second simulator can reuse the same semantic contracts.
+

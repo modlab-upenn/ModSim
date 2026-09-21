@@ -15,9 +15,26 @@ from modsim.core.ids import (
     ConnectionId,
     ConnectorInstanceId,
     ConstraintHandle,
+    JointInstanceId,
     ModuleInstanceId,
 )
+from modsim.core.snapshot import JointState
 from modsim.core.transforms import ZERO_VEC3, Transform, Vec3
+from modsim.robot_packs.schema import ControlMode, PhysicalConstraintType
+
+
+@dataclass(frozen=True, slots=True)
+class JointCommand:
+    """One scalar command for one module joint.
+
+    The command stays backend-neutral: its target is identified by the stable
+    Robot Pack joint ID, its units follow the selected control mode and joint
+    type, and a backend translates it to its native actuator representation.
+    """
+
+    joint: JointInstanceId
+    mode: ControlMode
+    value: float
 
 
 class ConnectorLifecycleState(StrEnum):
@@ -62,6 +79,7 @@ class ModuleInstance:
     linear_velocity_m_s: Vec3 = ZERO_VEC3
     angular_velocity_rad_s: Vec3 = ZERO_VEC3
     link_poses: dict[str, Transform] = field(default_factory=dict[str, Transform])
+    joint_states: dict[str, JointState] = field(default_factory=dict[str, JointState])
 
 
 @dataclass(slots=True)
@@ -104,6 +122,10 @@ class ConnectionRuntime:
     constraint_handle: ConstraintHandle
     created_at_s: float
     measured_force_n: float | None = None
+    # Keep new defaulted fields after the original positional surface.  This
+    # preserves callers that passed ``measured_force_n`` positionally before
+    # constraint type became part of canonical runtime state.
+    constraint: PhysicalConstraintType = PhysicalConstraintType.FIXED
 
     @property
     def connectors(self) -> tuple[ConnectorInstanceId, ConnectorInstanceId]:

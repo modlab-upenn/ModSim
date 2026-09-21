@@ -279,6 +279,7 @@ class DockingManager:
                 connector_b=proposal.connector_b,
                 constraint_handle=outcome.handle,
                 relative_transform=relative,
+                constraint=request.physical_connection.constraint,
                 orientation_rad=proposal.acceptance.orientation_rad,
                 orientation_index=proposal.acceptance.orientation_index,
             )

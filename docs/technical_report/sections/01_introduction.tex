@@ -1,0 +1,119 @@
+\section{Introduction}
+\label{sec:introduction}
+
+Modular robots promise a form of embodied adaptability that a conventional
+fixed-morphology robot cannot provide. A collection of repeated modules can change
+topology, redistribute actuation, form task-specific kinematic chains, recover from
+failures, or separate into independently mobile agents. The configuration of the
+robot is therefore not merely a parameter of its controller; it is a time-varying
+part of the system state. This observation has shaped the field of modular
+self-reconfigurable robotics for decades \citep{yim2007modular}.
+
+Simulation infrastructure has not always followed the same abstraction. General
+robotics engines accept bodies, joints, actuators, collision geometry, and constraints.
+Those primitives are necessary, but they do not answer modular-robot questions such
+as:
+
+\begin{itemize}
+  \item Which links and joints constitute one reusable module type?
+  \item Which physical surfaces are connectors, and which pairs may mate?
+  \item What translational, angular, roll, and speed errors are acceptable at capture?
+  \item When is an engine constraint considered a committed logical connection?
+  \item Which modules form an assembly after a dock or release?
+  \item How should a changing morphology be exposed to planners, algorithms, logs, and
+        graphical tools?
+\end{itemize}
+
+In a simulator-specific prototype, these concepts are often distributed across model
+files, Python scripts, controller constants, scene-construction code, and assumptions
+inside a viewer. That approach can produce an effective demonstration, but it creates
+three long-term problems. First, semantic knowledge is not portable: replacing one
+engine with another requires reconstructing the meaning of connectors and
+configurations. Second, physical and logical state can diverge: an application may add
+an edge to its topology graph before the engine has actually created a constraint, or
+may remove a graph edge while a stale constraint remains active. Third, the tooling
+surface becomes fragile: authoring, validation, simulation, algorithms, and
+visualization each invent a slightly different representation of the same robot.
+
+\modsim{} addresses this gap with a semantics-first architecture. It is not a new
+rigid-body solver. Instead, it defines a portable \robotpack{}, a canonical runtime,
+and narrow interfaces to physics engines and user interfaces. The central design rule
+is:
+
+\begin{quote}
+\emph{ModSim owns modular-robot meaning and canonical history; a backend owns physics;
+every visualization or algorithmic view is derived from the canonical state.}
+\end{quote}
+
+This separation makes the framework useful even before multiple high-fidelity backends
+exist. A dependency-free mock adapter can exercise connector semantics and event
+ordering in continuous integration. A \mujoco{} adapter can then supply articulated
+dynamics, contact, effort actuation, runtime welds, and native visualization without
+moving connector rules into engine-specific code. Future adapters---for example an
+Isaac Sim implementation---can be checked against the same semantic contract.
+
+\subsection{Research questions}
+
+The current implementation is organized around four questions.
+
+\begin{enumerate}
+  \item \textbf{Semantic portability.} Can one platform description define modules,
+        connectors, docking policy, metadata, and generated model views without
+        depending on one simulator's scene format?
+  \item \textbf{Runtime consistency.} Can physical constraints, logical connections,
+        assembly membership, events, and graph views remain coherent during docking
+        and undocking?
+  \item \textbf{Progressive physical fidelity.} Can a generic semantic runtime begin
+        with kinematic tests and then support real gravity, contact, articulated joint
+        control, and multi-module locomotion without replacing its state model?
+  \item \textbf{Inspectability.} Can authors and runtime users validate the same data,
+        observe the same event history, and view physical and topological state from a
+        single authoritative simulation?
+\end{enumerate}
+
+\subsection{Contributions}
+
+This technical report describes four principal contributions.
+
+\begin{enumerate}
+  \item A strict, self-contained \robotpack{} format that separates mechanical assets
+        from modular semantics, backend mappings, custom metadata, capabilities, and
+        model-view recipes. The associated loader, validator, canonical writer, URDF
+        importer, and Studio application provide an end-to-end authoring workflow.
+  \item A backend-independent runtime that resolves connector frames, evaluates
+        compatibility and geometric acceptance, applies policy guards, performs a
+        two-phase physical/logical commit, evolves assemblies, accepts atomic joint
+        command batches, and records deterministic semantic events and metrics.
+  \item Narrow physics and visualization boundaries: a reference mock backend, an
+        optional \mujoco{} backend, immutable model-view data-transfer objects, a
+        revision-aware view factory, and a dual-window Runtime Inspector driven by one
+        authoritative session.
+  \item A \smoresep{} case study containing committed visual and collision assets,
+        four docking faces, a physics-specific MJCF model, wheel and joint effort
+        control, tire contact, a physical two-module docking cycle, and a seven-module
+        wheel-driven realization of a published Driver-to-Snake topology plan.
+\end{enumerate}
+
+\subsection{Scope and non-claims}
+
+The implementation is pre-alpha software (version 0.1.0), and its strongest evidence
+is software and simulation evidence. The report does \emph{not} claim a new contact
+solver, autonomous reconfiguration planner, calibrated \smoresep{} digital twin,
+magnetic-field model, or reproduction of a published Driver-to-Snake hardware
+trajectory. The seven-module routes, friction parameters, effort limits, skid model,
+and control gains are explicit simulation choices. The published 2019 work supplies
+the topology and connector substitutions; \modsim{} supplies one physically plausible,
+deterministic execution of that plan.
+
+\subsection{Organization}
+
+\Cref{sec:background} reviews relevant modular-robot and simulation concepts.
+\Cref{sec:requirements} turns the observed gap into requirements and authority rules.
+\Cref{sec:architecture} presents the overall architecture. The following four sections
+describe Robot Packs and Studio, runtime docking, backend physics, and model views with
+runtime visualization. \Cref{sec:smores} develops the \smoresep{} case study and its
+controllers. \Cref{sec:experiments,sec:analysis} report experiments and analyze the
+evidence. \Cref{sec:future} states limitations and a staged roadmap. The appendices
+provide schema summaries, event taxonomies, scenario commands, and a reproducibility
+checklist.
+

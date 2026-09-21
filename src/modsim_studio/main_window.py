@@ -11,9 +11,10 @@ from pathlib import Path
 from typing import cast
 
 from pydantic import JsonValue
-from PySide6.QtCore import QObject, Qt, Signal
-from PySide6.QtGui import QAction, QCloseEvent
+from PySide6.QtCore import QObject, QSize, Qt, Signal
+from PySide6.QtGui import QAction, QCloseEvent, QFontDatabase
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -28,9 +29,13 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
+    QToolBar,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -50,6 +55,7 @@ from modsim.robot_packs import (
     ConnectorTypeSpec,
     ControlMode,
     DockingPolicySpec,
+    HingeConstraintSpec,
     JointLimits,
     JointSpec,
     JointType,
@@ -61,6 +67,9 @@ from modsim.robot_packs import (
     PoseSpec,
     ValidationProfile,
 )
+from modsim_studio.appearance import theme_manager
+from modsim_studio.chrome import DetailsSection, StudioHeader, VectorEdit, property_group
+from modsim_studio.icons import studio_icon
 from modsim_studio.project import StudioProject
 from modsim_studio.user_errors import (
     error_log_details,
@@ -72,6 +81,9 @@ from modsim_studio.viewport import RobotViewport
 _KIND_ROLE = int(Qt.ItemDataRole.UserRole)
 _ID_ROLE = _KIND_ROLE + 1
 _MODULE_ROLE = _KIND_ROLE + 2
+# Keep file pickers inside Qt: native GTK dialogs can abort the process when
+# launched from a Snap terminal with incompatible inherited pixbuf loaders.
+_FILE_DIALOG_OPTIONS = QFileDialog.Option.DontUseNativeDialog
 
 
 class _LogEmitter(QObject):
@@ -173,6 +185,10 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("ModSim Studio")
         self.resize(1500, 920)
+        self._appearance = theme_manager()
+        self.header = StudioHeader(self, "Robot Pack Builder")
+        self.addToolBar(self.header)
+        self.addToolBarBreak()
         self.project: StudioProject | None = None
         self._current_selection: tuple[str, str, str] | None = None
         self._logger = session_logger or logging.getLogger("modsim")
@@ -181,35 +197,128 @@ class MainWindow(QMainWindow):
         )
         self._qt_log_handler: _QtLogHandler | None = None
 
+        preview = QWidget()
+        preview.setObjectName("Panel")
+        preview_layout = QVBoxLayout(preview)
+        preview_layout.setContentsMargins(0, 0, 0, 0)
+        preview_layout.setSpacing(0)
+        self.layer_toolbar = QToolBar("Viewport layers")
+        self.layer_toolbar.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self.layer_toolbar.setIconSize(QSize(16, 16))
+        preview_title = QLabel("Module preview   ")
+        preview_title.setObjectName("SectionTitle")
+        self.layer_toolbar.addWidget(preview_title)
+        preview_layout.addWidget(self.layer_toolbar)
         self.viewport = RobotViewport(self)
-        self.setCentralWidget(self.viewport)
+        self.preview_stack = QStackedWidget()
+        welcome = QWidget()
+        welcome_layout = QVBoxLayout(welcome)
+        welcome_layout.addStretch(1)
+        welcome_title = QLabel("Build your Robot Pack")
+        welcome_title.setObjectName("Brand")
+        welcome_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        welcome_layout.addWidget(welcome_title)
+        welcome_hint = QLabel("Open a pack or import a URDF to begin authoring.")
+        welcome_hint.setObjectName("Muted")
+        welcome_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        welcome_layout.addWidget(welcome_hint)
+        welcome_buttons = QHBoxLayout()
+        welcome_buttons.addStretch(1)
+        for title, callback in (
+            ("Open Robot Pack…", self._open_dialog),
+            ("Create from URDF…", self._create_from_urdf_dialog),
+        ):
+            button = QPushButton(title)
+            button.clicked.connect(callback)
+            welcome_buttons.addWidget(button)
+        welcome_buttons.addStretch(1)
+        welcome_layout.addLayout(welcome_buttons)
+        welcome_layout.addStretch(1)
+        self.preview_stack.addWidget(welcome)
+        self.preview_stack.addWidget(self.viewport)
+        preview_layout.addWidget(self.preview_stack, 1)
+        hint = QLabel(
+            "Zero joint pose  ·  Drag to orbit  ·  Wheel to zoom  ·  Click a link to select"
+        )
+        hint.setObjectName("Hint")
+        hint.setWordWrap(True)
+        preview_layout.addWidget(hint)
+        self.setCentralWidget(preview)
         self.viewport.entity_selected.connect(self._select_from_viewport)
 
         self.project_tree = QTreeWidget()
         self.project_tree.setHeaderLabels(["Robot Pack", "Type"])
+        self.project_tree.setHeaderHidden(True)
+        self.project_tree.setColumnHidden(1, True)
+        self.project_tree.setIndentation(17)
+        self.project_tree.setUniformRowHeights(True)
+        self.project_tree.setIconSize(QSize(18, 18))
         self.project_tree.currentItemChanged.connect(self._tree_selection_changed)
-        self._add_dock("Project / URDF", self.project_tree, Qt.DockWidgetArea.LeftDockWidgetArea)
+        project_panel = QWidget()
+        project_panel.setObjectName("Panel")
+        project_layout = QVBoxLayout(project_panel)
+        project_layout.setContentsMargins(8, 8, 8, 8)
+        self.project_search = QLineEdit()
+        self.project_search.setPlaceholderText("Search project…")
+        self.project_search.setAccessibleName("Search project")
+        self.project_search.setClearButtonEnabled(True)
+        self.project_search.textChanged.connect(self._filter_project_tree)
+        project_layout.addWidget(self.project_search)
+        project_layout.addWidget(self.project_tree, 1)
+        project_dock = self._add_dock(
+            "Project", project_panel, Qt.DockWidgetArea.LeftDockWidgetArea
+        )
+        project_dock.setMinimumWidth(230)
 
         self.properties = QWidget()
+        self.properties.setObjectName("InspectorContent")
         self.properties_layout = QVBoxLayout(self.properties)
         self.properties_layout.addWidget(QLabel("Open or create a Robot Pack."))
         self.properties_layout.addStretch(1)
-        self._add_dock(
-            "Properties",
-            self.properties,
+        self.properties_scroll = QScrollArea()
+        self.properties_scroll.setWidgetResizable(True)
+        self.properties_scroll.setWidget(self.properties)
+        properties_dock = self._add_dock(
+            "Inspector",
+            self.properties_scroll,
             Qt.DockWidgetArea.RightDockWidgetArea,
         )
+        properties_dock.setMinimumWidth(335)
 
         self.validation_table = QTableWidget(0, 4)
         self.validation_table.setHorizontalHeaderLabels(["Severity", "Code", "Location", "Message"])
+        self.validation_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.validation_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.validation_table.setShowGrid(False)
+        self.validation_table.verticalHeader().hide()
         self.validation_table.horizontalHeader().setStretchLastSection(True)
+        validation_panel = QWidget()
+        validation_panel.setObjectName("Panel")
+        validation_layout = QVBoxLayout(validation_panel)
+        validation_layout.setContentsMargins(16, 12, 16, 12)
+        validation_row = QHBoxLayout()
+        self.validation_summary = QLabel("No Robot Pack open")
+        self.validation_summary.setObjectName("ValidationSummary")
+        validation_row.addWidget(self.validation_summary, 1)
+        run_validation = QPushButton("Check simulation readiness")
+        run_validation.clicked.connect(lambda: self._validate(ValidationProfile.SIMULATION))
+        validation_row.addWidget(run_validation)
+        validation_layout.addLayout(validation_row)
+        self.validation_detail = QLabel("Open a pack to check its authoring metadata.")
+        self.validation_detail.setObjectName("Muted")
+        validation_layout.addWidget(self.validation_detail)
+        validation_layout.addWidget(self.validation_table, 1)
+        self.validation_table.hide()
         self.yaml_preview = QPlainTextEdit()
         self.yaml_preview.setReadOnly(True)
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setPlaceholderText("Studio operations and exception traces appear here.")
+        mono = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
+        self.yaml_preview.setFont(mono)
+        self.log.setFont(mono)
         bottom_tabs = QTabWidget()
-        bottom_tabs.addTab(self.validation_table, "Validation")
+        bottom_tabs.addTab(validation_panel, "Validation")
         bottom_tabs.addTab(self.yaml_preview, "YAML Preview")
         bottom_tabs.addTab(self.log, "Session Log")
         bottom_dock = self._add_dock(
@@ -217,10 +326,19 @@ class MainWindow(QMainWindow):
             bottom_tabs,
             Qt.DockWidgetArea.BottomDockWidgetArea,
         )
-        bottom_dock.setMinimumHeight(220)
+        bottom_dock.setMinimumHeight(180)
+        self.setCorner(Qt.Corner.BottomLeftCorner, Qt.DockWidgetArea.LeftDockWidgetArea)
+        self.setCorner(Qt.Corner.BottomRightCorner, Qt.DockWidgetArea.RightDockWidgetArea)
+        self.resizeDocks([project_dock, properties_dock], [250, 370], Qt.Orientation.Horizontal)
+        self.resizeDocks([bottom_dock], [180], Qt.Orientation.Vertical)
         self._attach_session_log()
 
         self._build_actions()
+        self.save_state = QLabel("No pack open")
+        self.save_state.setObjectName("SaveState")
+        self.statusBar().addPermanentWidget(self.save_state)
+        self._appearance.changed.connect(self._refresh_chrome)
+        self._refresh_chrome()
         self.statusBar().showMessage("Ready")
         self._logger.info("Studio window initialized")
         if initial_path is not None:
@@ -262,7 +380,35 @@ class MainWindow(QMainWindow):
         simulation_action.triggered.connect(lambda: self._validate(ValidationProfile.SIMULATION))
         validate_menu.addAction(simulation_action)
 
-        view_toolbar = self.addToolBar("Viewport layers")
+        view_menu = self.menuBar().addMenu("&View")
+        for dock in self.findChildren(QDockWidget):
+            view_menu.addAction(dock.toggleViewAction())
+
+        toolbar = QToolBar("Document actions", self)
+        toolbar.setObjectName("DocumentToolbar")
+        toolbar.setMovable(False)
+        toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        toolbar.setIconSize(QSize(18, 18))
+        self.addToolBar(toolbar)
+        open_action.setIconText("Open pack")
+        create_action.setIconText("Import URDF")
+        self.save_action.setIconText("Save")
+        authoring_action.setIconText("Validate")
+        self._icon_actions = [
+            (open_action, "folder"),
+            (create_action, "cube"),
+            (self.save_action, "save"),
+            (authoring_action, "check"),
+        ]
+        for action, _icon in self._icon_actions:
+            toolbar.addAction(action)
+        toolbar.addSeparator()
+        self.breadcrumb = QLabel("No Robot Pack open")
+        self.breadcrumb.setObjectName("Breadcrumb")
+        self.breadcrumb.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.breadcrumb.setMinimumWidth(0)
+        toolbar.addWidget(self.breadcrumb)
+
         for label, keyword, checked in (
             ("Visual", "visuals", True),
             ("Collision", "collisions", False),
@@ -279,7 +425,61 @@ class MainWindow(QMainWindow):
                 self.viewport.set_layer_visibility(**{key: value})
 
             action.toggled.connect(toggle_layer)
-            view_toolbar.addAction(action)
+            self.layer_toolbar.addAction(action)
+        self.layer_toolbar.addSeparator()
+        fit_action = QAction("Fit", self)
+        fit_action.setToolTip("Fit the module in the viewport")
+        fit_action.triggered.connect(self.viewport.fit_module)
+        self.layer_toolbar.addAction(fit_action)
+
+    def _refresh_chrome(self) -> None:
+        color = self._appearance.theme.accent
+        for action, icon in self._icon_actions:
+            action.setIcon(studio_icon(icon, color))
+        self._decorate_tree()
+
+    def _decorate_tree(self) -> None:
+        icons = {
+            kind: studio_icon(icon, self._appearance.theme.muted)
+            for kind, icon in (
+                ("pack", "cube"),
+                ("module", "cube"),
+                ("link", "link"),
+                ("joint", "joint"),
+                ("connector", "connector"),
+                ("connector_type", "connector"),
+                ("model_view", "graph"),
+                ("asset", "file"),
+            )
+        }
+        folder = studio_icon("folder", self._appearance.theme.muted)
+        pending = [
+            self.project_tree.topLevelItem(i) for i in range(self.project_tree.topLevelItemCount())
+        ]
+        while pending:
+            item = pending.pop()
+            if item is None:
+                continue
+            item.setIcon(0, icons.get(str(item.data(0, _KIND_ROLE)), folder))
+            item.setToolTip(0, f"{item.text(0)} · {item.text(1)}")
+            pending.extend(item.child(i) for i in range(item.childCount()))
+
+    def _filter_project_tree(self, query: str) -> None:
+        needle = query.strip().casefold()
+
+        def visit(item: QTreeWidgetItem, ancestor_matches: bool = False) -> bool:
+            matches = ancestor_matches or needle in f"{item.text(0)} {item.text(1)}".casefold()
+            child_matches = [visit(item.child(i), matches) for i in range(item.childCount())]
+            visible = matches or any(child_matches)
+            item.setHidden(not visible)
+            if needle and any(child_matches):
+                item.setExpanded(True)
+            return visible
+
+        for index in range(self.project_tree.topLevelItemCount()):
+            item = self.project_tree.topLevelItem(index)
+            if item is not None:
+                visit(item)
 
     def open_project(self, path: str | Path) -> None:
         """Open a Robot Pack and populate all editor panels."""
@@ -387,6 +587,8 @@ class MainWindow(QMainWindow):
         connector_types_item.setExpanded(True)
         modules_item.setExpanded(True)
         self.project_tree.resizeColumnToContents(0)
+        self._decorate_tree()
+        self._filter_project_tree(self.project_search.text())
 
     def _refresh_document_panels(self) -> None:
         if self.project is None:
@@ -408,6 +610,7 @@ class MainWindow(QMainWindow):
             asset = self.project.imported_assets.get(module.asset_ref)
             if asset is not None:
                 self.viewport.render_module(asset, module)
+                self.preview_stack.setCurrentWidget(self.viewport)
                 return
 
     def _render_module(self, module_id: str) -> None:
@@ -425,6 +628,7 @@ class MainWindow(QMainWindow):
             "Select a URDF",
             "",
             "URDF files (*.urdf *.xml);;All files (*)",
+            options=_FILE_DIALOG_OPTIONS,
         )
         if not urdf_path:
             return
@@ -440,6 +644,7 @@ class MainWindow(QMainWindow):
                 self,
                 "Select the package or mesh asset root",
                 str(Path(urdf_path).parent),
+                options=_FILE_DIALOG_OPTIONS | QFileDialog.Option.ShowDirsOnly,
             )
             if not asset_root:
                 return
@@ -449,6 +654,7 @@ class MainWindow(QMainWindow):
             "Choose a new Robot Pack folder",
             str(Path(urdf_path).with_suffix("")),
             "Robot Pack folder (*)",
+            options=_FILE_DIALOG_OPTIONS,
         )
         if not destination:
             return
@@ -471,7 +677,11 @@ class MainWindow(QMainWindow):
             self._logger.info("URDF import completed without warnings")
 
     def _open_dialog(self) -> None:
-        path = QFileDialog.getExistingDirectory(self, "Open Robot Pack")
+        path = QFileDialog.getExistingDirectory(
+            self,
+            "Open Robot Pack",
+            options=_FILE_DIALOG_OPTIONS | QFileDialog.Option.ShowDirsOnly,
+        )
         if path:
             self.open_project(path)
 
@@ -483,6 +693,7 @@ class MainWindow(QMainWindow):
             "Export to a new Robot Pack folder",
             str(self.project.loaded.root.with_name(self.project.loaded.root.name + "_edited")),
             "Robot Pack folder (*)",
+            options=_FILE_DIALOG_OPTIONS,
         )
         if not destination:
             return
@@ -512,6 +723,22 @@ class MainWindow(QMainWindow):
         if self.project is None:
             return
         report = self.project.validate(profile)
+        profile_name = (
+            "Authoring validation"
+            if profile == ValidationProfile.AUTHORING
+            else "Simulation readiness"
+        )
+        state = "error" if report.errors else "warning" if report.warnings else "success"
+        self.validation_summary.setText(
+            f"{profile_name} {'passed' if report.valid else 'needs attention'}"
+        )
+        self.validation_summary.setProperty("state", state)
+        self.validation_summary.style().unpolish(self.validation_summary)
+        self.validation_summary.style().polish(self.validation_summary)
+        self.validation_detail.setText(
+            f"{len(report.errors)} errors  ·  {len(report.warnings)} warnings"
+        )
+        self.validation_table.setVisible(bool(report.issues))
         self.validation_table.setRowCount(len(report.issues))
         for row, issue in enumerate(report.issues):
             for column, value in enumerate(
@@ -559,6 +786,11 @@ class MainWindow(QMainWindow):
             self._replace_properties(QLabel("This category has no editable fields."))
             return
         self._current_selection = (kind, entity_id, module_id)
+        if self.project is not None:
+            self.breadcrumb.setText(
+                f"{self.project.pack.id}  /  {kind.replace('_', ' ')}  /  {entity_id}"
+            )
+            self.breadcrumb.setToolTip(self.breadcrumb.text())
         self._logger.debug(
             "Selected entity kind=%s id=%s module=%s",
             kind,
@@ -743,7 +975,9 @@ class MainWindow(QMainWindow):
         connector = next(item for item in module.connectors if item.id == connector_id)
         asset = self.project.imported_assets.get(module.asset_ref)
         panel = QWidget()
-        form = QFormLayout(panel)
+        sections = QVBoxLayout(panel)
+        sections.setContentsMargins(0, 0, 0, 0)
+        form = property_group("Identity", sections)
         form.addRow("Connector ID", QLabel(connector.id))
         connector_type = QComboBox()
         connector_type.addItems(list(self.project.pack.hardware_catalog.connector_types))
@@ -754,27 +988,34 @@ class MainWindow(QMainWindow):
         )
         parent_link.setCurrentText(connector.parent_link)
         form.addRow("Type", connector_type)
-        form.addRow("URDF body / link", parent_link)
+        form.addRow("Parent link", parent_link)
+        form = property_group("Local pose", sections)
         frame = QLineEdit(connector.frame or "")
         use_local_pose = QCheckBox()
         use_local_pose.setChecked(connector.local_pose is not None)
-        form.addRow("Named frame (optional)", frame)
-        form.addRow("Use numeric local pose", use_local_pose)
+        frame.setPlaceholderText("Optional")
+        form.addRow("Named frame", frame)
+        form.addRow("Numeric pose", use_local_pose)
         pose = connector.local_pose or PoseSpec()
-        xyz = QLineEdit(_vector_text(pose.xyz_m))
-        rpy = QLineEdit(_vector_text(pose.rpy_rad))
+        xyz = VectorEdit(pose.xyz_m, "XYZ", "Position (m)")
+        rpy = VectorEdit(pose.rpy_rad, "RPY", "Rotation (rad)")
+        use_local_pose.toggled.connect(xyz.setEnabled)
+        use_local_pose.toggled.connect(rpy.setEnabled)
+        xyz.setEnabled(use_local_pose.isChecked())
+        rpy.setEnabled(use_local_pose.isChecked())
         docking = QLineEdit(
             _vector_text(connector.docking_axis) if connector.docking_axis is not None else ""
         )
         approach = QLineEdit(
             _vector_text(connector.approach_axis) if connector.approach_axis is not None else ""
         )
-        form.addRow("Position xyz (m)", xyz)
-        form.addRow("Rotation rpy (rad)", rpy)
+        form.addRow("Position XYZ (m)", xyz)
+        form.addRow("Rotation RPY (rad)", rpy)
+        form = property_group("Axes", sections)
         form.addRow("Docking axis", docking)
         form.addRow("Approach axis", approach)
         metadata = _MetadataEditor(connector.metadata)
-        form.addRow("Custom fields", metadata)
+        sections.addWidget(DetailsSection(f"Custom fields · {len(connector.metadata)}", metadata))
 
         apply_button = QPushButton("Apply connector")
 
@@ -806,7 +1047,7 @@ class MainWindow(QMainWindow):
                 selection_after=("connector", connector_id, module_id),
             )
         )
-        form.addRow(apply_button)
+        sections.addWidget(apply_button)
         remove_button = QPushButton("Remove connector")
         remove_button.clicked.connect(
             lambda: self._apply_project_change(
@@ -814,7 +1055,7 @@ class MainWindow(QMainWindow):
                 selection_after=("link", connector.parent_link, module_id),
             )
         )
-        form.addRow(remove_button)
+        sections.addWidget(remove_button)
         self._replace_properties(panel)
 
     def _show_connector_types_properties(self) -> None:
@@ -959,7 +1200,9 @@ class MainWindow(QMainWindow):
             return
         connector_type = self.project.pack.hardware_catalog.connector_types[type_id]
         panel = QWidget()
-        form = QFormLayout(panel)
+        sections = QVBoxLayout(panel)
+        sections.setContentsMargins(0, 0, 0, 0)
+        form = property_group("Identity & compatibility", sections)
         form.addRow("Connector type ID", QLabel(connector_type.id))
         name = QLineEdit(connector_type.name or "")
         active = QCheckBox()
@@ -971,6 +1214,7 @@ class MainWindow(QMainWindow):
         form.addRow("Gender", gender)
         form.addRow("Compatible with", compatible)
 
+        form = property_group("Allowed orientations", sections)
         orientation_mode = QComboBox()
         orientation_mode.addItems(["", *[item.value for item in OrientationMode]])
         if connector_type.allowed_orientations is not None:
@@ -988,6 +1232,7 @@ class MainWindow(QMainWindow):
         form.addRow("Orientation mode", orientation_mode)
         form.addRow("Allowed values (rad)", orientation_values)
 
+        form = property_group("Acceptance region", sections)
         acceptance = connector_type.acceptance_region
         acceptance_shape = _enum_combo(
             AcceptanceShape,
@@ -1011,6 +1256,7 @@ class MainWindow(QMainWindow):
         form.addRow("Orientation tolerance (rad)", orientation_tolerance)
         form.addRow("Max relative velocity (m/s)", relative_velocity)
 
+        form = property_group("Physical connection", sections)
         physical = connector_type.physical_connection
         constraint = QComboBox()
         constraint.addItems(["", *[item.value for item in PhysicalConstraintType]])
@@ -1030,10 +1276,36 @@ class MainWindow(QMainWindow):
                 else None
             )
         )
+        hinge_axis = QLineEdit(
+            _vector_text(physical.hinge.axis)
+            if physical is not None and physical.hinge is not None
+            else ""
+        )
+        hinge_anchor_separation = QLineEdit(
+            _optional_number(
+                physical.hinge.anchor_separation_m
+                if physical is not None and physical.hinge is not None
+                else None
+            )
+        )
+
+        def set_constraint_fields_enabled(value: str) -> None:
+            compliant = value == PhysicalConstraintType.COMPLIANT.value
+            hinged = value == PhysicalConstraintType.HINGE.value
+            translational_stiffness.setEnabled(compliant)
+            rotational_stiffness.setEnabled(compliant)
+            hinge_axis.setEnabled(hinged)
+            hinge_anchor_separation.setEnabled(hinged)
+
+        constraint.currentTextChanged.connect(set_constraint_fields_enabled)
+        set_constraint_fields_enabled(constraint.currentText())
         form.addRow("Physical constraint", constraint)
         form.addRow("Translation stiffness (N/m)", translational_stiffness)
         form.addRow("Rotation stiffness (Nm/rad)", rotational_stiffness)
+        form.addRow("Hinge axis (x, y, z)", hinge_axis)
+        form.addRow("Hinge anchor separation (m)", hinge_anchor_separation)
 
+        form = property_group("Load limits", sections)
         limits = connector_type.limits
         max_normal = QLineEdit(
             _optional_number(limits.max_normal_force_n if limits is not None else None)
@@ -1049,6 +1321,7 @@ class MainWindow(QMainWindow):
         form.addRow("Max normal force (N)", max_normal)
         form.addRow("Max shear force (N)", max_shear)
         form.addRow("Max bending moment (Nm)", max_bending)
+        form = property_group("Docking policy", sections)
         form.addRow("Supports undocking", supports_undocking)
 
         policy = connector_type.docking_policy
@@ -1081,7 +1354,8 @@ class MainWindow(QMainWindow):
         form.addRow("Redock cooldown (s)", redock_cooldown)
         form.addRow("Break force (N)", break_force)
         metadata = _MetadataEditor(connector_type.metadata)
-        form.addRow("Custom metadata", metadata)
+        form = property_group("Custom metadata", sections)
+        form.addRow(metadata)
 
         apply_button = QPushButton("Apply connector type")
 
@@ -1132,13 +1406,26 @@ class MainWindow(QMainWindow):
                     translational_stiffness_n_per_m=compliance_values[0],
                     rotational_stiffness_nm_per_rad=compliance_values[1],
                 )
-                if any(value is not None for value in compliance_values)
+                if constraint_value == PhysicalConstraintType.COMPLIANT.value
                 else None
             )
+            hinge = None
+            if constraint_value == PhysicalConstraintType.HINGE.value:
+                axis = _optional_vector(hinge_axis.text())
+                anchor_separation_m = _optional_float(hinge_anchor_separation.text())
+                if axis is None or anchor_separation_m is None:
+                    raise ValueError(
+                        "hinge constraints require a three-component axis and anchor separation"
+                    )
+                hinge = HingeConstraintSpec(
+                    axis=axis,
+                    anchor_separation_m=anchor_separation_m,
+                )
             physical_connection = (
                 PhysicalConnectionSpec(
                     constraint=PhysicalConstraintType(constraint_value),
                     compliance=compliance,
+                    hinge=hinge,
                 )
                 if constraint_value
                 else None
@@ -1193,7 +1480,7 @@ class MainWindow(QMainWindow):
                 selection_after=("connector_type", type_id, ""),
             )
         )
-        form.addRow(apply_button)
+        sections.addWidget(apply_button)
         remove_button = QPushButton("Remove connector type")
         remove_button.clicked.connect(
             lambda: self._apply_project_change(
@@ -1201,7 +1488,7 @@ class MainWindow(QMainWindow):
                 selection_after=("connector_types", "", ""),
             )
         )
-        form.addRow(remove_button)
+        sections.addWidget(remove_button)
         self._replace_properties(panel)
 
     def _add_connector_type_dialog(self) -> None:
@@ -1343,7 +1630,13 @@ class MainWindow(QMainWindow):
         selection = selection_after or self._current_selection
         self._rebuild_tree()
         self._refresh_document_panels()
-        self._render_first_module()
+        if (
+            selection is not None
+            and selection[2] in self.project.pack.hardware_catalog.module_types
+        ):
+            self._render_module(selection[2])
+        else:
+            self._render_first_module()
         self._update_title()
         self._logger.info(
             "Applied Robot Pack edit; selection=%s; document_dirty=%s",
@@ -1381,9 +1674,37 @@ class MainWindow(QMainWindow):
                 continue
             old_widget = item.widget()
             if old_widget is not None:
+                old_widget.hide()
                 old_widget.deleteLater()
+        if self._current_selection is not None:
+            kind, entity_id, _module_id = self._current_selection
+            heading = QLabel(kind.replace("_", " ").capitalize())
+            heading.setObjectName("SectionTitle")
+            self.properties_layout.addWidget(heading)
+            identity = QLabel(entity_id)
+            identity.setObjectName("Muted")
+            identity.setTextFormat(Qt.TextFormat.PlainText)
+            identity.setWordWrap(True)
+            self.properties_layout.addWidget(identity)
+        for form in widget.findChildren(QFormLayout):
+            form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+            form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+            form.setVerticalSpacing(9)
+        for label in widget.findChildren(QLabel):
+            label.setWordWrap(True)
+        for combo in widget.findChildren(QComboBox):
+            combo.setSizeAdjustPolicy(
+                QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+            )
+            combo.setMinimumContentsLength(10)
+        for button in widget.findChildren(QPushButton):
+            if button.text().startswith("Apply"):
+                button.setProperty("primary", True)
+            elif button.text().startswith("Remove"):
+                button.setProperty("danger", True)
         self.properties_layout.addWidget(widget)
         self.properties_layout.addStretch(1)
+        self.properties_scroll.verticalScrollBar().setValue(0)
 
     def _add_dock(
         self,
@@ -1433,6 +1754,8 @@ class MainWindow(QMainWindow):
             return
         marker = " *" if self.project.dirty else ""
         self.setWindowTitle(f"{self.project.pack.manifest.name}{marker} — ModSim Studio")
+        self.save_state.setText("●  Unsaved changes" if self.project.dirty else "✓  Saved")
+        self.save_state.setToolTip(str(self.project.loaded.root))
 
     def _show_error(self, title: str, error: Exception) -> None:
         message = user_error_message(error)

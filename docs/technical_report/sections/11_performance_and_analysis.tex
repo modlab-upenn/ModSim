@@ -1,0 +1,207 @@
+\section{Performance, Scalability, and Critical Analysis}
+\label{sec:analysis}
+
+\subsection{What has and has not been benchmarked}
+
+The current implementation has strong correctness instrumentation but limited
+performance instrumentation. The fresh test run establishes a 537-test, 166.91-second
+verification result under coverage on one development environment. It does not isolate
+physics step throughput, renderer cost, UI transport latency, memory, or scaling with
+module count. Likewise, the documented approximately 177-s simulated completion is a
+scenario outcome, not wall-clock performance.
+
+This distinction is important because the demonstration's purpose is presently
+functional: prove that the semantic architecture can support wheel/contact dynamics and
+reconfiguration. A journal-quality performance claim will require a controlled
+benchmark harness, machine disclosure, repeated trials, and raw traces.
+
+\subsection{Algorithmic cost by subsystem}
+
+Let $M$ be module count, $C$ connector count, $E$ active connection count, $J$ joint
+count, and $K$ the number of nearby broad-phase pairs.
+
+\begin{table}[htbp]
+\centering
+\caption{Expected algorithmic costs of principal semantic operations.}
+\label{tab:complexity}
+\begin{tabularx}{\textwidth}{L{0.28\textwidth}L{0.22\textwidth}Y}
+\toprule
+Operation & Expected cost & Comment \\
+\midrule
+Snapshot ingestion & $O(M+J+C)$ & Copies observed link/joint/frame state \\
+Spatial hash build/query & expected $O(C+K)$ & Avoids all-pairs $O(C^2)$ in sparse scenes \\
+Acceptance/guards per pair & $O(1)$ & Fixed-size vector/quaternion computations \\
+Dock commit & component-set dependent & Backend allocation plus assembly merge \\
+Undock/split & $O(|V_A|+|E_A|)$ & Recomputes only affected assembly component \\
+Topology view build & $O(M+E)$ & Includes isolated nodes and parallel edges \\
+Metric summary & $O(M+C+E+|\mathcal L|)$ in simple aggregation & Event history counters can later be incremental \\
+Event delta transport & $O(\Delta |\mathcal L|)$ & Sends only unseen canonical events \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The broad phase is the primary semantic scaling mechanism. It is effective when
+connectors are spatially sparse relative to capture tolerance. Dense piles or very
+large tolerance values increase $K$ and approach all-pairs behavior. This has not yet
+been measured empirically.
+
+\subsection{Model-view cache behavior}
+
+The model-view factory retains a bounded least-recently-used set of latest snapshots,
+defaulting to 32 entries. A topology view token depends on backend sample and topology
+revision, so pose motion rebuilds node values while a pure event revision can reuse
+graph content. This prevents unbounded per-step graph accumulation.
+
+The cache is correctness tested, but hit rate, build latency, and serialization cost
+have not been benchmarked. At seven modules they are negligible relative to physics;
+at thousands of modules or multiple simultaneous views they may become visible.
+
+\subsection{Physics and rendering decoupling}
+
+The physical snake default has $210/0.002=105{,}000$ nominal solver steps. A native
+viewer synchronization on every step would couple this to 500 attempted visual updates
+per simulated second. Commit \code{4a5ca00} caps native synchronization at about 30 Hz,
+while retaining every physics step and forcing a final sync. Runtime Inspector graph
+publication defaults to 20 Hz wall time, and event deltas remain lossless between
+frames.
+
+This is an architectural improvement for accelerated presentation. It reduces
+render-call frequency but does not prove a particular achieved real-time factor. The
+solver, scene complexity, contacts, Python controller, IPC, native viewer, and host GPU
+all contribute. If they take longer than the requested pacing deadline, the runtime
+does not skip physics; it simply falls behind the target.
+
+\subsection{Why playback acceleration preserves the experiment}
+
+Changing $\rho$ in \cref{eq:pacing} changes wall waiting only. Contrast three possible
+implementations:
+
+\begin{enumerate}
+  \item Increasing solver $\Delta t$ reduces step count and changes contact stability.
+  \item Multiplying wheel targets changes robot dynamics and event times.
+  \item Dividing wall deadlines by $\rho$ preserves simulated trajectories subject to
+        deterministic solver execution.
+\end{enumerate}
+
+\modsim{} uses the third. Unit tests validate factors 1, 2, 4, and slow motion, reject
+zero/non-finite factors, verify protocol round-trip, and inspect viewer deadlines with a
+fake clock. A historical protocol record without the new field defaults to 1.0.
+
+\subsection{Physical model debugging lessons}
+
+The physical scenario exposed issues that kinematic staging cannot reveal.
+
+\paragraph{Visual meshes are not contact models.}
+Detailed Fusion STLs are suitable for appearance but expensive and fragile for contact.
+The pack now uses visual-only STLs and explicit wheel/skid/face primitives.
+
+\paragraph{Rotating square face proxies obstruct locomotion.}
+Early LEFT/RIGHT connector proxies were broad square boxes on rotating wheel bodies.
+Their corners swept through neighboring module geometry and stalled connected trains.
+Coaxial disk/cylinder proxies preserve face contact without creating paddle-like
+interference.
+
+\paragraph{Friction direction must follow the wheel.}
+Anisotropic coefficients alone are insufficient if the contact tangent stays in a
+world-fixed direction. The backend rotates the tangent basis to follow the wheel axle
+at every contact solve.
+
+\paragraph{A weld can overconstrain contact.}
+Leaving a direct body-pair contact active while also applying a rigid weld causes two
+constraints to fight. Pairing each runtime weld with a preallocated exclusion removes
+that specific conflict while leaving all other module and assembly contacts active.
+
+\paragraph{Multi-module differential drive is state dependent.}
+A controller that moves one module does not automatically move a rigid three-module
+train. Assembly allocation, traction, pivot friction, route hysteresis, and lateral
+prebias were required. This reinforces the separation between generic semantic plan
+and platform-specific physical route.
+
+\subsection{Stability and safety checks}
+
+The physical regressions sample finite poses, quaternions, velocities, and joint state;
+bound wheel speed; check upright orientation and supported height; verify released-face
+clearance; and hold the final snake beyond completion. Preflight rejects missing effort
+support or undeclared limits before staging, and atomic command validation prevents a
+partial actuator update.
+
+These are necessary but not sufficient for robust control. They do not measure contact
+penetration, energy, tire slip, solver residual, weld impulse, or sensitivity to
+parameter perturbation.
+
+\subsection{Determinism and reproducibility}
+
+Semantic ordering is deterministic by construction. Floating-point physics is expected
+to be reproducible within one pinned environment and scene, but no trace hash is
+currently archived. Exact measured maxima and phase transition timestamps are also not
+stored as an artifact. The regression protects thresholds and final state, which is
+appropriate for development but insufficient for a comparative experimental paper.
+
+Future result export should record at least:
+
+\begin{itemize}
+  \item simulation and wall timestamps;
+  \item scenario phase/action/waypoint;
+  \item module poses, joint targets/state/effort;
+  \item connector position, axis, roll, and speed errors;
+  \item contact count, force, penetration, and solver health;
+  \item topology, event sequence, and constraint handles; and
+  \item software version, dependency lock hash, scene configuration, and random seed.
+\end{itemize}
+
+\subsection{Test and CI analysis}
+
+Coverage is branch-aware for the backend-neutral package. Optional \mujoco{} code is
+checked separately because generated bindings lack complete stubs; Studio is checked by
+its own strict configuration. CI installs only core dependencies in the Python matrix,
+\mujoco{} in the headless job, and Studio in the Xvfb job. Package artifacts are built
+and smoke-tested only after those jobs.
+
+One current CI gap deserves explicit notice. The three tests in
+\pathcode{tests/test_mujoco_contact_mechanics.py} validate authored tire pairs,
+wheel-relative friction frames, and atomic weld/exclusion claim/release, but the
+dedicated \mujoco{} job's explicit file list omits that file. They ran in the fresh local
+537-test suite because \mujoco{} was installed; in a core-only CI job they skip. The file
+should be added to the dedicated job before treating contact mechanics as continuously
+protected on every pull request.
+
+\subsection{Threats to validity}
+
+\paragraph{Construct validity.}
+Graph and event correctness are measured directly against the semantic contract.
+Hardware accuracy is not: the contact model and actuators are provisional.
+
+\paragraph{Internal validity.}
+The root-motion guard establishes that physical scenarios do not teleport after
+creation. Deterministic initial staging and authored routes nevertheless make the task
+easier than arbitrary deployment.
+
+\paragraph{External validity.}
+Only one physical robot platform and one dynamic backend are exercised. The mock is a
+semantic reference, not independent physics validation.
+
+\paragraph{Statistical conclusion validity.}
+The physical results are one tuned deterministic regression, not a repeated randomized
+experiment. No confidence intervals or success-rate statistics can be claimed.
+
+\paragraph{Artifact validity.}
+The source checkout and lock file support reproduction, but there is no committed raw
+trace, hardware calibration data set, public license, CITATION metadata, or explicit
+public asset license. These are publication blockers for calling the artifact openly
+reusable.
+
+\subsection{Recommended benchmark campaign}
+
+A meaningful next performance campaign should include:
+
+\begin{enumerate}
+  \item timestep sweep at 1, 2, and 5 ms;
+  \item initial gap, lateral error, and yaw perturbation grid;
+  \item repeated trace hashes and terminal metrics;
+  \item requested versus achieved real-time factor with viewer off/on;
+  \item scaling in modules/connectors and broad-phase density;
+  \item model-view build/cache/serialization and IPC latency;
+  \item contact-exclusion and friction-frame ablations; and
+  \item calibrated hardware comparison for wheel and docking trajectories.
+\end{enumerate}
+
