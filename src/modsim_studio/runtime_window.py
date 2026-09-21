@@ -27,6 +27,8 @@ from modsim_studio.chrome import StudioHeader
 from modsim_studio.runtime_events import RuntimeEventLogWidget
 from modsim_studio.runtime_graph import TopologyGraphWidget
 from modsim_studio.runtime_lattice import CubicLatticeWidget
+from modsim_studio.runtime_lattice_presenter import CubicLatticeProjector
+from modsim_studio.runtime_mblocks_planning import LatticePlanningWorkspace, target_lattice_view
 from modsim_studio.runtime_planning import PlanningWorkspace
 from modsim_studio.runtime_presenter import (
     CubicLatticePresentation,
@@ -130,7 +132,18 @@ class RuntimeInspectorWindow(QMainWindow):
         self.view_stack.addWidget(self.graph)
         self.view_stack.addWidget(self.lattice)
         self.planning = PlanningWorkspace()
+        self.lattice_planning = LatticePlanningWorkspace()
+        self.planning_stack = QStackedWidget()
+        self.planning_stack.addWidget(self.planning)
+        self.planning_stack.addWidget(self.lattice_planning)
         self.target_graph = TopologyGraphWidget(category_colors=category_colors)
+        self.target_lattice = CubicLatticeWidget(category_colors=category_colors)
+        self.target_lattice.snap_cells_checkbox.hide()
+        self.target_lattice.orientation_axes_checkbox.hide()
+        self._target_projector = CubicLatticeProjector()
+        self.target_view_stack = QStackedWidget()
+        self.target_view_stack.addWidget(self.target_graph)
+        self.target_view_stack.addWidget(self.target_lattice)
         self.live_title = QLabel("Live topology")
         self.live_title.setObjectName("SectionTitle")
         live_panel = QWidget()
@@ -142,7 +155,7 @@ class RuntimeInspectorWindow(QMainWindow):
         self.target_title = QLabel("Target topology")
         self.target_title.setObjectName("SectionTitle")
         target_layout.addWidget(self.target_title)
-        target_layout.addWidget(self.target_graph, 1)
+        target_layout.addWidget(self.target_view_stack, 1)
         self.target_panel.hide()
         topology_split = QSplitter(Qt.Orientation.Horizontal)
         topology_split.addWidget(live_panel)
@@ -150,7 +163,7 @@ class RuntimeInspectorWindow(QMainWindow):
         topology_split.setSizes([580, 580])
         self.workspace_tabs = QTabWidget()
         self.workspace_tabs.addTab(topology_split, "Runtime state")
-        self.workspace_tabs.addTab(self.planning, "Planning")
+        self.workspace_tabs.addTab(self.planning_stack, "Planning")
         self.workspace_tabs.setTabVisible(1, False)
         self._planning_visible = False
         self.events = RuntimeEventLogWidget()
@@ -165,7 +178,10 @@ class RuntimeInspectorWindow(QMainWindow):
         decisions_layout.addWidget(
             QLabel("Planner decisions · assignments, routes, retries, and completion")
         )
-        decisions_layout.addWidget(self.planning.decisions, 1)
+        self.decisions_stack = QStackedWidget()
+        self.decisions_stack.addWidget(self.planning.decisions)
+        self.decisions_stack.addWidget(self.lattice_planning.decisions)
+        decisions_layout.addWidget(self.decisions_stack, 1)
         self.decisions_panel.hide()
         log_split = QSplitter(Qt.Orientation.Vertical)
         log_split.addWidget(events_panel)
@@ -196,6 +212,9 @@ class RuntimeInspectorWindow(QMainWindow):
         self._update_run_state()
         self.lattice.entity_selected.connect(self._select_entity)
         self.lattice.projection_changed.connect(self._set_lattice_projection)
+        self.target_lattice.projection_changed.connect(self._set_lattice_projection)
+        self.target_lattice.orbit_requested.connect(self._orbit_lattice)
+        self.target_lattice.layer_changed.connect(self._set_lattice_layer)
         self.lattice.layer_changed.connect(self._set_lattice_layer)
         self.lattice.snap_cells_changed.connect(self._set_snap_cells_visible)
         self.lattice.orientation_axes_changed.connect(self._set_orientation_axes_visible)
@@ -270,6 +289,13 @@ class RuntimeInspectorWindow(QMainWindow):
         self._update_run_state()
         if frame.planning is not None:
             self.planning.set_frame(frame)
+            self.planning_stack.setCurrentWidget(self.planning)
+            self.decisions_stack.setCurrentWidget(self.planning.decisions)
+        elif frame.lattice_planning is not None:
+            self.lattice_planning.set_frame(frame)
+            self.planning_stack.setCurrentWidget(self.lattice_planning)
+            self.decisions_stack.setCurrentWidget(self.lattice_planning.decisions)
+        if frame.planning is not None or frame.lattice_planning is not None:
             self.decisions_panel.show()
             if not self._planning_visible:
                 self.workspace_tabs.setTabVisible(1, True)
@@ -429,11 +455,46 @@ class RuntimeInspectorWindow(QMainWindow):
         target = self._presenter.target_presentation()
         if target is not None:
             self.target_panel.show()
+            self.target_view_stack.setCurrentWidget(self.target_graph)
             self.target_graph.set_presentation(target)
             count = sum(edge.state == "matched" for edge in target.edges)
             self.target_title.setText(
                 f"Target topology · {count}/{len(target.edges)} connections reached"
             )
+        frame = self._presenter.frame
+        if frame is not None and frame.lattice_planning is not None:
+            target_view = target_lattice_view(frame)
+            if target_view is not None and isinstance(presentation, CubicLatticePresentation):
+                geometry = self._target_projector.project(
+                    target_view,
+                    projection=presentation.geometry.projection,
+                    layer_z=presentation.geometry.layer_z,
+                    camera=presentation.geometry.camera,
+                    show_snap_cells=False,
+                    show_orientation_axes=False,
+                )
+                self.target_lattice.set_presentation(
+                    CubicLatticePresentation(
+                        geometry=geometry,
+                        events=(),
+                        selection=None,
+                        source_text=(
+                            "Planner intent · interchangeable modules · assembly-relative frame"
+                        ),
+                        status_text="Target shape",
+                        show_snap_cells=False,
+                        show_orientation_axes=False,
+                        show_labels=presentation.show_labels,
+                    )
+                )
+                self.target_lattice.legend.set_entries(
+                    (),
+                    "These cubes are requested target cells, not live modules or snap diagnostics. "
+                    "Any module may fill a cell. Projection and orbit follow the live lattice.",
+                )
+                self.target_view_stack.setCurrentWidget(self.target_lattice)
+                self.target_panel.show()
+                self.target_title.setText(f"Target lattice · {frame.lattice_planning.goal.id}")
         self.events.set_events(presentation.events)
         self.status_label.setText(presentation.status_text)
         self.source_label.setText(presentation.source_text)
@@ -468,7 +529,8 @@ class RuntimeInspectorWindow(QMainWindow):
         elif phase is ReconfigurationPhase.COMPLETE:
             title = (
                 "Target reached · Simulation complete"
-                if frame is not None and frame.planning is not None
+                if frame is not None
+                and (frame.planning is not None or frame.lattice_planning is not None)
                 else "Simulation complete"
             )
             detail = (
@@ -480,7 +542,8 @@ class RuntimeInspectorWindow(QMainWindow):
         elif time_limit:
             title = (
                 "Time limit reached · Target not reached"
-                if frame is not None and frame.planning is not None
+                if frame is not None
+                and (frame.planning is not None or frame.lattice_planning is not None)
                 else "Time limit reached"
             )
             detail = "The simulation has stopped advancing. The scenario did not report completion."

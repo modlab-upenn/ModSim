@@ -71,6 +71,7 @@ class MuJoCoBackendAdapter:
 
     __slots__ = (
         "_compiled",
+        "_constraint_time_constant_s",
         "_contact_exclusions",
         "_data",
         "_gravity",
@@ -93,7 +94,13 @@ class MuJoCoBackendAdapter:
         hinge_pool_size: int | None = None,
         ground: bool = False,
         ground_height_m: float = 0.0,
+        constraint_time_constant_s: float | None = None,
     ) -> None:
+        if constraint_time_constant_s is not None and (
+            not math.isfinite(constraint_time_constant_s) or constraint_time_constant_s <= 0
+        ):
+            raise ValueError("constraint_time_constant_s must be finite and positive")
+        self._constraint_time_constant_s = constraint_time_constant_s
         self._gravity = gravity
         self._timestep_s = timestep_s
         self._weld_pool_size = weld_pool_size
@@ -154,6 +161,16 @@ class MuJoCoBackendAdapter:
             ground_height_m=self._ground_height_m,
         )
         self._compiled = compiled
+        if self._constraint_time_constant_s is not None:
+            if self._constraint_time_constant_s < 2 * compiled.model.opt.timestep:
+                raise BackendError("constraint_time_constant_s must be at least twice the timestep")
+            # Configure only ModSim's reserved runtime constraints. Authored
+            # equalities and every other scene keep their original solver settings.
+            for equality in (
+                *compiled.weld_pool,
+                *(e for pair in compiled.hinge_pool for e in pair),
+            ):
+                compiled.model.eq_solref[equality] = (self._constraint_time_constant_s, 1.0)
         self._scene = scene
         self._data = mujoco.MjData(compiled.model)
         self._welds = WeldPool.over(compiled.weld_pool)

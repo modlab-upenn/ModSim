@@ -19,7 +19,11 @@ XY footprints, goals, generated paths, action dependencies/status, and action
 history. **Event log** is its own tab with canonical events and a separate planner
 decision table. See [Online planar planning](planning.md) for the algorithms,
 launch settings, validation scope, and remaining physical-control limitations.
-Planner intent travels separately from canonical state in protocol version 2.
+Planner intent travels separately from canonical state in protocol version 3.
+The `mblocks_online_lattice` and `mblocks_online_lattice_large` demos add a measured/target cubic-lattice pair,
+generated pivot and clearance overlays, actuator telemetry, and the same event
+log and completion states. See [M-Blocks planning](mblocks_planning.md) for the
+passing four- and six-block presets and experimental elbow/larger-cluster limitations.
 
 With the MuJoCo backend, the same command opens MuJoCo's native 3D viewer as a
 companion window by default. The two windows show the same authoritative

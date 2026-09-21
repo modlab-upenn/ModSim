@@ -35,6 +35,10 @@ parallel action groups, and routes with feedback-based recovery. Its Planning
 tab visualizes goals, paths, action progress, and decisions; see
 [online planning](docs/planning.md) for validation scope and current limitations.
 
+The [M-Blocks planar planner](docs/mblocks_planning.md) generates lattice pivots
+from initial and target shapes. Physical presets turn four- or six-block clusters
+into a line, with measured landing checks and live planner visualization.
+
 Isaac Sim integration, actuator/transmission catalogs, general 3D
 reconfiguration planning, continuous magnetic interaction, and MuJoCo
 compliant/ball/custom connections are not yet implemented. The `simulation`
@@ -430,6 +434,24 @@ the real three-plane actuator carrier, autonomous planning, or the unpublished
 model-view semantics, the two execution paths, and the remaining fidelity
 gates.
 
+To try the generated square-to-line plan with online feedback:
+
+```bash
+modsim runtime examples/robot_packs/mblocks_3d --demo mblocks_online_lattice
+```
+
+For more cubes and a longer run, the larger preset moves five of six cubes
+through 21 generated pivots (about 28 simulated seconds):
+
+```bash
+modsim runtime examples/robot_packs/mblocks_3d --demo mblocks_online_lattice_large
+```
+
+Append `--speed 0.5` to watch it at half speed.
+
+See [M-Blocks planning](docs/mblocks_planning.md) for headless runs, custom input
+JSON, and the current limitations of the experimental elbow and larger clusters.
+
 ### Twelve-module mat-to-staircase demonstration
 
 This demonstration has two complementary execution phases. The reference
@@ -545,6 +567,8 @@ derived snapshots rather than canonical state.
 - [Backend adapters](docs/backends.md) — runtime/backend responsibilities
 - [Model views](docs/model_views.md) — recipes and immutable generated views
 - [Runtime Inspector](docs/runtime_inspector.md) — live visualization contract
+- [M-Blocks planar planning](docs/mblocks_planning.md) — generated lattice pivots,
+  physical square-to-line baseline, planner visualization, and current limits
 - [Online planar planning](docs/planning.md) — SMORES-EP assignment, routing,
   execution, and planner visualization
 - [3D M-Blocks integration](docs/mblocks_3d.md) — CAD-derived pack, lattice view,

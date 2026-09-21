@@ -70,6 +70,7 @@ jobs:
           uv run --no-sync pytest
           tests/test_mblocks_example_pack.py
           tests/test_mblocks_physical_twelve.py
+          tests/test_mblocks_online_planning.py
           tests/test_momentum_pivot.py
           tests/test_mujoco_backend.py
           tests/test_mujoco_contact_mechanics.py
@@ -128,6 +129,7 @@ jobs:
           tests/test_runtime_process.py
           tests/test_runtime_widgets.py
           tests/test_runtime_planning_widgets.py
+          tests/test_mblocks_planning_widgets.py
           tests/test_runtime_worker.py
           tests/test_studio_appearance.py
           tests/test_studio_viewport.py

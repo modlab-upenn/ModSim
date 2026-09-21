@@ -14,6 +14,8 @@ action-history chart. **Event log** has its own tab for simulation events and pl
 decisions. Collapsible/hover legends explain the graphics, and a persistent result
 banner distinguishes completion from failure, stopping, or an exhausted time budget.
 See [Online planar planning](planning.md) for launch commands and scope.
+The [M-Blocks planner](mblocks_planning.md) uses the same tabs with live/target
+cubes, swept-cell and pivot overlays, generated moves, and flywheel telemetry.
 
 ## Install and launch
 

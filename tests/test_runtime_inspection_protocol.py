@@ -202,7 +202,7 @@ def test_protocol_pause_state_requires_a_strict_boolean(kind: str) -> None:
     malformed = (
         RUNTIME_PROTOCOL_PREFIX.encode()
         + json.dumps(
-            {"protocol_version": 2, "kind": kind, "paused": 1},
+            {"protocol_version": 3, "kind": kind, "paused": 1},
             separators=(",", ":"),
         ).encode()
         + b"\n"
@@ -215,16 +215,17 @@ def test_protocol_pause_state_requires_a_strict_boolean(kind: str) -> None:
 @pytest.mark.parametrize(
     "record, expected",
     [
-        (b'{"protocol_version":2,"kind":"hello"}\n', "must begin"),
+        (b'MODSIM_RUNTIME/2 {"protocol_version":2,"kind":"hello"}\n', "must begin"),
+        (b'{"protocol_version":3,"kind":"hello"}\n', "must begin"),
         (
-            b'MODSIM_RUNTIME/2 {"protocol_version":1,"kind":"hello"}\n',
+            b'MODSIM_RUNTIME/3 {"protocol_version":1,"kind":"hello"}\n',
             "invalid runtime protocol",
         ),
         (
-            b'MODSIM_RUNTIME/2 {"protocol_version":2,"kind":"hello","extra":1}\n',
+            b'MODSIM_RUNTIME/3 {"protocol_version":3,"kind":"hello","extra":1}\n',
             "invalid runtime protocol",
         ),
-        (b'MODSIM_RUNTIME/2 {"protocol_version":2,"kind":"hello"}', "end with"),
+        (b'MODSIM_RUNTIME/3 {"protocol_version":3,"kind":"hello"}', "end with"),
     ],
 )
 def test_protocol_rejects_malformed_or_unsupported_records(
@@ -241,7 +242,7 @@ def test_protocol_framer_bounds_unterminated_input_and_rejects_eof_fragment() ->
         framer.feed(b"x" * MAX_RUNTIME_MESSAGE_BYTES)
     assert framer.buffered_bytes == 0
 
-    framer.feed(b"MODSIM_RUNTIME/2 ")
+    framer.feed(b"MODSIM_RUNTIME/3 ")
     with pytest.raises(RuntimeProtocolError, match="unterminated"):
         framer.finish()
     assert framer.buffered_bytes == 0
