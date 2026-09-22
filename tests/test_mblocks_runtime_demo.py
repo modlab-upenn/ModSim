@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import subprocess
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -27,6 +29,7 @@ from modsim.runtime import (
     RuntimeInspectorSetupError,
 )
 from modsim.runtime.inspector_runner import validate_runtime_inspector_config
+from modsim.runtime.mblocks_lattice import starter_state
 from modsim.runtime.momentum_pivot import (
     MAX_MOMENTUM_TIMESTEP_S,
     MomentumPivotConfig,
@@ -35,6 +38,29 @@ from modsim.runtime.session import RuntimeSession
 
 _ROOT = Path(__file__).resolve().parents[1]
 _PACK_PATH = _ROOT / "examples" / "robot_packs" / "mblocks_3d"
+
+
+@pytest.mark.parametrize("custom_initial", (False, True))
+def test_headless_large_preset_plans_without_starting_physics(
+    tmp_path: Path,
+    custom_initial: bool,
+) -> None:
+    command = [
+        sys.executable,
+        str(_ROOT / "examples/scenarios/mblocks_online_planning.py"),
+        "--preset",
+        "large",
+        "--plan-only",
+    ]
+    if custom_initial:
+        initial_file = tmp_path / "initial.json"
+        initial_file.write_text(starter_state().model_dump_json())
+        command.extend(("--initial-file", str(initial_file)))
+    result = subprocess.run(command, cwd=_ROOT, capture_output=True, text=True, timeout=15)
+    assert result.returncode == 0, result.stderr
+    plan = json.loads(result.stdout)
+    assert len(plan["initial"]["blocks"]) == (4 if custom_initial else 6)
+    assert len(plan["actions"]) == (8 if custom_initial else 21)
 
 
 def test_runner_loads_five_module_pivot_with_default_lattice_recipe() -> None:
@@ -570,8 +596,19 @@ def test_cli_supplies_safe_mblocks_momentum_pivot_defaults(
     assert config.height_m == pytest.approx(0.025)
 
 
-def test_cli_supplies_safe_physical_twelve_module_line_defaults(
+@pytest.mark.parametrize(
+    ("demo", "duration_s"),
+    (
+        (RuntimeDemo.MBLOCKS_PHYSICAL_TWELVE_MODULE_LINE, 12.0),
+        (RuntimeDemo.MBLOCKS_ONLINE_LATTICE, 120.0),
+        (RuntimeDemo.MBLOCKS_ONLINE_LATTICE_LARGE, 180.0),
+        (RuntimeDemo.MBLOCKS_ONLINE_LATTICE_ELBOW, 240.0),
+    ),
+)
+def test_cli_supplies_safe_physical_mblocks_defaults(
     monkeypatch: pytest.MonkeyPatch,
+    demo: RuntimeDemo,
+    duration_s: float,
 ) -> None:
     captured: dict[str, object] = {}
     runtime_app = ModuleType("modsim_studio.runtime_app")
@@ -589,7 +626,7 @@ def test_cli_supplies_safe_physical_twelve_module_line_defaults(
             "runtime",
             str(_PACK_PATH),
             "--demo",
-            RuntimeDemo.MBLOCKS_PHYSICAL_TWELVE_MODULE_LINE.value,
+            demo.value,
             "--no-viewer",
         ],
     )
@@ -597,9 +634,9 @@ def test_cli_supplies_safe_physical_twelve_module_line_defaults(
     assert result.exit_code == 0, result.output
     config = captured["config"]
     assert isinstance(config, RuntimeInspectorConfig)
-    assert config.demo is RuntimeDemo.MBLOCKS_PHYSICAL_TWELVE_MODULE_LINE
+    assert config.demo is demo
     assert config.backend == "mujoco"
-    assert config.duration_s == pytest.approx(12.0)
+    assert config.duration_s == pytest.approx(duration_s)
     assert config.dt_s == pytest.approx(0.0005)
     assert config.connector_gap_m is None
     assert config.retract_m_s is None

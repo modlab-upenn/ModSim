@@ -1,4 +1,5 @@
 # ModSim
+
 [![CI](https://github.com/modlab-upenn/ModSim/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/modlab-upenn/ModSim/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
 [![Pre-alpha](https://img.shields.io/badge/status-pre--alpha-F59E0B)](pyproject.toml)
@@ -35,10 +36,37 @@ parallel action groups, and routes with feedback-based recovery. Its Planning
 tab visualizes goals, paths, action progress, and decisions; see
 [online planning](docs/planning.md) for validation scope and current limitations.
 
+The [M-Blocks planar planner](docs/mblocks_planning.md) generates lattice pivots
+from initial and target shapes. Physical presets turn four- or six-block clusters
+into a line, with measured landing checks and live planner visualization.
+
+Start with [Studio](#studio) to build a pack, the
+[Runtime Inspector](#runtime-inspector) to inspect a simulation, or the
+[online M-Blocks demos](#online-planar-reconfiguration) for generated reconfiguration.
+
 Isaac Sim integration, actuator/transmission catalogs, general 3D
 reconfiguration planning, continuous magnetic interaction, and MuJoCo
 compliant/ball/custom connections are not yet implemented. The `simulation`
 profile checks structural readiness; it does not launch a simulator.
+
+## Architecture
+
+| Component | Responsibility |
+| --- | --- |
+| URDF and mechanical assets | Geometry, links, joints, and inertial properties |
+| Robot Pack YAML | Module and connector semantics, docking policies, mappings, and model-view recipes |
+| `WorldState` and event log | Canonical measured state, committed connections, assemblies, and lifecycle history |
+| Runtime session | Backend stepping, state ingestion, docking/undocking, and bounded joint commands |
+| Backend adapters | Mock execution or MuJoCo physics and constraints |
+| Online planners | Goals, generated actions/routes, scheduling, measured feedback, and bounded recovery |
+| Generated model views | Immutable topology and lattice projections of canonical state |
+| Studio and Runtime Inspector | Pack authoring, runtime visualization, and planner diagnostics |
+
+Core planning and semantic code remain independent of Qt and MuJoCo. Planner
+intent travels separately from measured state; drawing a target or route never
+creates a live connection or moves a cube. Runtime Inspector protocol version 3
+carries coherent world and planner snapshots between the GUI and native-viewer
+process. Both processes must use the same installed checkout.
 
 ## Install
 
@@ -60,6 +88,9 @@ python3.12 -m venv .venv
 The extras are independent: `studio` adds the desktop applications, `mujoco`
 adds physics and native-viewer support, and `dev` adds repository tooling. The
 base install contains the Robot Pack, model-view, mock-backend, and CLI APIs.
+
+Run the commands below from the repository root. If the environment is not
+activated, use `uv run --no-sync modsim` or `.venv/bin/modsim` in place of `modsim`.
 
 ## Robot Packs and CLI
 
@@ -106,6 +137,28 @@ atomic Save, non-overwriting Export As, and canonical YAML preview. URDF
 remains the source of mechanical geometry and kinematics; Robot Pack YAML adds
 modular-robot semantics.
 
+The Builder and Runtime Inspector share three built-in themes, selectable from
+the **Theme** picker and remembered between launches:
+
+| Theme | Appearance |
+| --- | --- |
+| Midnight Panels | Navy surfaces with teal accents |
+| Graphite Workbench | Charcoal surfaces with blue accents |
+| Light Studio | Warm ivory surfaces, sand borders, and navy blue accents |
+
+Shared styling covers panels, toolbars, forms, tables, dialogs, and icons. The
+current application subtitle uses bold accent text. Charts use distinct
+categorical colors, with darker colors on the light background and legends
+explaining their meaning. Themes use the existing PySide6 dependency; no
+external theme or icon package was added.
+
+The Builder retains its scene objects and caches imported meshes. Selecting
+links or joints updates highlights and properties, and view toggles change
+visibility while preserving the camera. Connector edits update their overlays;
+the static viewport no longer redraws continuously while idle. Open, import,
+and export use themed Qt file dialogs, avoiding native GTK/pixbuf crashes caused
+by incompatible libraries inherited from environments such as Snap terminals.
+
 See [Studio](docs/studio.md) for the authoring workflow and current UI limits.
 
 ## Runtime Inspector
@@ -127,6 +180,26 @@ MuJoCo, a separate native 3D viewer opens by default; `--no-viewer` suppresses
 it while retaining the Qt inspector. Use `modsim run` for a fully non-GUI
 execution.
 
+Online planning demos provide three tabs:
+
+| Tab | Contents |
+| --- | --- |
+| Runtime state | Live and target topology or lattice side by side, using matching renderers |
+| Planning | Measured motion, generated routes or pivots, goal/clearance overlays, action details, and history |
+| Event log | Separate tables for canonical simulation events and planner decisions |
+
+**Action history** shows time spent in each action phase. Zoom and drag change
+the time axis only; rows scroll vertically. **Follow time** and **Fit all** control
+the visible interval. Hover a segment for its state and duration. Graphs have
+collapsible legends with hover explanations, and planning overlays can be
+toggled independently. Manual zoom and camera choices survive incoming frames
+and theme changes.
+
+Persistent banners distinguish **Target reached · Simulation complete**,
+**Simulation failed**, **Simulation stopped**, and **Time limit reached · Target
+not reached**. Finishing a run freezes the final state for inspection; elapsed
+time alone is never treated as planner success.
+
 Playback is synchronized across the two runtime windows. Click **Pause** or
 **Resume** in the Runtime Inspector, or press **Space** in the native MuJoCo
 window, to change the same authoritative playback state. A pause takes effect
@@ -141,6 +214,12 @@ keyboard shortcut, and native-viewer status overlay instead. With
 `--no-viewer`, the Inspector button controls the same worker-thread runtime.
 The native overlay is shown when the installed MuJoCo version supports public
 viewer text overlays; the controls do not depend on it.
+
+**Stop** performs cooperative shutdown and closes the MuJoCo viewer while
+retaining the Inspector's final semantic view and event log. Closing the native
+viewer is also handled as a normal stop. Backend and viewer cleanup are
+coordinated to avoid render-thread shutdown errors; unexpected failures still
+produce diagnostics in the Studio session log.
 
 In the cubic-lattice view, left-drag pans, right-drag orbits the projected
 models, and the mouse wheel zooms. Selecting a fixed projection resets the
@@ -171,8 +250,28 @@ modsim runtime examples/robot_packs/smores_ep --demo smores_online_assembly
 modsim runtime examples/robot_packs/smores_ep --demo smores_online_driver_to_snake
 ```
 
-These generate routes at runtime. The examples below remain the scripted
-references. See [Online planar planning](docs/planning.md) for behavior and limits.
+The planner implements tree-root selection, distance-based Hungarian assignment,
+planar goal unfolding, and depth-group scheduling from the SMORES-EP parallel
+self-assembly work. Bounded routing checks swept assembly footprints and timed
+reservations. The wheel controller uses measured feedback, with backoff and
+replanning after stalled or rejected approaches.
+
+| Online demo | Current scope |
+| --- | --- |
+| `smores_online_assembly` | Seven-module assembly with generated assignments and routes; has completed in headless MuJoCo, but remains experimental |
+| `smores_online_driver_to_snake` | Uses explicit module correspondence and preserves correct bonds; connected-train tracking and crowded approaches remain debugging cases |
+
+Export final diagnostics without opening either GUI:
+
+```bash
+python examples/scenarios/smores_online_planning.py \
+  --snapshot /tmp/smores-planning-frame.json
+```
+
+General initial-to-goal graph correspondence, helping-module lifting, and
+arbitrary 3D goals remain outside this implementation. The examples below are
+the scripted references. See [Online planar planning](docs/planning.md) for
+the research basis, validation scope, and current controller limits.
 
 Run these commands from the repository root after installing the `studio` and
 `mujoco` extras. If the virtual environment is not activated, replace `modsim`
@@ -317,6 +416,74 @@ planner. The collision-clearance routes, contact parameters, control gains,
 and ideal post-capture weld are provisional simulation choices.
 
 ## Reproducible 3D M-Blocks examples
+
+The pack contains 3D mechanical assets. Its online planner currently operates
+in one horizontal 2D lattice plane; the authored vertical pivot and staircase
+demos below exercise complementary physics cases.
+
+### Online planar reconfiguration
+
+Run the small four-cube square-to-line demo:
+
+```bash
+modsim runtime examples/robot_packs/mblocks_3d --demo mblocks_online_lattice
+```
+
+For more cubes and a longer sequence, run the six-cube rectangle-to-line preset:
+
+```bash
+modsim runtime examples/robot_packs/mblocks_3d \
+  --demo mblocks_online_lattice_large \
+  --speed 0.5
+```
+
+| Demo | Cubes | Moving cubes | Generated pivots | Reference completion |
+| --- | --- | --- | --- | --- |
+| `mblocks_online_lattice` | 4, arranged 2 by 2 | 3 | 8 | About 9.25 simulated seconds |
+| `mblocks_online_lattice_large` | 6, arranged 2 by 3 | 5 | 21 | About 27.59 simulated seconds |
+| `mblocks_online_lattice_elbow` | 4 | 3 | 18 | Experimental; reverse landings can exhaust actuator limits |
+
+At `--speed 0.5`, the larger run takes about **55 seconds of playback** when the
+machine keeps pace. Omitting `--speed` requests real-time playback. Both line
+presets use gravity, ground contact, a 0.0005 s timestep, and the same measured
+capture and 3 mm settled-position checks. Their time budgets are 120 s and
+180 s respectively; successful completion stops the simulation early.
+
+The planner follows the planar construction of Sung et al. (ICRA 2015):
+admissibility checks, boundary traversal, the P3 removal queue, conversion to a
+common line, and reversal toward a target shape. It generates legal 90/180-degree
+pivots with swept-cell clearance and stationary-structure connectivity checks.
+The executor selects actual hinge/face connectors, commands the flywheel and
+brake, and verifies measured landing geometry and committed topology before
+advancing. Valid settled deviations can trigger bounded replanning. Runtime
+root poses, velocities, and body wrenches are never written by these demos.
+
+The Inspector shows moving and supporting cubes, target cells, swept cells,
+pivot points and arcs, generated moves, and eligibility explanations. Telemetry
+includes flywheel RPM, pivot angle, landing effort, settled-position error,
+completed moves, and replans. Planner decisions and connector events remain
+available in **Event log** after completion or failure.
+
+Inspect a generated plan without MuJoCo or Qt, or execute headlessly and export
+the final planner snapshot:
+
+```bash
+python examples/scenarios/mblocks_online_planning.py --preset large --plan-only
+python examples/scenarios/mblocks_online_planning.py \
+  --preset large --snapshot /tmp/mblocks-large-result.json
+```
+
+The script accepts `--initial-file` and `--goal-file` JSON inputs,
+`--goal line|elbow`, and controller/time settings. A custom initial file overrides the
+preset. Geometric planning accepts 2–32 cubes; physical completion is verified
+for the four- and six-cube presets above. The wider 3-by-2 six-cube layout,
+eight-cube clusters, and elbow reversal still expose alignment or actuator-limit
+failures. Goals describe interchangeable cubes in a shape relative to the
+anchor; labelled final assignments and full 3D planning are not implemented.
+See [M-Blocks planning](docs/mblocks_planning.md) for input formats, research
+references, and calibration details.
+
+### Authored pivot and lattice demonstrations
 
 Inspect the CAD-derived pack in Studio and run simulation-readiness validation:
 
@@ -511,6 +678,25 @@ some final physical cubes amber because accumulated solver/whole-assembly
 drift exceeds its strict 3 mm / 3 degree diagnostic tolerance even when their
 nearest integer cells and final connector topology are correct.
 
+## Connection physics and current limits
+
+Face docking creates a fixed constraint after measured acceptance. M-Blocks
+pivots temporarily use a two-point edge hinge before capturing the next face.
+MuJoCo integrates motor effort, inertia, gravity, collisions, and constraint
+reactions; magnetic attachment remains an ideal constraint approximation.
+
+There is no continuous magnetic attraction force or calibrated magnetic
+breakaway model. The M-Blocks pack leaves `break_force_n` unset, so its connectors
+do not release automatically under load. Declared normal/shear/bending ratings
+are not separately enforced. The runtime does support an optional scalar
+overload threshold for packs that configure it; current M-Blocks demos command
+their face/hinge transitions explicitly. See [Docking semantics](docs/docking_semantics.md).
+
+The online M-Blocks demos use a 0.002 s time constant for their reserved MuJoCo
+weld and hinge constraints. This numerical setting tunes the ideal attachment
+stiffness; it is not a magnetic strength parameter. Whole-assembly drift is
+allowed by the explicitly assembly-relative planning frame.
+
 ## Python API
 
 ```python
@@ -545,6 +731,8 @@ derived snapshots rather than canonical state.
 - [Backend adapters](docs/backends.md) — runtime/backend responsibilities
 - [Model views](docs/model_views.md) — recipes and immutable generated views
 - [Runtime Inspector](docs/runtime_inspector.md) — live visualization contract
+- [M-Blocks planar planning](docs/mblocks_planning.md) — generated lattice pivots,
+  four- and six-cube physical presets, planner visualization, and current limits
 - [Online planar planning](docs/planning.md) — SMORES-EP assignment, routing,
   execution, and planner visualization
 - [3D M-Blocks integration](docs/mblocks_3d.md) — CAD-derived pack, lattice view,
@@ -559,8 +747,25 @@ uv lock --check
 uv run --no-sync ruff check .
 uv run --no-sync ruff format --check .
 uv run --no-sync pyright
+uv run --no-sync pyright --project pyright-mujoco.json
+uv run --no-sync pyright --project pyright-studio.json
 uv run --no-sync pytest
 git diff --check
 ```
 
-GUI tests require a display or Xvfb. MuJoCo tests require the `mujoco` extra.
+Use the full development environment above for all three type checks and the
+optional physics/GUI tests. GUI tests require a display or Xvfb; MuJoCo tests
+require the `mujoco` extra. A focused check of the new M-Blocks planning paths is:
+
+```bash
+uv run --no-sync pytest tests/test_mblocks_planning.py \
+  tests/test_mblocks_online_planning.py tests/test_mblocks_runtime_demo.py \
+  tests/test_mblocks_planning_widgets.py
+```
+
+GitHub Actions checks Python 3.11 and 3.12, runs separate headless MuJoCo and
+native Studio jobs, and builds and smoke-tests the wheel and source distribution.
+The core-only environment skips optional dependency tests. The MuJoCo job runs
+the complete physical four- and six-cube planner regressions, including checks
+that forbid runtime root control; the Studio job covers planner widgets, theme
+changes, retained rendering, and runtime shutdown.

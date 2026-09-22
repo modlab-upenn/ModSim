@@ -318,10 +318,17 @@ def runtime_command(
     mblocks_kinematic = (
         mblocks_kinematic_pivot or mblocks_twelve_module_line or mblocks_twelve_module_staircase
     )
-    physical_twelve_module_mblocks = (
-        mblocks_physical_twelve_module_line or mblocks_physical_twelve_module_staircase
+    physical_mblocks_sequence = (
+        mblocks_physical_twelve_module_line
+        or mblocks_physical_twelve_module_staircase
+        or demo
+        in {
+            RuntimeDemo.MBLOCKS_ONLINE_LATTICE,
+            RuntimeDemo.MBLOCKS_ONLINE_LATTICE_LARGE,
+            RuntimeDemo.MBLOCKS_ONLINE_LATTICE_ELBOW,
+        }
     )
-    physical_mblocks = mblocks_momentum_pivot or physical_twelve_module_mblocks
+    physical_mblocks = mblocks_momentum_pivot or physical_mblocks_sequence
     physical_smores = physical_pair or physical_reconfiguration
     physical_demo = physical_smores or physical_mblocks
     resolved_duration_s = (
@@ -341,11 +348,14 @@ def runtime_command(
             RuntimeDemo.MBLOCKS_PHYSICAL_TWELVE_MODULE_STAIRCASE: 12.0,
             RuntimeDemo.MBLOCKS_TWELVE_MODULE_LINE: 24.0,
             RuntimeDemo.MBLOCKS_TWELVE_MODULE_STAIRCASE: 28.0,
+            RuntimeDemo.MBLOCKS_ONLINE_LATTICE: 120.0,
+            RuntimeDemo.MBLOCKS_ONLINE_LATTICE_LARGE: 180.0,
+            RuntimeDemo.MBLOCKS_ONLINE_LATTICE_ELBOW: 240.0,
         }[demo]
     )
     if dt_s is not None:
         resolved_dt_s = dt_s
-    elif physical_twelve_module_mblocks:
+    elif physical_mblocks_sequence:
         resolved_dt_s = MAX_MOMENTUM_TIMESTEP_S
     elif physical_mblocks:
         resolved_dt_s = 0.00025
@@ -520,7 +530,7 @@ def runtime_command(
                 err=True,
             )
             raise typer.Exit(code=2)
-    if physical_twelve_module_mblocks:
+    if physical_mblocks_sequence:
         demo_name = demo.value
         if fixed_connector is not None or moving_connector is not None:
             typer.echo(

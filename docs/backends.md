@@ -158,6 +158,13 @@ for contact-driven edge pivots.
 not individual point constraints. Their automatic minima are eight slots each.
 Exhausting either pool refuses the request through normal two-phase commit.
 
+Optional `constraint_time_constant_s` sets the positive-format MuJoCo `solref`
+time constant, with damping ratio 1, for reserved runtime welds and hinges only.
+It must be finite, positive, and at least twice the compiled timestep. Omitting
+it preserves previous defaults and authored equalities are never altered. The
+[online M-Blocks baseline](mblocks_planning.md) uses 0.002 s. This numerical
+stiffness setting is not a magnetic-force or breakaway parameter.
+
 ModSim commits a relative pose between *connector frames*; a weld constrains
 *bodies*. `modsim_backend_mujoco.welds.body_relative_transform` performs the
 conversion:

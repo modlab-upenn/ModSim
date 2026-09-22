@@ -15,7 +15,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Protocol, cast, runtime_checkable
 
 from modsim.backends.registry import create_backend
 from modsim.connectors.compatibility import evaluate_compatibility
@@ -29,6 +29,8 @@ from modsim.core.validation import (
     require_finite_positive,
 )
 from modsim.model_views import ModelViewFactory
+from modsim.planning.mblocks.models import LatticePlanningSnapshot, LatticeState
+from modsim.planning.models import PlanningSnapshot
 from modsim.planning.smores import (
     driver_to_snake_goal,
     mobile_manipulator_goal,
@@ -50,6 +52,8 @@ from modsim.runtime.kinematic_pivot import (
     KinematicPivotRoute,
     KinematicPivotScenario,
 )
+from modsim.runtime.mblocks_lattice import elbow_goal, larger_state, starter_state, tabletop_scene
+from modsim.runtime.mblocks_online_planning import OnlineLatticeScenario
 from modsim.runtime.momentum_pivot import (
     MAX_MOMENTUM_TIMESTEP_S,
     MomentumPivotConfig,
@@ -136,6 +140,14 @@ class RuntimeScenario(Protocol):
 
     def step(self) -> tuple[Event, ...]:
         """Advance one configured simulation step."""
+        ...
+
+
+@runtime_checkable
+class RuntimePlanningScenario(Protocol):
+    @property
+    def planning_snapshot(self) -> PlanningSnapshot | LatticePlanningSnapshot:
+        """Expose immutable intent without coupling the runner to one planner."""
         ...
 
 
@@ -231,6 +243,9 @@ class RuntimeInspectorRunner:
                 RuntimeDemo.MBLOCKS_PHYSICAL_TWELVE_MODULE_LINE,
                 RuntimeDemo.MBLOCKS_PHYSICAL_TWELVE_MODULE_STAIRCASE,
                 RuntimeDemo.MBLOCKS_TWELVE_MODULE_STAIRCASE,
+                RuntimeDemo.MBLOCKS_ONLINE_LATTICE,
+                RuntimeDemo.MBLOCKS_ONLINE_LATTICE_LARGE,
+                RuntimeDemo.MBLOCKS_ONLINE_LATTICE_ELBOW,
             }
             and requested_view is None
         ):
@@ -238,6 +253,7 @@ class RuntimeInspectorRunner:
         recipe = resolve_runtime_recipe(pack, requested_view)
         release_after_s: float | None = None
         plan: ReconfigurationPlan | None = None
+        lattice_initial: LatticeState | None = None
         pivot_routes: tuple[KinematicPivotRoute, ...] | None = None
         momentum_config: MomentumPivotConfig | None = None
         physical_mblocks_builder: RuntimeScenarioBuilder | None = None
@@ -261,6 +277,20 @@ class RuntimeInspectorRunner:
                     ),
                 )
                 for index, module_id in enumerate(plan.module_ids)
+            )
+        elif demo in {
+            RuntimeDemo.MBLOCKS_ONLINE_LATTICE,
+            RuntimeDemo.MBLOCKS_ONLINE_LATTICE_LARGE,
+            RuntimeDemo.MBLOCKS_ONLINE_LATTICE_ELBOW,
+        }:
+            fixed_local = moving_local = None
+            lattice_initial = (
+                larger_state()
+                if demo is RuntimeDemo.MBLOCKS_ONLINE_LATTICE_LARGE
+                else starter_state()
+            )
+            scene = tabletop_scene(
+                lattice_initial, module_type=module_type, height_m=config.height_m
             )
         elif demo is RuntimeDemo.SMORES_ONLINE_ASSEMBLY:
             fixed_local = moving_local = None
@@ -381,6 +411,17 @@ class RuntimeInspectorRunner:
                     pivot_routes,
                     KinematicPivotConfig(dt_s=config.dt_s),
                 )
+            elif demo in {
+                RuntimeDemo.MBLOCKS_ONLINE_LATTICE,
+                RuntimeDemo.MBLOCKS_ONLINE_LATTICE_LARGE,
+                RuntimeDemo.MBLOCKS_ONLINE_LATTICE_ELBOW,
+            }:
+                scenario = OnlineLatticeScenario.create(
+                    session,
+                    elbow_goal() if demo is RuntimeDemo.MBLOCKS_ONLINE_LATTICE_ELBOW else None,
+                    initial=lattice_initial,
+                    dt_s=config.dt_s,
+                )
             elif demo is RuntimeDemo.MBLOCKS_MOMENTUM_PIVOT:
                 if momentum_config is None:  # pragma: no cover - branch invariant
                     raise AssertionError("momentum-pivot runtime demo requires a configuration")
@@ -477,7 +518,7 @@ class RuntimeInspectorRunner:
                 report_status(
                     f"Running {scenario.status.plan_name} with {len(scene.instance_ids)} modules"
                 )
-            elif isinstance(scenario, OnlineAssemblyScenario):
+            elif isinstance(scenario, RuntimePlanningScenario):
                 report_status(f"Running {demo.value} with generated routes and online scheduling")
             else:
                 assert fixed_local is not None and moving_local is not None
@@ -526,17 +567,35 @@ class RuntimeInspectorRunner:
     def frame(self) -> RuntimeInspectorFrame:
         """Build one immutable frame and atomically advance its event cursor."""
         self._require_open()
+        snapshot = (
+            self.scenario.planning_snapshot
+            if isinstance(self.scenario, RuntimePlanningScenario)
+            else None
+        )
+        recipe = self.recipe
+        if isinstance(snapshot, LatticePlanningSnapshot) and recipe.builder == "cubic_lattice":
+            # This demo explicitly uses an assembly-relative lattice. The pack
+            # recipe remains unchanged; only this generated runtime view follows it.
+            recipe = recipe.model_copy(
+                update={
+                    "configuration": {
+                        **recipe.configuration,
+                        "origin_world_m": list(snapshot.origin_world_m),
+                        "orientation_world_wxyz": list(
+                            quat_from_rpy((0.0, 0.0, snapshot.frame_yaw_rad))
+                        ),
+                        "position_tolerance_m": 0.003,
+                    }
+                }
+            )
         frame = build_runtime_inspector_frame(
             self.session,
-            self.recipe,
+            recipe,
             self._factory,
             event_cursor=self._event_cursor,
             scenario_status=self.scenario.status,
-            planning=(
-                self.scenario.planning_snapshot
-                if isinstance(self.scenario, OnlineAssemblyScenario)
-                else None
-            ),
+            planning=snapshot if isinstance(snapshot, PlanningSnapshot) else None,
+            lattice_planning=snapshot if isinstance(snapshot, LatticePlanningSnapshot) else None,
         )
         self._event_cursor = frame.next_event_sequence
         return frame
@@ -658,6 +717,9 @@ def validate_runtime_inspector_config(config: RuntimeInspectorConfig) -> None:
     elif demo in {
         RuntimeDemo.MBLOCKS_PHYSICAL_TWELVE_MODULE_LINE,
         RuntimeDemo.MBLOCKS_PHYSICAL_TWELVE_MODULE_STAIRCASE,
+        RuntimeDemo.MBLOCKS_ONLINE_LATTICE,
+        RuntimeDemo.MBLOCKS_ONLINE_LATTICE_LARGE,
+        RuntimeDemo.MBLOCKS_ONLINE_LATTICE_ELBOW,
     }:
         demo_name = demo.value
         if config.backend != "mujoco":
@@ -903,6 +965,7 @@ def runtime_frame_signature(frame: RuntimeInspectorFrame) -> object:
         frame.next_event_sequence,
         frame.scenario,
         frame.planning,
+        frame.lattice_planning,
     )
 
 
@@ -931,6 +994,16 @@ def _create_session(
             # hinge. Avoid deriving 84 inactive slots from all 168 directed
             # connector instances in this known demonstration scene.
             backend_options.update(weld_pool_size=12, hinge_pool_size=2)
+        elif demo in {
+            RuntimeDemo.MBLOCKS_ONLINE_LATTICE,
+            RuntimeDemo.MBLOCKS_ONLINE_LATTICE_LARGE,
+            RuntimeDemo.MBLOCKS_ONLINE_LATTICE_ELBOW,
+        }:
+            backend_options.update(
+                weld_pool_size=12,
+                hinge_pool_size=2,
+                constraint_time_constant_s=0.002,
+            )
         elif demo in {
             RuntimeDemo.MBLOCKS_PHYSICAL_TWELVE_MODULE_STAIRCASE,
             RuntimeDemo.MBLOCKS_TWELVE_MODULE_STAIRCASE,

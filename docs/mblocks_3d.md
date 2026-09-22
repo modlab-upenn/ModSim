@@ -19,10 +19,13 @@ and Rus, [*Reconfiguration Planning for Pivoting Cube Modular
 Robots*](https://doi.org/10.1109/ICRA.2015.7139451), ICRA 2015.
 
 The larger benchmark is motivated by Romanishin et al.,
-[*M-Blocks 2.0: Self-assembling Modular Robots Capable of Locomotion and
-Reconfiguration*](https://doi.org/10.1109/IROS40897.2019.8967810), IROS 2019,
+[*Decentralized Control for 3D M-Blocks for Path Following, Line Formation,
+and Light Gradient Aggregation*](https://doi.org/10.1109/IROS40897.2019.8967810), IROS 2019,
 which reports physical decentralized line formation but does not provide an
 exact replayable action trace for that experiment.
+
+Generated 2D plans and the initial physical square-to-line benchmark are now
+available separately; see [Online M-Blocks planning](mblocks_planning.md).
 
 The published robot is a nominal 50 mm cube that reconfigures through 90- and
 180-degree rotations about shared cube edges. Passive permanent magnets form

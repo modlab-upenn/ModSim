@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from modsim.planning.mblocks.models import LatticePlanningSnapshot
 from modsim.planning.models import PlanningSnapshot, Pose2
 from modsim.runtime.inspection import RuntimeInspectorFrame
 from modsim_studio.appearance import theme_manager
@@ -41,7 +42,7 @@ class ActionHistory(QWidget):
 
     def __init__(self) -> None:
         super().__init__()
-        self._snapshot: PlanningSnapshot | None = None
+        self._snapshot: PlanningSnapshot | LatticePlanningSnapshot | None = None
         self._bars: dict[tuple[str, int], QGraphicsRectItem] = {}
         self._row_count = 0
         layout = QVBoxLayout(self)
@@ -104,10 +105,16 @@ class ActionHistory(QWidget):
         first = self.row_scroll.value()
         self.plot.setYRange(first - 0.5, first + visible - 0.5, padding=0)
 
-    def set_snapshot(self, snapshot: PlanningSnapshot) -> None:
+    def set_snapshot(self, snapshot: PlanningSnapshot | LatticePlanningSnapshot) -> None:
         self._snapshot = snapshot
         theme = theme_manager().theme
         colors = phase_colors()
+        colors.update(
+            holding_initial=colors["waiting"],
+            pivoting=colors["navigating"],
+            holding_connected=colors["holding"],
+            verified=colors["complete"],
+        )
         self.plot.setBackground(theme.viewport)
         for axis in ("left", "bottom"):
             self.plot.getAxis(axis).setTextPen(theme.muted)
@@ -121,24 +128,45 @@ class ActionHistory(QWidget):
         )
         ticks: list[tuple[int, str]] = []
         live_keys: set[tuple[str, int]] = set()
-        for row, observation in enumerate(snapshot.actions):
-            ticks.append((row, observation.action.moving))
-            for index, interval in enumerate(observation.intervals):
-                key = (observation.action.id, index)
+        if isinstance(snapshot, LatticePlanningSnapshot):
+            grouped: dict[tuple[str, str], list[tuple[str, float, float | None]]] = {}
+            for record in snapshot.history:
+                key = (str(record.index), f"{record.index + 1}: {record.moving}")
+                grouped.setdefault(key, []).append(
+                    (record.phase, record.started_at_s, record.ended_at_s)
+                )
+            rows = [
+                (identifier, label, intervals) for (identifier, label), intervals in grouped.items()
+            ]
+        else:
+            rows = [
+                (
+                    observation.action.id,
+                    observation.action.moving,
+                    [
+                        (interval.phase, interval.start_s, interval.end_s)
+                        for interval in observation.intervals
+                    ],
+                )
+                for observation in snapshot.actions
+            ]
+        for row, (identifier, label, intervals) in enumerate(rows):
+            ticks.append((row, label))
+            for index, (phase, start_s, end_s) in enumerate(intervals):
+                key = (identifier, index)
                 live_keys.add(key)
                 bar = self._bars.get(key)
                 if bar is None:
                     bar = QGraphicsRectItem()
                     self._bars[key] = bar
                     self.plot.addItem(bar)
-                end = snapshot.time_s if interval.end_s is None else interval.end_s
-                bar.setRect(interval.start_s, row - 0.32, max(0.0, end - interval.start_s), 0.64)
-                bar.setBrush(QColor(colors[interval.phase]))
+                end = snapshot.time_s if end_s is None else end_s
+                bar.setRect(start_s, row - 0.32, max(0.0, end - start_s), 0.64)
+                bar.setBrush(QColor(colors[phase]))
                 bar.setPen(QPen(Qt.PenStyle.NoPen))
                 bar.setToolTip(
-                    f"{observation.action.moving} → {observation.action.parent}\n"
-                    f"{interval.phase.capitalize()}: {interval.start_s:.2f}-{end:.2f} s\n"
-                    f"Duration: {end - interval.start_s:.2f} s"
+                    f"{label}\n{phase.replace('_', ' ').capitalize()}: {start_s:.2f}-{end:.2f} s\n"
+                    f"Duration: {end - start_s:.2f} s"
                 )
         for key in self._bars.keys() - live_keys:
             self.plot.removeItem(self._bars.pop(key))

@@ -29,6 +29,7 @@ from modsim.model_views import (
     ModelViewFactory,
     ModuleTopologyGraphView,
 )
+from modsim.planning.mblocks.models import LatticePlanningSnapshot
 from modsim.planning.models import PlanningSnapshot
 from modsim.robot_packs.schema import ModelViewSpec
 from modsim.runtime.metrics import DockingMetrics
@@ -82,6 +83,7 @@ class RuntimeInspectorFrame(_RuntimeInspectionDTO):
     next_event_sequence: int = Field(ge=0)
     scenario: RuntimeScenarioStatus | None = None
     planning: PlanningSnapshot | None = None
+    lattice_planning: LatticePlanningSnapshot | None = None
 
     @model_validator(mode="after")
     def require_contiguous_event_delta(self) -> RuntimeInspectorFrame:
@@ -93,12 +95,15 @@ class RuntimeInspectorFrame(_RuntimeInspectionDTO):
             raise ValueError(
                 "event rows must exactly cover the contiguous inspector event interval"
             )
-        if self.planning is not None:
+        if self.planning is not None and self.lattice_planning is not None:
+            raise ValueError("an inspector frame may expose only one planner")
+        planner = self.planning if self.planning is not None else self.lattice_planning
+        if planner is not None:
             source = self.view.source
             if (
-                self.planning.time_s != source.world_time_s
-                or self.planning.sample_sequence != source.sample_sequence
-                or self.planning.topology_revision != source.topology_revision
+                planner.time_s != source.world_time_s
+                or planner.sample_sequence != source.sample_sequence
+                or planner.topology_revision != source.topology_revision
             ):
                 raise ValueError("planner observation and runtime view must share a world sample")
         return self
@@ -124,6 +129,7 @@ def build_runtime_inspector_frame(
     event_cursor: int = 0,
     scenario_status: RuntimeScenarioStatus | None = None,
     planning: PlanningSnapshot | None = None,
+    lattice_planning: LatticePlanningSnapshot | None = None,
 ) -> RuntimeInspectorFrame:
     """Copy a coherent supported view, metrics, and event delta from ``session``.
 
@@ -156,6 +162,7 @@ def build_runtime_inspector_frame(
         next_event_sequence=event_count,
         scenario=scenario_status,
         planning=planning,
+        lattice_planning=lattice_planning,
     )
 
 

@@ -16,7 +16,7 @@ must become exactly one detached component when its authored cut is applied.
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 
 from modsim.backends.base import BackendError, SupportsModuleKinematics
@@ -545,6 +545,7 @@ class CoordinatedMomentumPivotScenario:
     _brake_started_at_s: float | None = None
     _brake_ended_at_s: float | None = None
     _capture_time_s: float | None = None
+    _capture_ready: Callable[[], bool] | None = None
     _commanded_efforts_nm: dict[JointInstanceId, float] = field(
         default_factory=dict[JointInstanceId, float]
     )
@@ -568,6 +569,33 @@ class CoordinatedMomentumPivotScenario:
             _phase_started_at_s=session.world.time_s,
             _action_index=0,
             _detail="",
+        )
+        scenario._activate_action(0)
+        return scenario
+
+    @classmethod
+    def create_from_existing(
+        cls,
+        session: RuntimeSession,
+        plan: CoordinatedPivotPlan,
+        *,
+        capture_ready: Callable[[], bool] | None = None,
+    ) -> CoordinatedMomentumPivotScenario:
+        """Activate a generated pivot without staging, resetting, or moving roots."""
+        _preflight_plan(session, plan, require_joint_dynamics=True, require_fresh_world=False)
+        _raise_topology_mismatch(
+            session,
+            {pair.connection_id for pair in plan.initial_connections},
+            "online pivot activation",
+        )
+        scenario = cls(
+            session=session,
+            plan=plan,
+            _phase=ReconfigurationPhase.HOLDING_INITIAL,
+            _phase_started_at_s=session.world.time_s,
+            _action_index=0,
+            _detail="",
+            _capture_ready=capture_ready,
         )
         scenario._activate_action(0)
         return scenario
@@ -783,6 +811,8 @@ class CoordinatedMomentumPivotScenario:
         return tuple(events)
 
     def _capture_target_faces(self) -> tuple[Event, ...]:
+        if self._capture_ready is not None and not self._capture_ready():
+            return ()
         action = self._current_action()
         config = action.momentum
         target_ids = {pair.connection_id for pair in action.target_faces}
@@ -1018,12 +1048,13 @@ def _preflight_plan(
     plan: CoordinatedPivotPlan,
     *,
     require_joint_dynamics: bool,
+    require_fresh_world: bool = True,
 ) -> None:
-    if abs(session.world.time_s) > _EPSILON:
+    if require_fresh_world and abs(session.world.time_s) > _EPSILON:
         raise ReconfigurationScenarioError(
             "coordinated pivot scenario must be created at simulation time zero"
         )
-    if session.world.connections:
+    if require_fresh_world and session.world.connections:
         raise ReconfigurationScenarioError(
             "coordinated pivot scenario requires a fresh world with no active connections"
         )
