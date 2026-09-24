@@ -17,6 +17,7 @@ from modsim.core.ids import (
     ConstraintHandle,
     ModuleInstanceId,
 )
+from modsim.core.snapshot import JointState
 from modsim.core.transforms import ZERO_VEC3, Transform, Vec3
 
 
@@ -62,6 +63,7 @@ class ModuleInstance:
     linear_velocity_m_s: Vec3 = ZERO_VEC3
     angular_velocity_rad_s: Vec3 = ZERO_VEC3
     link_poses: dict[str, Transform] = field(default_factory=dict[str, Transform])
+    joint_states: dict[str, JointState] = field(default_factory=dict[str, JointState])
 
 
 @dataclass(slots=True)

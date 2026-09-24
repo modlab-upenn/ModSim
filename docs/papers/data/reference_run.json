@@ -1,0 +1,368 @@
+{
+  "phase": "complete",
+  "detail": "Target reached; elevated handoff and final hold verified",
+  "time_s": 30.75900000001461,
+  "fixtures": [
+    "helper",
+    "receiver"
+  ],
+  "topology_plan": [
+    {
+      "operation": "dock",
+      "bond": {
+        "a": "payload/left",
+        "b": "upper/pan"
+      }
+    },
+    {
+      "operation": "release",
+      "bond": {
+        "a": "helper/pan",
+        "b": "payload/bottom"
+      }
+    }
+  ],
+  "joint_plan": {
+    "points": [
+      [
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        1.0,
+        0.0,
+        0.0
+      ],
+      [
+        2.0,
+        0.0,
+        0.0
+      ],
+      [
+        2.0,
+        1.0,
+        0.0
+      ],
+      [
+        2.0,
+        2.0,
+        0.0
+      ],
+      [
+        2.0,
+        3.0,
+        0.0
+      ],
+      [
+        2.0,
+        4.0,
+        0.0
+      ],
+      [
+        2.0,
+        5.0,
+        0.0
+      ],
+      [
+        2.0,
+        6.0,
+        0.0
+      ],
+      [
+        3.0,
+        6.0,
+        0.0
+      ],
+      [
+        4.0,
+        6.0,
+        0.0
+      ],
+      [
+        5.0,
+        6.0,
+        0.0
+      ],
+      [
+        6.0,
+        6.0,
+        0.0
+      ],
+      [
+        6.0,
+        6.0,
+        1.0
+      ],
+      [
+        6.0,
+        6.0,
+        2.0
+      ],
+      [
+        6.0,
+        6.0,
+        3.0
+      ],
+      [
+        6.0,
+        6.0,
+        4.0
+      ],
+      [
+        6.0,
+        6.0,
+        5.0
+      ],
+      [
+        6.0,
+        6.0,
+        6.0
+      ]
+    ],
+    "expanded": 185,
+    "rejected": 131
+  },
+  "return_plan": {
+    "points": [
+      [
+        6.0,
+        6.0,
+        6.0
+      ],
+      [
+        6.0,
+        5.0,
+        6.0
+      ],
+      [
+        5.0,
+        5.0,
+        6.0
+      ],
+      [
+        4.0,
+        5.0,
+        6.0
+      ],
+      [
+        3.0,
+        5.0,
+        6.0
+      ],
+      [
+        2.0,
+        5.0,
+        6.0
+      ],
+      [
+        1.0,
+        5.0,
+        6.0
+      ],
+      [
+        0.0,
+        5.0,
+        6.0
+      ],
+      [
+        0.0,
+        4.0,
+        6.0
+      ],
+      [
+        0.0,
+        3.0,
+        6.0
+      ],
+      [
+        0.0,
+        2.0,
+        6.0
+      ],
+      [
+        0.0,
+        1.0,
+        6.0
+      ],
+      [
+        0.0,
+        0.0,
+        6.0
+      ]
+    ],
+    "expanded": 43,
+    "rejected": 6
+  },
+  "history": [
+    {
+      "time_s": 0.0,
+      "phase": "moving",
+      "detail": "Executing sampled joint-space plan with bounded effort",
+      "connections": 3
+    },
+    {
+      "time_s": 16.486999999997167,
+      "phase": "transfer",
+      "detail": "Elevated connection committed; verifying before release",
+      "connections": 4
+    },
+    {
+      "time_s": 17.236999999998083,
+      "phase": "retreat",
+      "detail": "Receiver unfolds toward target; helper lowers away",
+      "connections": 3
+    },
+    {
+      "time_s": 29.759000000013387,
+      "phase": "verify",
+      "detail": "Holding final spatial assembly under gravity",
+      "connections": 3
+    },
+    {
+      "time_s": 30.75900000001461,
+      "phase": "complete",
+      "detail": "Target reached; elevated handoff and final hold verified",
+      "connections": 3
+    }
+  ],
+  "peak_effort_nm": 1.2,
+  "peak_penetration_m": 0.0033243533374748366,
+  "target_error_m": 0.0005682967702990578,
+  "target_positions": {
+    "helper": [
+      0.21505557714800008,
+      -0.034457999999999996,
+      0.059999999999999956
+    ],
+    "payload": [
+      0.06891600000000009,
+      -4.008903866978023e-17,
+      0.33147115429600005
+    ],
+    "receiver": [
+      0.0,
+      0.0,
+      0.06
+    ],
+    "arm": [
+      0.03445800000000001,
+      -3.851859888774472e-34,
+      0.11641557714800001
+    ],
+    "upper": [
+      0.03445800000000002,
+      -7.703719777548943e-34,
+      0.20728915429600003
+    ]
+  },
+  "connections": [
+    "arm/bottom<->receiver/pan",
+    "arm/pan<->upper/bottom",
+    "payload/left<->upper/pan"
+  ],
+  "events": [
+    {
+      "time_s": 0.0,
+      "kind": "DockCandidateDetected"
+    },
+    {
+      "time_s": 0.0,
+      "kind": "DockCandidateDetected"
+    },
+    {
+      "time_s": 0.0,
+      "kind": "DockCandidateDetected"
+    },
+    {
+      "time_s": 0.0,
+      "kind": "DockCommitted"
+    },
+    {
+      "time_s": 0.0,
+      "kind": "AssemblyMerged"
+    },
+    {
+      "time_s": 0.0,
+      "kind": "DockCommitted"
+    },
+    {
+      "time_s": 0.0,
+      "kind": "AssemblyMerged"
+    },
+    {
+      "time_s": 0.0,
+      "kind": "DockCommitted"
+    },
+    {
+      "time_s": 0.0,
+      "kind": "AssemblyMerged"
+    },
+    {
+      "time_s": 10.735999999999489,
+      "kind": "DockCandidateDetected"
+    },
+    {
+      "time_s": 16.486999999997167,
+      "kind": "DockCommitted"
+    },
+    {
+      "time_s": 16.486999999997167,
+      "kind": "AssemblyMerged"
+    },
+    {
+      "time_s": 17.236999999998083,
+      "kind": "UndockCommitted"
+    },
+    {
+      "time_s": 17.236999999998083,
+      "kind": "AssemblySplit"
+    },
+    {
+      "time_s": 17.236999999998083,
+      "kind": "DockCandidateDetected"
+    }
+  ],
+  "benchmark": "smores_vertical_chain",
+  "rejections": {
+    "collision": 137
+  },
+  "torque_limit_nm": 1.2,
+  "paper_measurements": {
+    "planning_wall_s": 1.1389944879920222,
+    "elapsed_wall_s": 15.061960684979567,
+    "capture": {
+      "connector_pair": [
+        "payload/left",
+        "upper/pan"
+      ],
+      "position_error_m": 0.001254368057830183,
+      "rotation_error_rad": 0.005299337417532761,
+      "height_m": 0.15033811261220625
+    },
+    "torque_saturation_time_s": 1.153,
+    "module_mass_kg": 0.43863679778769954,
+    "final_center_positions_m": {
+      "receiver": [
+        0.03445798326009205,
+        -2.1354294270359286e-09,
+        0.059940580862094035
+      ],
+      "arm": [
+        0.03467355060697456,
+        -2.3509521221640184e-06,
+        0.15077631608225553
+      ],
+      "upper": [
+        0.03500130007724679,
+        -7.085166629203915e-06,
+        0.2416231193294452
+      ],
+      "payload": [
+        0.034051036913639365,
+        -0.0001058874372015993,
+        0.33114155126488254
+      ]
+    }
+  }
+}

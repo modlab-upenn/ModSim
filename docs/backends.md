@@ -56,7 +56,7 @@ observations and constraints, and the backend answers.
 | `capabilities()` | Declare what the backend can actually do |
 | `load(pack, scene, *, root)` | Instantiate every placement, return the handle registry |
 | `step(dt_s)` | Advance simulation |
-| `snapshot()` | Report link poses, twists, optional connector frames and constraint forces |
+| `snapshot()` | Report link poses, twists, optional joint measurements, connector frames and constraint forces |
 | `create_physical_connection(request)` | Attempt the constraint, accept or refuse |
 | `remove_physical_connection(handle)` | Release it |
 | `shutdown()` | Free resources |
@@ -121,6 +121,18 @@ MuJoCo's integrator step is a model property, so `step(dt_s)` covers the
 requested interval with whole solver steps and `snapshot().time_s` reports the
 time actually reached.
 
+The experimental backend-local `position_servos` option maps compiled scalar
+joint names to `PositionServo(kp, kv, effort_limit)` settings. It creates
+force-limited MuJoCo position actuators. The ModSim controller commands them
+through the experimental mechanical service, which writes `data.ctrl`. Scalar joint
+position, velocity, and actuator effort are copied into backend snapshots and
+ingested into `WorldState.modules[id].joint_states`. Missing observations
+clear previous measurements rather than retaining stale feedback. This is used by the
+[spatial SMORES benchmark](smores_spatial_planning.md); it does not establish a
+general core joint-command API or change `supports_joint_commands` to true.
+The default scene still has no injected servos. Scalar joint names and finite,
+positive gains/limits are validated before model compilation.
+
 #### Docking via the weld pool
 
 MuJoCo fixes model topology at compile time, so docking cannot *create* a
@@ -183,7 +195,7 @@ mjpython -m modsim run path/to/pack --backend mujoco --view
 The adapter translates MuJoCo's error into that instruction rather than letting
 a raw traceback through.
 
-`modsim runtime PACK` launches the complementary views together. Qt owns the
+`modsim run --gui PACK` launches the complementary views together. Qt owns the
 main process and renders ModSim's 2D logical graph and event log. A companion
 process owns the one authoritative MuJoCo session, native viewer, physics
 stepping, and model-view generation. Immutable inspector frames cross the
@@ -197,8 +209,8 @@ default for MuJoCo; use `--no-viewer` to keep the existing headless-worker
 arrangement when the native 3D window is not wanted:
 
 ```bash
-modsim runtime path/to/pack --backend mujoco
-modsim runtime path/to/pack --backend mujoco --no-viewer
+modsim run --gui path/to/pack --backend mujoco
+modsim run --gui path/to/pack --backend mujoco --no-viewer
 ```
 
 The first command opens separate MuJoCo and Runtime Inspector windows. It does
@@ -232,7 +244,7 @@ The Runtime Inspector exposes the two-module dock/release lifecycle as a named
 preset:
 
 ```bash
-modsim runtime examples/robot_packs/smores_ep \
+modsim run --gui examples/robot_packs/smores_ep \
   --backend mujoco \
   --demo dock_undock \
   --fixed-connector pan \
@@ -244,7 +256,7 @@ modsim runtime examples/robot_packs/smores_ep \
 The SMORES-EP pack also supports a seven-module topology demonstration:
 
 ```bash
-modsim runtime examples/robot_packs/smores_ep \
+modsim run --gui examples/robot_packs/smores_ep \
   --backend mujoco \
   --demo smores_driver_to_snake \
   --duration 14.0 \
@@ -265,6 +277,12 @@ a reproduction of hardware dynamics. Gravity and ground are deliberately off
 because the scenario currently has no supported SMORES locomotion controller.
 The MuJoCo adapter remains the authoritative runtime owner, so the 3D viewer,
 graph, event log, and metrics still describe one session.
+
+The named `smores_spatial_handoff` demo uses a ModSim-owned controller and
+searches with backend-provided `SpatialMotionServices`. This experimental
+service is separate from `BackendAdapter`: another backend needs equivalent
+kinematics, collision queries, actuation, and staging to run it. See
+[the algorithm architecture](smores_3d_algorithm.md#modsim-architecture).
 
 ## Cross-backend conformance
 

@@ -9,6 +9,7 @@ class RuntimeDemo(StrEnum):
     DOCK = "dock"
     DOCK_UNDOCK = "dock_undock"
     SMORES_DRIVER_TO_SNAKE = "smores_driver_to_snake"
+    SMORES_SPATIAL_HANDOFF = "smores_spatial_handoff"
 
 
 __all__ = ["RuntimeDemo"]

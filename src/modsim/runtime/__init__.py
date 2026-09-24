@@ -21,6 +21,11 @@ from modsim.runtime.reconfiguration import (
     connector_pair_plan,
 )
 from modsim.runtime.session import RuntimeSession
+from modsim.runtime.spatial import (
+    SpatialHandoffProblem,
+    SpatialMotionServices,
+    SpatialReconfigurationScenario,
+)
 
 __all__ = [
     "ConnectorPairRef",
@@ -39,6 +44,9 @@ __all__ = [
     "RuntimeSession",
     "ScriptedReconfigurationConfig",
     "ScriptedReconfigurationScenario",
+    "SpatialHandoffProblem",
+    "SpatialMotionServices",
+    "SpatialReconfigurationScenario",
     "collect_metrics",
     "connector_pair_plan",
 ]

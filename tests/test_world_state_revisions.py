@@ -25,6 +25,7 @@ from modsim.core import (
     WorldState,
     WorldStateRevision,
 )
+from modsim.core.snapshot import JointState
 from modsim.robot_packs.schema import RobotPack
 
 MODULE_TYPE = "generic_cube"
@@ -68,6 +69,20 @@ def test_every_ingested_snapshot_advances_the_sample_sequence(
     world.ingest(zero_time_snapshot)
 
     assert world.revision == WorldStateRevision(sample_sequence=2)
+
+
+def test_joint_feedback_is_copied_and_missing_measurements_are_cleared(
+    example_pack: RobotPack,
+) -> None:
+    world = make_world(example_pack)
+    module_id = next(iter(world.modules))
+    measurement = JointState(position=0.4, velocity=0.03, effort=0.2)
+    reported = {"motor": measurement}
+    world.ingest(BackendStateSnapshot(joint_states={module_id: reported}))
+    reported.clear()
+    assert world.modules[module_id].joint_states == {"motor": measurement}
+    world.ingest(BackendStateSnapshot(time_s=0.001))
+    assert world.modules[module_id].joint_states == {}
 
 
 def test_transient_reset_advances_docking_only_when_state_changes(

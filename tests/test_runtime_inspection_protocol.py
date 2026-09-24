@@ -23,8 +23,10 @@ from modsim.runtime.inspection_protocol import (
     RuntimeFrame,
     RuntimeHello,
     RuntimeInitialize,
+    RuntimePlaybackState,
     RuntimeProtocolError,
     RuntimeProtocolFramer,
+    RuntimeSetPaused,
     RuntimeStatus,
     RuntimeStop,
     decode_runtime_message,
@@ -55,6 +57,8 @@ def test_protocol_round_trips_every_message_and_nested_path(
         RuntimeFrame(frame=frame),
         RuntimeError(message="Backend failed"),
         RuntimeFinished(reason=RuntimeFinishedReason.VIEWER_CLOSED),
+        RuntimeSetPaused(paused=True),
+        RuntimePlaybackState(paused=True),
     )
 
     decoded = tuple(decode_runtime_message(encode_runtime_message(message)) for message in messages)
@@ -70,8 +74,17 @@ def test_protocol_round_trips_every_message_and_nested_path(
     assert transported.frame == frame
 
 
+@pytest.mark.parametrize(
+    "phase",
+    [
+        ReconfigurationPhase.APPROACHING,
+        ReconfigurationPhase.STOPPED,
+        ReconfigurationPhase.TIMED_OUT,
+    ],
+)
 def test_reconfiguration_status_round_trips_as_a_strict_runtime_frame(
     example_pack_dir: Path,
+    phase: ReconfigurationPhase,
 ) -> None:
     runner = RuntimeInspectorRunner.create(
         RuntimeInspectorConfig(pack_path=example_pack_dir, backend="mock")
@@ -81,7 +94,7 @@ def test_reconfiguration_status_round_trips_as_a_strict_runtime_frame(
     finally:
         runner.shutdown()
     status = ReconfigurationStatus(
-        phase=ReconfigurationPhase.APPROACHING,
+        phase=phase,
         time_s=2.0,
         plan_id=RuntimeDemo.SMORES_DRIVER_TO_SNAKE.value,
         plan_name="SMORES-EP Driver to Snake",
@@ -97,7 +110,7 @@ def test_reconfiguration_status_round_trips_as_a_strict_runtime_frame(
     assert isinstance(decoded, RuntimeFrame)
     assert isinstance(decoded.frame.scenario, ReconfigurationStatus)
     assert decoded.frame.scenario == status
-    assert decoded.frame.scenario.phase is ReconfigurationPhase.APPROACHING
+    assert decoded.frame.scenario.phase is phase
 
     document = json.loads(encoded.removeprefix(RUNTIME_PROTOCOL_PREFIX.encode()).decode())
     document["frame"]["scenario"]["action_index"] = "1"
@@ -137,16 +150,16 @@ def test_protocol_framer_preserves_fragmented_message_order() -> None:
 @pytest.mark.parametrize(
     "record, expected",
     [
-        (b'{"protocol_version":1,"kind":"hello"}\n', "must begin"),
+        (b'{"protocol_version":3,"kind":"hello"}\n', "must begin"),
         (
-            b'MODSIM_RUNTIME/1 {"protocol_version":2,"kind":"hello"}\n',
+            b'MODSIM_RUNTIME/3 {"protocol_version":1,"kind":"hello"}\n',
             "invalid runtime protocol",
         ),
         (
-            b'MODSIM_RUNTIME/1 {"protocol_version":1,"kind":"hello","extra":1}\n',
+            b'MODSIM_RUNTIME/3 {"protocol_version":3,"kind":"hello","extra":1}\n',
             "invalid runtime protocol",
         ),
-        (b'MODSIM_RUNTIME/1 {"protocol_version":1,"kind":"hello"}', "end with"),
+        (b'MODSIM_RUNTIME/3 {"protocol_version":3,"kind":"hello"}', "end with"),
     ],
 )
 def test_protocol_rejects_malformed_or_unsupported_records(
@@ -163,7 +176,7 @@ def test_protocol_framer_bounds_unterminated_input_and_rejects_eof_fragment() ->
         framer.feed(b"x" * MAX_RUNTIME_MESSAGE_BYTES)
     assert framer.buffered_bytes == 0
 
-    framer.feed(b"MODSIM_RUNTIME/1 ")
+    framer.feed(b"MODSIM_RUNTIME/3 ")
     with pytest.raises(RuntimeProtocolError, match="unterminated"):
         framer.finish()
     assert framer.buffered_bytes == 0

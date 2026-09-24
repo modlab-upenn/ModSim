@@ -8,25 +8,13 @@ from functools import partial
 from typing import Any
 
 import pyqtgraph as pg
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
+from modsim_studio.appearance import theme_manager
+from modsim_studio.chrome import LegendWidget
 from modsim_studio.runtime_presenter import RuntimePresentation
-
-_BACKGROUND = "#151a20"
-_EDGE_COLOR = "#78909c"
-_SELECTED_COLOR = "#ffd166"
-_NODE_OUTLINE = "#dce6ef"
-_ASSEMBLY_PALETTE = (
-    "#4fc3f7",
-    "#ce93d8",
-    "#80cbc4",
-    "#ffb74d",
-    "#81c784",
-    "#ef9a9a",
-    "#9fa8da",
-    "#f48fb1",
-)
+from modsim_studio.visual_colors import CategoryColors, visual_colors
 
 
 class TopologyGraphWidget(QWidget):
@@ -34,12 +22,18 @@ class TopologyGraphWidget(QWidget):
 
     entity_selected = Signal(str, str)
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self, parent: QWidget | None = None, *, category_colors: CategoryColors | None = None
+    ) -> None:
         super().__init__(parent)
+        self._category_colors = category_colors or CategoryColors()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        self.plot = pg.PlotWidget(background=_BACKGROUND)
+        self._appearance = theme_manager()
+        self.plot = pg.PlotWidget(background=self._appearance.theme.viewport)
         layout.addWidget(self.plot)
+        self.legend = LegendWidget()
+        layout.addWidget(self.legend)
 
         self._plot_item: Any = self.plot.getPlotItem()
         self._plot_item.hideAxis("left")
@@ -58,6 +52,14 @@ class TopologyGraphWidget(QWidget):
         self._node_item: Any | None = None
         self._edge_items: dict[str, Any] = {}
         self._labels: list[Any] = []
+        self._presentation: RuntimePresentation | None = None
+        self._appearance.changed.connect(self._apply_theme)
+
+    def _apply_theme(self) -> None:
+        self.plot.setBackground(self._appearance.theme.viewport)
+        self._fingerprint = None
+        if self._presentation is not None:
+            self.set_presentation(self._presentation)
 
     @property
     def displayed_node_ids(self) -> tuple[str, ...]:
@@ -74,9 +76,22 @@ class TopologyGraphWidget(QWidget):
         """Return the selected graph entity currently styled by the widget."""
         return self._selection
 
+    @property
+    def displayed_label_count(self) -> int:
+        """Return the number of currently drawn module labels."""
+        return len(self._labels)
+
     def set_presentation(self, presentation: RuntimePresentation) -> None:
         """Draw ``presentation`` unless its visible graph is unchanged."""
-        fingerprint = _presentation_fingerprint(presentation)
+        self._presentation = presentation
+        theme = self._appearance.theme
+        colors = visual_colors(theme.id)
+        self._category_colors.prepare(node.assembly_id for node in presentation.nodes)
+        assembly_colors = {
+            node.assembly_id: self._category_colors.color(node.assembly_id, theme.id)
+            for node in presentation.nodes
+        }
+        fingerprint = (_presentation_fingerprint(presentation), assembly_colors)
         if fingerprint == self._fingerprint:
             return
 
@@ -94,6 +109,22 @@ class TopologyGraphWidget(QWidget):
         self._edge_items.clear()
         self._labels.clear()
 
+        entries = [
+            ("●", assembly_colors[identifier], f"Assembly {identifier}")
+            for identifier in sorted({n.assembly_id for n in presentation.nodes})
+        ]
+        entries.extend(
+            (
+                ("━", colors["neutral"], "Committed connection"),
+                ("┄", colors["violet"], "Target connection still needed"),
+                ("━", colors["green"], "Target connection reached"),
+                ("○", colors["magenta"], "Selected module or connection"),
+            )
+        )
+        self.legend.set_entries(
+            tuple(entries), "Node positions are logical, not physical. Drag to pan; wheel to zoom."
+        )
+
         for edge in presentation.edges:
             x_values = [point[0] for point in edge.path]
             y_values = [point[1] for point in edge.path]
@@ -101,15 +132,24 @@ class TopologyGraphWidget(QWidget):
                 x=x_values,
                 y=y_values,
                 pen=pg.mkPen(
-                    _SELECTED_COLOR if edge.selected else _EDGE_COLOR,
+                    colors["magenta"]
+                    if edge.selected
+                    else colors["green"]
+                    if edge.state == "matched"
+                    else colors["violet"]
+                    if edge.state == "pending"
+                    else colors["neutral"],
                     width=4.0 if edge.selected else 2.2,
+                    style=Qt.PenStyle.DashLine
+                    if edge.state == "pending"
+                    else Qt.PenStyle.SolidLine,
                 ),
                 antialias=True,
                 clickable=True,
             )
             curve.setClickable(True, width=12)
             curve.setZValue(5 if edge.selected else 1)
-            curve.setToolTip(f"{edge.id}\n{edge.connector_a} ↔ {edge.connector_b}")
+            curve.setToolTip(f"{edge.connector_a} ↔ {edge.connector_b}\n{edge.state.capitalize()}")
             curve.sigClicked.connect(partial(self._edge_clicked, edge.id))
             self._plot_item.addItem(curve)
             self._edge_items[edge.id] = curve
@@ -122,9 +162,9 @@ class TopologyGraphWidget(QWidget):
                     "data": node.id,
                     "size": 28 if node.selected else 23,
                     "symbol": "o",
-                    "brush": pg.mkBrush(_assembly_color(node.assembly_id)),
+                    "brush": pg.mkBrush(assembly_colors[node.assembly_id]),
                     "pen": pg.mkPen(
-                        _SELECTED_COLOR if node.selected else _NODE_OUTLINE,
+                        colors["magenta"] if node.selected else theme.text,
                         width=4.0 if node.selected else 1.6,
                     ),
                 }
@@ -135,18 +175,19 @@ class TopologyGraphWidget(QWidget):
         self._node_item.sigClicked.connect(self._nodes_clicked)
         self._plot_item.addItem(self._node_item)
 
-        for node in presentation.nodes:
-            label = pg.TextItem(
-                text=node.label,
-                color="#eef5fb",
-                anchor=(0.5, -0.65),
-                border=None,
-                fill=None,
-            )
-            label.setPos(*node.position)
-            label.setZValue(11)
-            self._plot_item.addItem(label)
-            self._labels.append(label)
+        if presentation.show_labels:
+            for node in presentation.nodes:
+                label = pg.TextItem(
+                    text=node.label,
+                    color=theme.text,
+                    anchor=(0.5, -0.65),
+                    border=None,
+                    fill=None,
+                )
+                label.setPos(*node.position)
+                label.setZValue(11)
+                self._plot_item.addItem(label)
+                self._labels.append(label)
 
         if previous_node_ids != self._node_ids:
             self._fit_nodes(tuple(node.position for node in presentation.nodes))
@@ -185,6 +226,7 @@ class TopologyGraphWidget(QWidget):
 
 def _presentation_fingerprint(presentation: RuntimePresentation) -> object:
     return (
+        presentation.show_labels,
         tuple(
             (
                 node.id,
@@ -205,15 +247,11 @@ def _presentation_fingerprint(presentation: RuntimePresentation) -> object:
                 edge.connector_b,
                 edge.path,
                 edge.selected,
+                edge.state,
             )
             for edge in presentation.edges
         ),
     )
-
-
-def _assembly_color(identifier: str) -> str:
-    seed = sum((index + 1) * ord(character) for index, character in enumerate(identifier))
-    return _ASSEMBLY_PALETTE[seed % len(_ASSEMBLY_PALETTE)]
 
 
 __all__ = ["TopologyGraphWidget"]

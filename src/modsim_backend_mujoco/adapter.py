@@ -9,6 +9,7 @@ connection backed by different physics than the Robot Pack requested.
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from pathlib import Path
 
 import mujoco
@@ -28,7 +29,7 @@ from modsim.core.ids import (
     split_connector_instance_id,
 )
 from modsim.core.scene import SceneSpec
-from modsim.core.snapshot import BackendStateSnapshot, BodyState
+from modsim.core.snapshot import BackendStateSnapshot, BodyState, JointState
 from modsim.core.transforms import (
     ZERO_VEC3,
     Quat,
@@ -38,7 +39,7 @@ from modsim.core.transforms import (
     quat_rotate,
 )
 from modsim.robot_packs.schema import PhysicalConstraintType, RobotPack
-from modsim_backend_mujoco.scene import DEFAULT_GRAVITY, CompiledScene, build_scene
+from modsim_backend_mujoco.scene import DEFAULT_GRAVITY, CompiledScene, PositionServo, build_scene
 from modsim_backend_mujoco.welds import (
     ANCHOR,
     RELPOSE_POSITION,
@@ -62,6 +63,7 @@ class MuJoCoBackendAdapter:
         "_gravity",
         "_ground",
         "_ground_height_m",
+        "_position_servos",
         "_scene",
         "_timestep_s",
         "_weld_pool_size",
@@ -76,12 +78,14 @@ class MuJoCoBackendAdapter:
         weld_pool_size: int | None = None,
         ground: bool = False,
         ground_height_m: float = 0.0,
+        position_servos: Mapping[str, PositionServo] | None = None,
     ) -> None:
         self._gravity = gravity
         self._timestep_s = timestep_s
         self._weld_pool_size = weld_pool_size
         self._ground = ground
         self._ground_height_m = ground_height_m
+        self._position_servos = dict(position_servos or {})
         self._compiled: CompiledScene | None = None
         self._data: mujoco.MjData | None = None
         self._scene: SceneSpec | None = None
@@ -134,6 +138,7 @@ class MuJoCoBackendAdapter:
             weld_pool_size=self._weld_pool_size,
             ground=self._ground,
             ground_height_m=self._ground_height_m,
+            position_servos=self._position_servos,
         )
         self._compiled = compiled
         self._scene = scene
@@ -188,10 +193,20 @@ class MuJoCoBackendAdapter:
                 rotation=_mat_to_quat(data.site_xmat[site_id]),
             )
 
+        joint_states: dict[ModuleInstanceId, dict[str, JointState]] = {}
+        for (module_id, joint_id), name in compiled.handles.joints.items():
+            joint = model.joint(name)
+            qadr, dadr = int(joint.qposadr[0]), int(joint.dofadr[0])
+            joint_states.setdefault(module_id, {})[joint_id] = JointState(
+                position=float(data.qpos[qadr]),
+                velocity=float(data.qvel[dadr]),
+                effort=float(data.qfrc_actuator[dadr]),
+            )
         return BackendStateSnapshot(
             time_s=float(data.time),
             link_states=link_states,
             connector_frames=connector_frames,
+            joint_states=joint_states,
         )
 
     def create_physical_connection(self, request: ConnectionRequest) -> ConnectionOutcome:

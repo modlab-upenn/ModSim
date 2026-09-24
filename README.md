@@ -14,10 +14,11 @@ The pre-alpha project currently supports seven core workflows:
 - generate immutable model-view snapshots; and
 - inspect live topology, events, status, and metrics in the Runtime Inspector.
 
-Isaac Sim integration, actuator and joint-command execution, autonomous
-reconfiguration planning, and non-fixed MuJoCo connections are not yet
-implemented. The `simulation` profile checks structural readiness; it does not
-launch a simulator.
+An experimental [SMORES spatial handoff](#experimental-3d-smores-reconfiguration)
+adds support-mode planning and bounded joint actuation in MuJoCo. General
+actuator APIs, arbitrary autonomous reconfiguration, Isaac Sim integration,
+and non-fixed MuJoCo connections remain unimplemented. The `simulation`
+profile checks structural readiness; it does not launch a simulator.
 
 ## Install
 
@@ -92,7 +93,7 @@ Install both the `studio` and `mujoco` extras, then run the live two-module
 docking demonstration:
 
 ```bash
-modsim runtime examples/robot_packs/generic_cube \
+modsim run --gui examples/robot_packs/generic_cube \
   --fixed-connector front \
   --moving-connector front \
   --duration 4
@@ -132,7 +133,7 @@ modsim pack validate \
 Run a two-module docking demonstration using the `pan` face on each module:
 
 ```bash
-modsim runtime examples/robot_packs/smores_ep \
+modsim run --gui examples/robot_packs/smores_ep \
   --backend mujoco \
   --demo dock \
   --fixed-connector pan \
@@ -148,7 +149,7 @@ modsim runtime examples/robot_packs/smores_ep \
 Run the same pair through docking, undocking, and visible retraction:
 
 ```bash
-modsim runtime examples/robot_packs/smores_ep \
+modsim run --gui examples/robot_packs/smores_ep \
   --backend mujoco \
   --demo dock_undock \
   --fixed-connector pan \
@@ -165,7 +166,7 @@ modsim runtime examples/robot_packs/smores_ep \
 Finally, run the seven-module Driver-to-Snake demonstration:
 
 ```bash
-modsim runtime examples/robot_packs/smores_ep \
+modsim run --gui examples/robot_packs/smores_ep \
   --backend mujoco \
   --demo smores_driver_to_snake \
   --model-view smores_topology \
@@ -182,6 +183,43 @@ connections, performs four `6 → 5 → 6` edge transitions, and ends in the cha
 [Runtime Inspector examples](docs/runtime_inspector.md#reproducible-smores-ep-workflows)
 for expected events, metrics, connector substitutions, viewer behavior, and a
 fully headless two-module alternative.
+
+## Experimental 3D SMORES reconfiguration
+
+A five-module benchmark lifts a payload, docks it to a folded receiving
+chain, transfers support, and unfolds into a **four-module vertical tower**:
+`receiver → arm → upper → payload`. The helper parks separately. Two bases are
+explicitly fixed to the environment; this is an experimental spatial handoff,
+not a demonstration of general free-standing 3D reconfiguration.
+
+```bash
+.venv/bin/modsim run examples/robot_packs/smores_ep --demo smores_spatial_handoff --gui
+.venv/bin/modsim run examples/robot_packs/smores_ep --demo smores_spatial_handoff --output json
+```
+
+The planner searches support-preserving connector changes and collision-checked
+joint paths. ModSim owns the searches, feedback controller, measured world state,
+and docking lifecycle. MuJoCo provides mechanical queries and executes
+force-limited servos under gravity. The native viewer preserves the original
+CAD materials and shows live bonds, fixed supports, the planned payload path,
+legends, and completion status. Space pauses; `S` stops. The final view stays
+open for inspection. The Studio inspector uses the planar demo's three themes
+and shared layout: **Runtime state** shows live and target topology side by
+side; **Planning** shows projected 3D paths, waypoints, measured trails, action
+progress/history, and diagnostics; **Event log** shows simulation events and
+planner decisions. Pause/Resume controls the same simulation as the native
+window. Legends explain colors, symbols, and time navigation.
+
+The nominal run completes in about 31 simulated seconds. Actuator settings,
+collision proxies, and ideal connector welds remain provisional. Read the
+[paper-style mathematical review (PDF)](docs/papers/smores_3d_reconfiguration.pdf)
+([editable source](docs/papers/smores_3d_reconfiguration.md)) for equations,
+proofs, pseudocode, measured plots, and open questions. The
+[algorithm and ModSim implementation](docs/smores_3d_algorithm.md) covers the exact
+searches, pseudocode, execution checks, and architecture. See the
+[theory proposal and benchmark](docs/smores_spatial_planning.md) for the review
+of Chao Liu's work, the proposed support-aware 3D formulation, the target
+topology, measured results, and the assumptions still needing validation.
 
 ## Python API
 
@@ -215,6 +253,8 @@ derived snapshots rather than canonical state.
 - [Model views](docs/model_views.md) — recipes and immutable generated views
 - [Runtime Inspector](docs/runtime_inspector.md) — live visualization contract
 - [Studio](docs/studio.md) — desktop authoring workflow
+- [SMORES spatial planning](docs/smores_spatial_planning.md) — research proposal,
+  elevated handoff demo, and physical limits
 - [Archived design history](docs/archive/) — dated roadmaps and handoff records
 
 ## Development checks

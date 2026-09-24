@@ -13,8 +13,10 @@ import logging
 import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from importlib import import_module
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
+from typing import cast
 
 from modsim.backends.registry import create_backend
 from modsim.connectors.compatibility import evaluate_compatibility
@@ -46,6 +48,7 @@ from modsim.runtime.reconfiguration import (
     connector_pair_plan,
 )
 from modsim.runtime.session import RuntimeSession
+from modsim.runtime.spatial import SpatialReconfigurationScenario
 
 _LOGGER = logging.getLogger("modsim.runtime_inspector")
 _INITIAL_SCENE_SPACING_M = 0.2
@@ -95,7 +98,7 @@ class RuntimeInspectorRunner:
 
     config: RuntimeInspectorConfig
     session: RuntimeSession
-    scenario: ScriptedReconfigurationScenario
+    scenario: ScriptedReconfigurationScenario | SpatialReconfigurationScenario
     recipe: ModelViewSpec
     module_type: str
     fixed_connector: str | None
@@ -133,6 +136,25 @@ class RuntimeInspectorRunner:
         module_type = resolve_runtime_module_type(pack, config.module_type)
         recipe = resolve_runtime_recipe(pack, config.view_id)
         demo = _resolve_demo(config.demo)
+        if demo is RuntimeDemo.SMORES_SPATIAL_HANDOFF:
+            if module_type != "smores_ep":
+                raise RuntimeInspectorSetupError(
+                    "smores_spatial_handoff requires the smores_ep module type"
+                )
+            report_status("Planning supported spatial handoff…")
+            try:
+                provider = import_module("modsim_backend_mujoco.spatial_experiment")
+            except ImportError as error:
+                raise RuntimeInspectorSetupError(
+                    "The spatial demo requires the mujoco extra"
+                ) from error
+            create = cast(
+                Callable[[Path, float], SpatialReconfigurationScenario],
+                provider.create_spatial_scenario,
+            )
+            spatial = create(config.pack_path, config.duration_s)
+            report_status("Running SMORES spatial handoff; gravity and two fixed supports enabled")
+            return cls(config, spatial.session, spatial, recipe, module_type, None, None)
         release_after_s: float | None = None
         if demo is RuntimeDemo.SMORES_DRIVER_TO_SNAKE:
             plan = _load_smores_example_plan(config.pack_path)
@@ -235,7 +257,29 @@ class RuntimeInspectorRunner:
     def step(self) -> tuple[Event, ...]:
         """Advance one configured physics/scenario step."""
         self._require_open()
+        if isinstance(self.scenario, SpatialReconfigurationScenario):
+            events: list[Event] = []
+            for _ in range(round(self.config.dt_s / self.scenario.dt_s)):
+                events.extend(self.scenario.step())
+                if self.scenario.terminal:
+                    break
+            return tuple(events)
         return self.scenario.step()
+
+    @property
+    def finished(self) -> bool:
+        """Whether a feedback planner has reached an explicit terminal state."""
+        return isinstance(self.scenario, SpatialReconfigurationScenario) and self.scenario.terminal
+
+    def stop(self) -> None:
+        if isinstance(self.scenario, SpatialReconfigurationScenario):
+            self.scenario.stop()
+
+    @property
+    def completion_message(self) -> str:
+        if isinstance(self.scenario, SpatialReconfigurationScenario):
+            return self.scenario.detail
+        return "Run complete"
 
     def frame(self) -> RuntimeInspectorFrame:
         """Build one immutable frame and atomically advance its event cursor."""
@@ -246,6 +290,9 @@ class RuntimeInspectorRunner:
             self._factory,
             event_cursor=self._event_cursor,
             scenario_status=self.scenario.status,
+            planning=self.scenario.planning_snapshot()
+            if isinstance(self.scenario, SpatialReconfigurationScenario)
+            else None,
         )
         self._event_cursor = frame.next_event_sequence
         return frame
@@ -255,6 +302,7 @@ class RuntimeInspectorRunner:
         if self._closed:
             return
         self._closed = True
+        self.stop()
         self.session.shutdown()
 
     def _require_open(self) -> None:
@@ -271,6 +319,30 @@ def validate_runtime_inspector_config(config: RuntimeInspectorConfig) -> None:
             "fixed_connector and moving_connector must be supplied together"
         )
     demo = _resolve_demo(config.demo)
+    if demo is RuntimeDemo.SMORES_SPATIAL_HANDOFF:
+        if config.backend != "mujoco":
+            raise RuntimeInspectorSetupError(
+                "smores_spatial_handoff currently requires the MuJoCo mechanical services"
+            )
+        if any(
+            value is not None
+            for value in (config.fixed_connector, config.moving_connector, config.undock_at_s)
+        ):
+            raise RuntimeInspectorSetupError(
+                "smores_spatial_handoff defines its own connectors and releases"
+            )
+        if config.orientation_rad != 0 or config.height_m != 0:
+            raise RuntimeInspectorSetupError(
+                "smores_spatial_handoff defines its fixture poses and orientations"
+            )
+        if (
+            not math.isfinite(config.dt_s)
+            or not 0.001 <= config.dt_s <= 0.02
+            or not math.isclose(config.dt_s / 0.001, round(config.dt_s / 0.001), abs_tol=1e-9)
+        ):
+            raise RuntimeInspectorSetupError(
+                "spatial dt_s must be a multiple of 0.001 s, up to 0.02 s"
+            )
     if demo is RuntimeDemo.SMORES_DRIVER_TO_SNAKE:
         if config.fixed_connector is not None or config.moving_connector is not None:
             raise RuntimeInspectorSetupError(
@@ -407,6 +479,7 @@ def runtime_frame_signature(frame: RuntimeInspectorFrame) -> object:
         source.event_revision,
         frame.next_event_sequence,
         frame.scenario,
+        frame.planning,
     )
 
 

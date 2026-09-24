@@ -8,7 +8,7 @@ event table without importing Qt, PyQtGraph, MuJoCo, or a live ``WorldState``.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal
 
 from modsim.model_views import ModuleTopologyGraphView
@@ -57,6 +57,7 @@ class PresentedConnectionEdge:
     connector_b: str
     path: tuple[Point2D, ...]
     selected: bool = False
+    state: Literal["committed", "pending", "matched"] = "committed"
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +70,7 @@ class RuntimePresentation:
     selection: GraphSelection | None
     source_text: str
     status_text: str
+    show_labels: bool = True
 
 
 class RuntimeInspectorPresenter:
@@ -87,6 +89,41 @@ class RuntimeInspectorPresenter:
         self._selection: GraphSelection | None = None
         self._frame: RuntimeInspectorFrame | None = None
         self._presentation: RuntimePresentation | None = None
+        self._show_labels = True
+
+    @property
+    def frame(self) -> RuntimeInspectorFrame | None:
+        return self._frame
+
+    def set_show_labels(self, visible: bool) -> RuntimePresentation:
+        self._show_labels = visible
+        self._presentation = self._build_presentation(self._require_frame())
+        return self._presentation
+
+    def target_presentation(self) -> RuntimePresentation | None:
+        frame = self._frame
+        live = self._presentation
+        if frame is None or frame.planning is None or live is None:
+            return None
+        committed = {frozenset((e.connector_a, e.connector_b)) for e in frame.view.edges}
+        edges = tuple(
+            PresentedConnectionEdge(
+                id=f"target:{bond.a}<->{bond.b}",
+                source=bond.a.split("/")[0],
+                target=bond.b.split("/")[0],
+                connector_a=bond.a,
+                connector_b=bond.b,
+                path=_edge_path(
+                    self._positions[bond.a.split("/")[0]],
+                    self._positions[bond.b.split("/")[0]],
+                    offset_rank=0,
+                    self_loop_index=0,
+                ),
+                state="matched" if frozenset((bond.a, bond.b)) in committed else "pending",
+            )
+            for bond in frame.planning.target_bonds
+        )
+        return replace(live, edges=edges, events=(), status_text="Target topology")
 
     @property
     def presentation(self) -> RuntimePresentation | None:
@@ -232,6 +269,7 @@ class RuntimeInspectorPresenter:
             selection=selection,
             source_text=_source_text(frame.view),
             status_text=_status_text(frame),
+            show_labels=self._show_labels,
         )
 
     def _presentation_with_events(
@@ -248,6 +286,7 @@ class RuntimeInspectorPresenter:
             selection=presentation.selection,
             source_text=presentation.source_text,
             status_text=presentation.status_text,
+            show_labels=presentation.show_labels,
         )
 
 

@@ -16,8 +16,8 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 from modsim.runtime.inspection import RuntimeInspectorFrame
 from modsim.runtime.inspector_runner import RuntimeInspectorConfig
 
-RUNTIME_PROTOCOL_VERSION = 1
-RUNTIME_PROTOCOL_PREFIX = "MODSIM_RUNTIME/1 "
+RUNTIME_PROTOCOL_VERSION = 3
+RUNTIME_PROTOCOL_PREFIX = "MODSIM_RUNTIME/3 "
 MAX_RUNTIME_MESSAGE_BYTES = 8 * 1024 * 1024
 
 _PREFIX_BYTES = RUNTIME_PROTOCOL_PREFIX.encode("ascii")
@@ -46,7 +46,7 @@ class _RuntimeProtocolDTO(BaseModel):
         validate_default=True,
     )
 
-    protocol_version: Literal[1] = RUNTIME_PROTOCOL_VERSION
+    protocol_version: Literal[3] = RUNTIME_PROTOCOL_VERSION
 
 
 class RuntimeHello(_RuntimeProtocolDTO):
@@ -66,6 +66,16 @@ class RuntimeStop(_RuntimeProtocolDTO):
     """Parent-to-child cooperative shutdown request."""
 
     kind: Literal["stop"] = "stop"
+
+
+class RuntimeSetPaused(_RuntimeProtocolDTO):
+    kind: Literal["set_paused"] = "set_paused"
+    paused: bool
+
+
+class RuntimePlaybackState(_RuntimeProtocolDTO):
+    kind: Literal["playback_state"] = "playback_state"
+    paused: bool
 
 
 class RuntimeStatus(_RuntimeProtocolDTO):
@@ -100,6 +110,8 @@ RuntimeProtocolMessage: TypeAlias = Annotated[
     RuntimeHello
     | RuntimeInitialize
     | RuntimeStop
+    | RuntimeSetPaused
+    | RuntimePlaybackState
     | RuntimeStatus
     | RuntimeFrame
     | RuntimeError
@@ -232,10 +244,12 @@ __all__ = [
     "RuntimeHelloMessage",
     "RuntimeInitMessage",
     "RuntimeInitialize",
+    "RuntimePlaybackState",
     "RuntimeProtocolDecoder",
     "RuntimeProtocolError",
     "RuntimeProtocolFramer",
     "RuntimeProtocolMessage",
+    "RuntimeSetPaused",
     "RuntimeStatus",
     "RuntimeStatusMessage",
     "RuntimeStop",

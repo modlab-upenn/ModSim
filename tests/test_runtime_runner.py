@@ -12,6 +12,7 @@ from modsim.runtime import (
     RuntimeDemo,
     RuntimeInspectorConfig,
     RuntimeInspectorRunner,
+    ScriptedReconfigurationScenario,
 )
 
 
@@ -96,6 +97,7 @@ def test_runner_loads_smores_plan_from_the_example_tree(smores_pack_dir: Path) -
         )
     )
     try:
+        assert isinstance(runner.scenario, ScriptedReconfigurationScenario)
         assert runner.scenario.plan.id == "smores_driver_to_snake"
         assert len(runner.scenario.plan.module_ids) == 7
         assert runner.session.world.assemblies.count == 1
@@ -121,6 +123,7 @@ def test_runner_dock_undock_demo_supplies_a_release_schedule(
         )
     )
     try:
+        assert isinstance(runner.scenario, ScriptedReconfigurationScenario)
         assert runner.scenario.plan.id == "dock_undock"
         assert runner.scenario.config.release_after_s == pytest.approx(0.055)
         frames = [runner.frame()]

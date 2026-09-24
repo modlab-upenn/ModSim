@@ -213,6 +213,7 @@ class WorldState:
         """Update module and connector kinematics from a backend observation."""
         self._time_s = snapshot.time_s
         for module_id, module in self._modules.items():
+            module.joint_states = dict(snapshot.joint_states.get(module_id, {}))
             links = snapshot.link_states.get(module_id)
             if links is None:
                 continue

@@ -31,8 +31,10 @@ from modsim.runtime.inspection_protocol import (
     RuntimeFrame,
     RuntimeHello,
     RuntimeInitialize,
+    RuntimePlaybackState,
     RuntimeProtocolError,
     RuntimeProtocolMessage,
+    RuntimeSetPaused,
     RuntimeStatus,
     RuntimeStop,
     decode_runtime_message,
@@ -43,6 +45,9 @@ from modsim.runtime.inspector_runner import (
     RuntimeInspectorRunner,
     RuntimeInspectorSetupError,
 )
+from modsim.runtime.spatial import SpatialReconfigurationScenario
+from modsim_backend_mujoco.spatial_experiment import SpatialExperiment
+from modsim_backend_mujoco.spatial_viewer import run_spatial_viewer
 from modsim_backend_mujoco.viewer import run_with_viewer
 
 _FAILED_MESSAGE_PREFIX = "MuJoCo Runtime Inspector failed: "
@@ -117,7 +122,8 @@ class _FramePublisher:
         self.writer.send(
             RuntimeStatus(
                 message=(
-                    "Run complete; the MuJoCo viewer is holding the final state. "
+                    f"{self.runner.completion_message}; "
+                    "the MuJoCo viewer is holding the final state. "
                     "Close either window when finished."
                 )
             )
@@ -143,6 +149,7 @@ def run_runtime_inspector_process(
     """Run one protocol-controlled MuJoCo viewer child and return an exit code."""
     writer = _ProtocolWriter(output_stream)
     stop_requested = ThreadEvent()
+    paused = ThreadEvent()
     control_shutdown = ThreadEvent()
     control_errors: queue.SimpleQueue[Exception] = queue.SimpleQueue()
     control_thread: Thread | None = None
@@ -156,7 +163,7 @@ def run_runtime_inspector_process(
         _validate_child_config(config)
         control_thread = Thread(
             target=_watch_control_stream,
-            args=(input_stream, stop_requested, control_shutdown, control_errors),
+            args=(input_stream, stop_requested, control_shutdown, control_errors, paused),
             name="ModSimRuntimeControl",
             daemon=True,
         )
@@ -178,24 +185,52 @@ def run_runtime_inspector_process(
         publisher.publish_initial()
 
         if stop_requested.is_set():
+            runner.stop()
+            publisher.viewer_stopped()
             reason = RuntimeFinishedReason.STOPPED
         else:
-            run_with_viewer(
-                runner.session,
-                duration_s=config.duration_s,
-                step_once=runner.step,
-                hold=True,
-                stop_requested=stop_requested.is_set,
-                on_started=publisher.viewer_started,
-                after_step=publisher.after_step,
-                on_scenario_complete=publisher.scenario_complete,
-                on_stopped=publisher.viewer_stopped,
-            )
-            reason = (
-                RuntimeFinishedReason.STOPPED
-                if stop_requested.is_set()
-                else RuntimeFinishedReason.VIEWER_CLOSED
-            )
+            if isinstance(runner.scenario, SpatialReconfigurationScenario):
+                motion = runner.scenario.motion
+                if not isinstance(motion, SpatialExperiment):
+                    raise TypeError("spatial viewer requires MuJoCo mechanical services")
+                run_spatial_viewer(
+                    motion,
+                    pause_requested=paused.is_set,
+                    set_paused=lambda value: paused.set() if value else paused.clear(),
+                    on_playback_changed=lambda value: writer.send(
+                        RuntimePlaybackState(paused=value)
+                    ),
+                    speed=1.0,
+                    hold=True,
+                    stop_requested=stop_requested.is_set,
+                    on_started=publisher.viewer_started,
+                    after_step=publisher.after_step,
+                    on_scenario_complete=publisher.scenario_complete,
+                    on_stopped=publisher.viewer_stopped,
+                )
+                reason = {
+                    "complete": RuntimeFinishedReason.COMPLETED,
+                    "stopped": RuntimeFinishedReason.STOPPED,
+                    "failed": RuntimeFinishedReason.FAILED,
+                    "timeout": RuntimeFinishedReason.FAILED,
+                }[runner.scenario.phase]
+            else:
+                run_with_viewer(
+                    runner.session,
+                    duration_s=config.duration_s,
+                    step_once=runner.step,
+                    hold=True,
+                    stop_requested=stop_requested.is_set,
+                    on_started=publisher.viewer_started,
+                    after_step=publisher.after_step,
+                    on_scenario_complete=publisher.scenario_complete,
+                    on_stopped=publisher.viewer_stopped,
+                )
+                reason = (
+                    RuntimeFinishedReason.STOPPED
+                    if stop_requested.is_set()
+                    else RuntimeFinishedReason.VIEWER_CLOSED
+                )
 
         control_error = _next_control_error(control_errors)
         if control_error is not None:
@@ -232,7 +267,7 @@ def run_runtime_inspector_process(
         control_shutdown,
         diagnostic_stream,
     )
-    return 1 if failure is not None else 0
+    return 1 if reason is RuntimeFinishedReason.FAILED else 0
 
 
 def _read_initialization(stream: BinaryIO) -> RuntimeInspectorConfig:
@@ -257,6 +292,7 @@ def _watch_control_stream(
     stop_requested: ThreadEvent,
     control_shutdown: ThreadEvent,
     errors: queue.SimpleQueue[Exception],
+    paused: ThreadEvent | None = None,
 ) -> None:
     """Read parent commands without ever touching runtime or MuJoCo state."""
     while not stop_requested.is_set():
@@ -267,9 +303,15 @@ def _watch_control_stream(
                     stop_requested.set()
                 return
             message = decode_runtime_message(line)
+            if isinstance(message, RuntimeSetPaused) and paused is not None:
+                if message.paused:
+                    paused.set()
+                else:
+                    paused.clear()
+                continue
             if not isinstance(message, RuntimeStop):
                 raise RuntimeProtocolError(
-                    "the runtime host accepts only stop messages after initialization"
+                    "the runtime host accepts only stop or playback commands after initialization"
                 )
         except Exception as error:
             if not control_shutdown.is_set():

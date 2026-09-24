@@ -19,6 +19,7 @@ from modsim.runtime import RuntimeInspectorConfig, RuntimeInspectorRunner
 from modsim.runtime.inspection_protocol import (
     RuntimeFrame,
     RuntimeHello,
+    RuntimePlaybackState,
     encode_runtime_message,
 )
 from modsim_studio.runtime_process import (
@@ -50,6 +51,8 @@ def test_process_controller_forwards_fragmented_immutable_frame(
         )
     )
     received: list[object] = []
+    playback: list[bool] = []
+    controller.playback_changed.connect(playback.append)
     statuses: list[str] = []
     controller.frame_ready.connect(received.append)
     controller.status_changed.connect(statuses.append)
@@ -58,6 +61,7 @@ def test_process_controller_forwards_fragmented_immutable_frame(
         wire = encode_runtime_message(RuntimeHello()) + encode_runtime_message(
             RuntimeFrame(frame=frame)
         )
+        wire += encode_runtime_message(RuntimePlaybackState(paused=True))
         split = len(wire) // 3
         controller.consume_protocol_output(wire[:split])
         controller.consume_protocol_output(wire[split : split * 2])
@@ -65,6 +69,7 @@ def test_process_controller_forwards_fragmented_immutable_frame(
         application.processEvents()
 
         assert received == [frame]
+        assert playback == [True]
         assert statuses == ["Native MuJoCo viewer connected…"]
     finally:
         runner.shutdown()

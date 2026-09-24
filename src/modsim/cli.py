@@ -83,7 +83,7 @@ from modsim.robot_packs import (
     ValidationProfile,
     ValidationReport,
 )
-from modsim.runtime import RuntimeDemo, RuntimeInspectorConfig
+from modsim.runtime import RuntimeDemo, RuntimeInspectorConfig, RuntimeInspectorRunner
 from modsim.runtime.reconfiguration import (
     ReconfigurationPlanError,
     ReconfigurationScenarioError,
@@ -92,6 +92,7 @@ from modsim.runtime.reconfiguration import (
     connector_pair_plan,
 )
 from modsim.runtime.session import RuntimeSession
+from modsim.runtime.spatial import SpatialReconfigurationScenario
 
 app = typer.Typer(
     name="modsim",
@@ -546,7 +547,9 @@ def run_command(
 
     Pass --view to watch a headless run in the MuJoCo passive viewer, or --gui to
     open the live Runtime Inspector, whose named --demo scenarios include the
-    seven-module smores_driver_to_snake reconfiguration.
+    seven-module smores_driver_to_snake reconfiguration. The smores_spatial_handoff
+    demo uses a ModSim feedback planner under gravity with two fixed supports
+    and runs in either mode.
     """
     if gui and view:
         option_error(
@@ -791,8 +794,57 @@ def _launch_runtime_inspector(options: ScenarioOptions, resolved_duration_s: flo
     raise typer.Exit(code=runtime_main(config))
 
 
+def _run_spatial_scenario(options: ScenarioOptions, duration_s: float) -> None:
+    """Run the same ModSim controller used by the Runtime Inspector."""
+    config = RuntimeInspectorConfig(
+        pack_path=options.pack_path,
+        demo=options.demo,
+        module_type=options.module_type,
+        backend=options.backend or "mujoco",
+        duration_s=duration_s,
+        dt_s=options.dt_s,
+        fixed_connector=options.fixed_connector,
+        moving_connector=options.moving_connector,
+        undock_at_s=options.undock_at_s,
+        orientation_rad=options.orientation_rad,
+        height_m=options.height_m,
+        view_id=options.view_id,
+    )
+    try:
+        runner = RuntimeInspectorRunner.create(config)
+    except (ValueError, BackendError, ImportError) as error:
+        typer.echo(f"Could not start the spatial demo: {error}", err=True)
+        raise typer.Exit(code=2) from error
+    try:
+        scenario = runner.scenario
+        assert isinstance(scenario, SpatialReconfigurationScenario)
+        if options.view:
+            from modsim_backend_mujoco.spatial_viewer import view_spatial_scenario
+
+            view_spatial_scenario(scenario)
+        else:
+            while not runner.finished:
+                runner.step()
+        if options.output is OutputFormat.JSON:
+            typer.echo(json.dumps(scenario.report(), indent=2))
+        else:
+            typer.echo(f"{scenario.phase.upper()}: {scenario.detail}")
+            typer.echo(
+                f"Time: {runner.session.world.time_s:.3f} s; "
+                f"target error: {scenario.target_error_m() * 1000:.2f} mm; "
+                f"peak effort: {scenario.peak_effort_nm:.3f} Nm"
+            )
+        if scenario.phase != "complete":
+            raise typer.Exit(code=1)
+    finally:
+        runner.shutdown()
+
+
 def _run_headless_scenario(options: ScenarioOptions, resolved_duration_s: float) -> None:
     """Run a scripted scenario against a physics backend and render a report."""
+    if options.demo is RuntimeDemo.SMORES_SPATIAL_HANDOFF:
+        _run_spatial_scenario(options, resolved_duration_s)
+        return
     try:
         loaded = RobotPackLoader().load(options.pack_path)
     except RobotPackLoadError as error:

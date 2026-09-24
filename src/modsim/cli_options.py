@@ -41,6 +41,7 @@ DEMO_DEFAULTS: dict[RuntimeDemo, float] = {
     RuntimeDemo.DOCK: 4.0,
     RuntimeDemo.DOCK_UNDOCK: 6.0,
     RuntimeDemo.SMORES_DRIVER_TO_SNAKE: 14.0,
+    RuntimeDemo.SMORES_SPATIAL_HANDOFF: 45.0,
 }
 
 
@@ -285,7 +286,7 @@ DemoOpt = Annotated[
     typer.Option(
         "--demo",
         case_sensitive=False,
-        help="Runtime Inspector scenario (--gui): dock, dock_undock, or smores_driver_to_snake.",
+        help="Named demo. smores_spatial_handoff also supports headless execution.",
         rich_help_panel=PANEL_SCENARIO,
     ),
 ]
@@ -431,7 +432,9 @@ class ScenarioOptions:
         """Fill an omitted ``--duration`` from the mode-appropriate default."""
         if self.duration_s is not None:
             return self.duration_s
-        return DEMO_DEFAULTS[self.demo] if self.gui else DEFAULT_HEADLESS_DURATION_S
+        if self.gui or self.demo is RuntimeDemo.SMORES_SPATIAL_HANDOFF:
+            return DEMO_DEFAULTS[self.demo]
+        return DEFAULT_HEADLESS_DURATION_S
 
     def validate(self) -> float:
         """Run the guards both modes share and return the resolved duration.

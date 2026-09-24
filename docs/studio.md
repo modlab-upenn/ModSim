@@ -2,7 +2,7 @@
 
 ModSim Studio provides two optional native applications: the Robot Pack Builder
 with its PyVistaQt/VTK authoring viewport, and a lightweight Runtime Inspector
-with a PyQtGraph topology graph and event table. The applications share core
+with PyQtGraph topology and planning views plus event tables. The applications share core
 Robot Pack and model-view contracts but remain separate windows in the current
 slice. A MuJoCo Runtime Inspector launch also opens the backend's native 3D
 viewer as a separate companion window by default; it is not embedded in either
@@ -29,7 +29,7 @@ Install MuJoCo too, then launch the Runtime Inspector for a pack:
 
 ```bash
 .venv/bin/python -m pip install -e ".[studio,mujoco,dev]"
-.venv/bin/modsim runtime /absolute/path/to/robot_pack \
+.venv/bin/modsim run --gui /absolute/path/to/robot_pack \
   --fixed-connector CONNECTOR_ID \
   --moving-connector CONNECTOR_ID
 ```
@@ -78,9 +78,20 @@ The current Studio MVP provides:
 
 The authoring viewport renders one module type at a time in the URDF zero-joint
 configuration. Simulation readiness is a validation profile; it does not start
-a runtime by itself. `modsim runtime` is the explicit launch path. See
+a runtime by itself. `modsim run --gui` is the explicit launch path. See
 `runtime_inspector.md` for controls, process/thread ownership, and current
 limitations.
+
+## Runtime planning workspace
+
+The spatial SMORES demo uses the shared planar Studio shell, including
+Graphite Workbench, Light Studio (warm surfaces/navy accent), and Midnight
+Panels. Runtime state places matching live and target graph renderers side
+by side; Planning shows spatial projections, paths, action progress/history,
+and diagnostics; Event log separates canonical events from planner decisions.
+The inspector subtitle is bold accent-colored text, and the simulation banner
+explicitly reports completion, stop, failure, or timeout. See the
+[Runtime Inspector contract](runtime_inspector.md#supported-spatial-handoff).
 
 ## Session logging
 

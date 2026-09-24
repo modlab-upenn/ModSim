@@ -11,7 +11,9 @@ ModSim identifiers onto MuJoCo ids without guessing.
 
 from __future__ import annotations
 
+import math
 import xml.etree.ElementTree as ET
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -37,6 +39,19 @@ MIN_WELD_POOL = 8
 
 class MuJoCoSceneError(BackendError):
     """Raised when a Robot Pack and scene cannot be compiled into a MuJoCo model."""
+
+
+@dataclass(frozen=True, slots=True)
+class PositionServo:
+    """Backend-local experimental servo; not a Robot Pack actuator declaration."""
+
+    kp: float
+    kv: float
+    effort_limit: float
+
+    def __post_init__(self) -> None:
+        if any(not math.isfinite(x) or x <= 0 for x in (self.kp, self.kv, self.effort_limit)):
+            raise MuJoCoSceneError("servo gains and effort limit must be finite and positive")
 
 
 def body_name(module_id: ModuleInstanceId, link: str) -> str:
@@ -176,6 +191,7 @@ def build_scene(
     weld_pool_size: int | None = None,
     ground: bool = False,
     ground_height_m: float = 0.0,
+    position_servos: Mapping[str, PositionServo] | None = None,
 ) -> CompiledScene:
     """Compose and compile every placement into one MuJoCo model.
 
@@ -213,6 +229,22 @@ def build_scene(
     _add_freejoints(spec, module_types)
     _add_connector_sites(spec, module_types)
     pool_names = _reserve_weld_pool(spec, module_types, weld_pool_size)
+
+    joints = {joint.name: joint for joint in spec.joints}
+    for name, settings in (position_servos or {}).items():
+        if name not in joints or joints[name].type not in (
+            mujoco.mjtJoint.mjJNT_HINGE,
+            mujoco.mjtJoint.mjJNT_SLIDE,
+        ):
+            raise MuJoCoSceneError(f"servo requires a named scalar joint: {name}")
+        actuator = spec.add_actuator(
+            name=f"servo/{name}",
+            target=name,
+            trntype=mujoco.mjtTrn.mjTRN_JOINT,
+            forcelimited=True,
+            forcerange=[-settings.effort_limit, settings.effort_limit],
+        )
+        actuator.set_to_position(kp=settings.kp, kv=settings.kv)
 
     try:
         model = spec.compile()
@@ -325,6 +357,7 @@ def _index(
     site_ids: dict[ConnectorInstanceId, int] = {}
     bodies: dict[tuple[ModuleInstanceId, str], str] = {}
     frames: dict[ConnectorInstanceId, str] = {}
+    joints: dict[tuple[ModuleInstanceId, str], str] = {}
 
     for module_id, links in scene.module_links(pack).items():
         for link in links:
@@ -336,6 +369,14 @@ def _index(
             bodies[(module_id, link)] = name
 
     for module_id, module_type in module_types.items():
+        for joint in module_type.joints:
+            name = f"{module_id}/{joint.source_joint_name or joint.id}"
+            identifier = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, name)
+            if identifier >= 0 and model.jnt_type[identifier] in (
+                mujoco.mjtJoint.mjJNT_HINGE,
+                mujoco.mjtJoint.mjJNT_SLIDE,
+            ):
+                joints[module_id, joint.id] = name
         for connector in module_type.connectors:
             name = site_name(module_id, connector.id)
             identifier = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, name)
@@ -353,7 +394,7 @@ def _index(
 
     return CompiledScene(
         model=model,
-        handles=BackendHandleRegistry(bodies=bodies, connector_frames=frames),
+        handles=BackendHandleRegistry(bodies=bodies, joints=joints, connector_frames=frames),
         body_ids=body_ids,
         site_ids=site_ids,
         weld_pool=tuple(pool),

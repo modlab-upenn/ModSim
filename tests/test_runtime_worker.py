@@ -87,3 +87,80 @@ def test_worker_publishes_a_docked_graph_and_lossless_events(
         "DockCommitted",
         "AssemblyMerged",
     ]
+
+
+def test_spatial_worker_publishes_timeout_instead_of_completion(smores_pack_dir: Path) -> None:
+    pytest.importorskip("mujoco")
+    from modsim.runtime import ReconfigurationPhase, RuntimeDemo
+
+    application = QApplication.instance()
+    if not isinstance(application, QApplication):
+        application = QApplication([])
+    worker = RuntimeInspectorWorker(
+        RuntimeInspectorConfig(
+            pack_path=smores_pack_dir,
+            demo=RuntimeDemo.SMORES_SPATIAL_HANDOFF,
+            duration_s=0.004,
+            dt_s=0.002,
+        )
+    )
+    frames: list[RuntimeInspectorFrame] = []
+    statuses: list[str] = []
+    failures: list[str] = []
+
+    def receive_frame(value: object) -> None:
+        assert isinstance(value, RuntimeInspectorFrame)
+        frames.append(value)
+
+    worker.frame_ready.connect(receive_frame)
+    worker.status_changed.connect(statuses.append)
+    worker.failed.connect(failures.append)
+    worker.run()
+    assert failures == []
+    assert frames[-1].scenario is not None
+    assert frames[-1].scenario.phase is ReconfigurationPhase.TIMED_OUT
+    assert "Time limit reached" in statuses[-1]
+
+
+@pytest.mark.parametrize("resume", [True, False])
+def test_worker_pause_can_resume_or_stop_without_advancing_while_paused(
+    example_pack_dir: Path,
+    resume: bool,
+) -> None:
+    application = QApplication.instance()
+    if not isinstance(application, QApplication):
+        application = QApplication([])
+    worker = RuntimeInspectorWorker(
+        RuntimeInspectorConfig(
+            pack_path=example_pack_dir,
+            backend="mock",
+            duration_s=0.004,
+            dt_s=0.002,
+        )
+    )
+    frames: list[RuntimeInspectorFrame] = []
+    playback: list[bool] = []
+    statuses: list[str] = []
+
+    def receive_frame(value: object) -> None:
+        assert isinstance(value, RuntimeInspectorFrame)
+        frames.append(value)
+
+    def playback_changed(paused: bool) -> None:
+        playback.append(paused)
+        if paused:
+            assert len(frames) == 1
+            assert frames[0].metrics.time_s == 0
+            if resume:
+                worker.set_paused(False)
+            else:
+                worker.request_interruption()
+
+    worker.frame_ready.connect(receive_frame)
+    worker.playback_changed.connect(playback_changed)
+    worker.status_changed.connect(statuses.append)
+    worker.set_paused(True)
+    worker.run()
+    assert playback == ([False, True, False] if resume else [False, True])
+    assert frames[-1].metrics.time_s == pytest.approx(0.004 if resume else 0)
+    assert statuses[-1] == ("Run complete" if resume else "Run stopped")

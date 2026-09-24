@@ -150,3 +150,13 @@ interface:
 The implemented Runtime Inspector receives complete immutable view snapshots;
 incremental graph patches are not required for the current two-module and
 seven-module named demonstrations.
+
+### Spatial planner intent in the inspector
+
+`RuntimeInspectorFrame.planning` carries an immutable `SpatialPlanningSnapshot`
+separately from the generated module graph. Time, sample, and topology revision
+must match the live graph's source stamp. The target panel uses the same logical
+node layout and graph renderer, marking goal bonds pending or matched by
+comparison with committed connector pairs. It never modifies `WorldState` or
+fabricates committed edges. Planned spatial traces come from isolated mechanical
+queries; measured trails come from successive live graph node positions.

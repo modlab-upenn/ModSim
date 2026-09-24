@@ -171,6 +171,8 @@ class ReconfigurationPhase(StrEnum):
     HOLDING_CONNECTED = "holding_connected"
     COMPLETE = "complete"
     FAILED = "failed"
+    STOPPED = "stopped"
+    TIMED_OUT = "timed_out"
 
 
 @dataclass(frozen=True, slots=True)

@@ -26,8 +26,10 @@ from modsim.runtime.inspection_protocol import (
     RuntimeFrame,
     RuntimeHello,
     RuntimeInitialize,
+    RuntimePlaybackState,
     RuntimeProtocolError,
     RuntimeProtocolFramer,
+    RuntimeSetPaused,
     RuntimeStatus,
     RuntimeStop,
     encode_runtime_message,
@@ -46,6 +48,7 @@ class RuntimeViewerLaunchError(RuntimeError):
 class RuntimeInspectorThreadController(QObject):
     """Adapt the existing worker thread to the common execution-source API."""
 
+    playback_changed = Signal(bool)
     frame_ready = Signal(object)
     status_changed = Signal(str)
     failed = Signal(str)
@@ -60,6 +63,7 @@ class RuntimeInspectorThreadController(QObject):
         self._worker = RuntimeInspectorWorker(config)
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
+        self._worker.playback_changed.connect(self.playback_changed.emit)
         self._worker.frame_ready.connect(self.frame_ready.emit)
         self._worker.status_changed.connect(self.status_changed.emit)
         self._worker.failed.connect(self.failed.emit)
@@ -73,6 +77,9 @@ class RuntimeInspectorThreadController(QObject):
             return
         self._started = True
         self._thread.start()
+
+    def set_paused(self, paused: bool) -> None:
+        self._worker.set_paused(paused)
 
     def request_interruption(self) -> None:
         if not self._thread.isRunning():
@@ -101,6 +108,7 @@ class RuntimeInspectorThreadController(QObject):
 class RuntimeInspectorProcessController(QObject):
     """Supervise the one-session MuJoCo viewer host through ``QProcess``."""
 
+    playback_changed = Signal(bool)
     frame_ready = Signal(object)
     status_changed = Signal(str)
     failed = Signal(str)
@@ -167,6 +175,10 @@ class RuntimeInspectorProcessController(QObject):
         self._process.setArguments(list(command[1:]))
         self._process.start()
 
+    def set_paused(self, paused: bool) -> None:
+        if self._hello_received and self.is_running():
+            self._write_message(RuntimeSetPaused(paused=paused))
+
     def request_interruption(self) -> None:
         """Request cooperative child shutdown, then arm bounded escalation."""
         if self._stop_requested or not self.is_running():
@@ -225,6 +237,10 @@ class RuntimeInspectorProcessController(QObject):
                 if not self._require_hello(message.kind):
                     return
                 self.status_changed.emit(message.message)
+            elif isinstance(message, RuntimePlaybackState):
+                if not self._require_hello(message.kind):
+                    return
+                self.playback_changed.emit(message.paused)
             elif isinstance(message, RuntimeFrame):
                 if not self._require_hello(message.kind):
                     return
@@ -293,7 +309,7 @@ class RuntimeInspectorProcessController(QObject):
             )
         self._emit_finished()
 
-    def _write_message(self, message: RuntimeInitialize | RuntimeStop) -> None:
+    def _write_message(self, message: RuntimeInitialize | RuntimeStop | RuntimeSetPaused) -> None:
         try:
             encoded = encode_runtime_message(message)
         except RuntimeProtocolError as error:  # pragma: no cover - validated config

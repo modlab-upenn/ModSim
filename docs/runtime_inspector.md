@@ -32,7 +32,7 @@ python -m pip install -e ".[studio,mujoco]"
 Launch the generic cube demonstration:
 
 ```bash
-modsim runtime examples/robot_packs/generic_cube \
+modsim run --gui examples/robot_packs/generic_cube \
   --fixed-connector front \
   --moving-connector front
 ```
@@ -41,7 +41,7 @@ Run the same two-module approach, docking, release, and retraction as an
 explicit named preset:
 
 ```bash
-modsim runtime examples/robot_packs/generic_cube \
+modsim run --gui examples/robot_packs/generic_cube \
   --demo dock_undock \
   --fixed-connector front \
   --moving-connector front \
@@ -74,7 +74,7 @@ initial inspector renderer accepts only the module-topology graph result.
 The useful scenario controls are:
 
 ```text
---demo dock|dock_undock|smores_driver_to_snake
+--demo dock|dock_undock|smores_driver_to_snake|smores_spatial_handoff
 --connector-gap METRES
 --orientation RADIANS
 --approach METRES_PER_SECOND
@@ -96,7 +96,7 @@ requested speed.
 
 ## Named demonstrations
 
-All named demonstrations run through the same generic
+The dock, dock_undock, and smores_driver_to_snake demonstrations run through the generic
 `ScriptedReconfigurationScenario` engine. The two-module entries are small
 dock-only or dock-then-undock plan builders; they no longer have a separate
 phase machine. The SMORES-specific connector plan is example content at
@@ -116,7 +116,7 @@ The included SMORES-EP Robot Pack can run a seven-module Driver-to-Snake
 reconfiguration demonstration:
 
 ```bash
-modsim runtime examples/robot_packs/smores_ep \
+modsim run --gui examples/robot_packs/smores_ep \
   --backend mujoco \
   --demo smores_driver_to_snake \
   --duration 14.0 \
@@ -148,6 +148,63 @@ deterministic kinematic component staging. That ordering and motion staging are
 the demonstration's reproducible presentation, not a claim that ModSim has
 implemented the paper's autonomous planner, path planner, wheel control, or
 physical SMORES locomotion.
+
+### Supported spatial handoff
+
+`--demo smores_spatial_handoff` uses ModSim's feedback-driven
+`SpatialReconfigurationScenario` rather than kinematic staging. Its BFS and A*
+searches plan a five-module elevated handoff; MuJoCo supplies mechanics and
+joint actuation. The preset always enables gravity, ground, and two fixed base
+fixtures, and the CLI supplies a 45 s default deadline. The native companion
+preserves the original CAD materials and shows support markers and the planned
+approach path. The target is a four-module vertical chain with a separate helper;
+target graphics stay in the inspector, without floating target boxes in MuJoCo.
+
+The inspector receives the same canonical graph/events and measured phase,
+position error, and effort detail. Completion, failure, user stop, and timeout
+are distinct terminal outcomes; the controller freezes physics on each. Closing
+the companion early records a stop rather than success. Runtime IPC version 3
+carries immutable spatial planning observations and acknowledged pause/resume commands; parent and child must use the
+same installed ModSim version.
+
+```bash
+modsim run examples/robot_packs/smores_ep --demo smores_spatial_handoff --gui
+```
+
+The inspector reuses the planar demo's Studio header, theme picker, categorical
+colors, topology renderer, collapsible/hover legends, and workspace layout:
+
+- **Runtime state:** live and target topology side by side with identical node
+  layouts. Pending target bonds are dashed violet; matched bonds are green.
+  Target edges are intent, never inserted into the canonical world graph.
+- **Planning:** projected 3D workspace with front (X/Z), side (Y/Z), and top
+  (X/Y) views; live roots and committed bonds; target roots/bonds; approach and
+  withdrawal paths; active payload waypoint; measured motion trails; action
+  progress/reasons; search counts; and measured position, tracking, effort,
+  and contact diagnostics. Root markers are schematic, not collision geometry.
+- **Action history:** one categorical row per handoff stage. Wheel/drag changes
+  time only, with vertical row scrolling, Follow time, Fit all, and hover details.
+- **Event log:** canonical simulation events and a separate table of planner
+  decisions, including searches, settled waypoints, support transitions, and
+  the terminal result.
+
+Graph label visibility and all three themes work for both topology views.
+Manual workspace zoom/pan survives updates; Fit scene or changing projection
+refits it. The simulation state banner distinguishes verified completion from
+stop, failure, and timeout, even while the native window holds the final pose.
+The spatial demo's Pause button and Space in its native window control the
+same simulation; Stop also works while paused. With `--no-viewer`, the worker
+provides the same pause/resume behavior. Other native presets without playback
+acknowledgments keep their Pause button disabled.
+
+Every planning observation carries the same simulation time, sample sequence,
+and topology revision as its generated live graph. A mismatched observation
+is rejected at the frame boundary. The UI never queries a live simulator or
+changes target connections into committed ones. This branch uses the shared
+planar UI components without importing that branch's other physics planners.
+
+See [the algorithm write-up](smores_3d_algorithm.md) for supplied choices,
+searched decisions, physical limits, and headless execution.
 
 ## Reproducible SMORES-EP workflows
 
@@ -192,7 +249,7 @@ modsim backends
 ### Two modules: dock
 
 ```bash
-modsim runtime examples/robot_packs/smores_ep \
+modsim run --gui examples/robot_packs/smores_ep \
   --backend mujoco \
   --demo dock \
   --fixed-connector pan \
@@ -221,7 +278,7 @@ successful dock. No undock event is expected. Replace both `pan` arguments with
 ### Two modules: dock and undock
 
 ```bash
-modsim runtime examples/robot_packs/smores_ep \
+modsim run --gui examples/robot_packs/smores_ep \
   --backend mujoco \
   --demo dock_undock \
   --fixed-connector pan \
@@ -259,7 +316,7 @@ modsim run examples/robot_packs/smores_ep \
 ### Seven modules: Driver to Snake
 
 ```bash
-modsim runtime examples/robot_packs/smores_ep \
+modsim run --gui examples/robot_packs/smores_ep \
   --backend mujoco \
   --demo smores_driver_to_snake \
   --model-view smores_topology \
@@ -296,7 +353,7 @@ SMORES joint/wheel locomotion.
 
 ### Viewer and display behavior
 
-Each `modsim runtime` command above opens the Qt Runtime Inspector and MuJoCo's
+Each `modsim run --gui` command above opens the Qt Runtime Inspector and MuJoCo's
 native viewer, backed by one authoritative runtime. Add `--no-viewer` to hide
 only the MuJoCo window; Qt still requires a display or Xvfb. Use the documented
 `modsim run` command for a completely non-GUI process. On macOS, the runtime

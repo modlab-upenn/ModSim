@@ -231,6 +231,82 @@ def test_process_reports_invalid_post_initialization_control(
     messages = _messages(output)
     assert exit_code == 1
     assert isinstance(messages[-2], RuntimeError)
-    assert "accepts only stop messages" in messages[-2].message
+    assert "accepts only stop or playback commands" in messages[-2].message
     assert messages[-1] == RuntimeFinished(reason=RuntimeFinishedReason.FAILED)
     assert "RuntimeProtocolError" in diagnostics.getvalue()
+
+
+@pytest.mark.parametrize("outcome", ["timeout", "stopped"])
+def test_spatial_process_publishes_terminal_phase_and_reason(
+    smores_pack_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    outcome: str,
+) -> None:
+    from modsim.runtime import ReconfigurationPhase, RuntimeDemo
+    from modsim_backend_mujoco.spatial_experiment import SpatialExperiment
+
+    read_descriptor, write_descriptor = os.pipe()
+    control = os.fdopen(read_descriptor, "rb")
+    parent_control = os.fdopen(write_descriptor, "wb")
+    config = _config(
+        smores_pack_dir, demo=RuntimeDemo.SMORES_SPATIAL_HANDOFF, duration_s=0.004, dt_s=0.002
+    )
+    parent_control.write(_initialize(config))
+    parent_control.flush()
+    output = _TerminalClosingOutput(parent_control)
+    diagnostics = io.StringIO()
+
+    def fake_viewer(experiment: SpatialExperiment, **callbacks: Any) -> None:
+        callbacks["on_started"]()
+        if outcome == "stopped":
+            experiment.stop()
+        else:
+            while not experiment.terminal:
+                experiment.step()
+                callbacks["after_step"]()
+        callbacks["on_scenario_complete"]()
+        callbacks["on_stopped"]()
+
+    monkeypatch.setattr(runtime_process, "run_spatial_viewer", fake_viewer)
+    try:
+        exit_code = runtime_process.run_runtime_inspector_process(control, output, diagnostics)
+    finally:
+        with suppress(BrokenPipeError):
+            parent_control.close()
+        if not control.closed:
+            control.close()
+    messages = _messages(output)
+    frames = [message.frame for message in messages if isinstance(message, RuntimeFrame)]
+    assert diagnostics.getvalue() == ""
+    assert frames[-1].scenario is not None
+    if outcome == "timeout":
+        assert exit_code == 1
+        assert frames[-1].scenario.phase is ReconfigurationPhase.TIMED_OUT
+        assert messages[-1] == RuntimeFinished(reason=RuntimeFinishedReason.FAILED)
+    else:
+        assert exit_code == 0
+        assert frames[-1].scenario.phase is ReconfigurationPhase.STOPPED
+        assert messages[-1] == RuntimeFinished(reason=RuntimeFinishedReason.STOPPED)
+    assert len(frames[-1].view.nodes) == 5
+    assert len(frames[-1].view.edges) == 3
+    assert not any(isinstance(m, RuntimeStatus) and "Run complete" in m.message for m in messages)
+
+
+@pytest.mark.parametrize("resume", [True, False])
+def test_control_stream_accepts_pause_resume_and_stop(resume: bool) -> None:
+    import queue
+    from threading import Event
+
+    from modsim.runtime.inspection_protocol import RuntimeSetPaused
+
+    messages = [RuntimeSetPaused(paused=True)]
+    if resume:
+        messages.append(RuntimeSetPaused(paused=False))
+    wire = b"".join(encode_runtime_message(m) for m in messages)
+    wire += encode_runtime_message(RuntimeStop())
+    stopped, shutdown, paused = Event(), Event(), Event()
+    errors: queue.SimpleQueue[Exception] = queue.SimpleQueue()
+    runtime_process._watch_control_stream(io.BytesIO(wire), stopped, shutdown, errors, paused)
+    assert errors.empty()
+    assert stopped.is_set()
+    assert paused.is_set() is not resume
