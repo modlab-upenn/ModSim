@@ -37,6 +37,12 @@ phase, path, events and physical metrics; timestamp, wall time and repository
 status will naturally differ. If the implementation changes, do not silently
 replace the archived data without updating the paper's results and provenance.
 
+The archived run predates integration with the planar and M-Blocks branch.
+The integrated spatial demo explicitly selects its URDF proxies, experimental
+servos, capture tolerance, and contact behavior in memory; the shared Robot Pack
+keeps its planar locomotion settings. The manifest records the original sources,
+so use newly recorded results when evaluating subsequent implementation changes.
+
 ## Rebuild the paper
 
 The documentation renderer requires `matplotlib`, `numpy`, and `markdown-it-py`.

@@ -1,0 +1,161 @@
+\documentclass[11pt,oneside]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[letterpaper,margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{siunitx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{graphicx}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,backgrounds,calc,fit,positioning,shapes.geometric}
+\usepackage{natbib}
+\usepackage{hyperref}
+\usepackage{xurl}
+\usepackage[nameinlink,noabbrev]{cleveref}
+
+\definecolor{modsimblue}{HTML}{235789}
+\definecolor{modsimcyan}{HTML}{2A9D8F}
+\definecolor{modsimorange}{HTML}{E76F51}
+\definecolor{modsimgold}{HTML}{E9C46A}
+\definecolor{modsimgray}{HTML}{F3F5F7}
+\definecolor{codegray}{HTML}{44515C}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=modsimblue,
+  citecolor=modsimcyan,
+  urlcolor=modsimblue,
+  pdftitle={ModSim: Architecture, Physics Runtime, and SMORES-EP Demonstrations},
+  pdfauthor={ModSim Project Contributors}
+}
+
+\lstdefinestyle{modsim}{
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{modsimgray},
+  frame=single,
+  rulecolor=\color{black!15},
+  breaklines=true,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  keywordstyle=\color{modsimblue}\bfseries,
+  commentstyle=\color{codegray}\itshape
+}
+\lstset{style=modsim}
+
+\newcommand{\modsim}{\textsc{ModSim}}
+\newcommand{\robotpack}{Robot Pack}
+\newcommand{\mujoco}{MuJoCo}
+\newcommand{\smoresep}{SMORES-EP}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\pathcode}[1]{\texttt{\detokenize{#1}}}
+\newcommand{\yes}{\textcolor{modsimcyan}{Implemented}}
+\newcommand{\partial}{\textcolor{modsimgold!70!black}{Partial}}
+\newcommand{\future}{\textcolor{modsimorange}{Future}}
+\newcommand{\sourcefact}{\textsuperscript{P}}
+\newcommand{\cadfact}{\textsuperscript{G}}
+\newcommand{\simchoice}{\textsuperscript{S}}
+\newcommand{\measuredfact}{\textsuperscript{M}}
+
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\setlist{nosep,leftmargin=*}
+\setcounter{secnumdepth}{3}
+\setcounter{tocdepth}{2}
+
+\title{\textbf{ModSim: A Backend-Agnostic Semantic and Physics Framework\\
+for Modular and Multi-Robot Simulation}\\[0.7em]
+\large Architecture, Robot-Pack Authoring, Runtime Docking, Model Views,\\
+and Wheel-Driven SMORES-EP Reconfiguration}
+\author{ModSim Project Contributors}
+\date{Technical Report --- Implementation Snapshot 0.1.0\\
+Repository commit \texttt{4a5ca00} --- \today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Modular and multi-robot research requires more than rigid-body dynamics. A useful
+simulation framework must also represent platform semantics: which physical bodies
+constitute a reusable module, where docking interfaces are located, which interfaces
+are compatible, what geometric and dynamic conditions constitute an acceptable dock,
+how a physical constraint becomes a logical connection, and how changing connections
+alter the robot's topology. Existing physics engines are powerful at integration,
+contact, and rendering, but they do not provide these modular-robot concepts as a
+portable, backend-independent contract. Conversely, platform-specific research code
+often embeds topology, controller, file-layout, and simulator assumptions into a
+single application, making validation, reuse, and cross-backend development difficult.
+
+This report presents \modsim, a Python-first framework that separates canonical
+modular-robot semantics from simulator-specific mechanics. The framework introduces a
+strict, self-contained \robotpack{} format; a desktop Robot Pack Studio; a canonical
+event-driven runtime; deterministic docking acceptance and two-phase physical/logical
+commit; an adapter boundary with mock and \mujoco{} implementations; immutable
+model-view generation; and a Runtime Inspector that couples a native three-dimensional
+viewer with a live topology graph, event log, status, and metrics. The implementation
+is evaluated with generic synthetic fixtures and a committed \smoresep{} package
+containing detailed visual geometry, a physics-specific MJCF model, four EP-face
+connectors, effort-controlled joints, wheel/ground contact, and runtime welds.
+
+Three progressively more demanding demonstrations are analyzed. A two-module physical
+cycle drives one module through differential-wheel effort, docks its TOP/PAN face to a
+rear BOTTOM face, holds an idealized weld, releases it after an 80-ms delay, and reverses
+away. A seven-module kinematic Driver-to-Snake demonstration exercises topology and
+events. A seven-module physics realization executes the same four published topology
+replacements using gravity, tire contact, measured connector frames, authored
+collision-clearance routes, and coherent wheel commands for moving three-module
+assemblies. The reference trace performs four $6\rightarrow5\rightarrow6$ connection
+transitions and reaches the final seven-module chain with ten successful docks, four
+successful undocks, and no semantic failures. The recorded software verification
+baseline contains 537 passing tests with 86\% branch-aware core coverage.
+
+The report emphasizes epistemic boundaries. Published hardware facts, geometry derived
+from the Fusion export, provisional simulation parameters, and measured simulation
+outcomes are identified separately. The current work demonstrates an operational
+semantic and physics vertical slice; it does not yet claim calibrated motor dynamics,
+magnetic capture physics, autonomous reconfiguration planning, hardware trajectory
+reproduction, or backend equivalence beyond the tested semantic contract.
+\end{abstract}
+
+\noindent\textbf{Keywords:} modular robotics, self-reconfiguration, robot simulation,
+MuJoCo, SMORES-EP, docking, topology graph, digital twin, robot description, runtime
+visualization.
+
+\vspace{1em}
+\noindent\textbf{Evidence notation.} In tables, \sourcefact{} denotes a published
+platform fact, \cadfact{} a value derived from committed geometry, \simchoice{} a
+provisional simulation or controller choice, and \measuredfact{} a result observed in
+the reference simulation or enforced by a regression test.
+
+\tableofcontents
+\clearpage
+
+\input{sections/01_introduction}
+\input{sections/02_background_and_gap}
+\input{sections/03_requirements_and_contributions}
+\input{sections/04_overall_architecture}
+\input{sections/05_robot_packs_and_studio}
+\input{sections/06_runtime_and_docking}
+\input{sections/07_backends_and_physics}
+\input{sections/08_model_views_and_inspector}
+\input{sections/09_smores_ep_model_and_control}
+\input{sections/10_experiments_and_results}
+\input{sections/11_performance_and_analysis}
+\input{sections/12_limitations_and_future_work}
+\input{sections/13_conclusion}
+\appendix
+\input{sections/appendices}
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}

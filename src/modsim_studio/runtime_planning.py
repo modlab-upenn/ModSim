@@ -1,5 +1,5 @@
 # pyright: reportUnknownArgumentType=false, reportUnknownMemberType=false, reportMissingTypeStubs=false
-"""Spatial workspace and shared categorical history from immutable planner frames."""
+"""Planar workspace, intent overlays, and execution history from immutable frames."""
 
 from __future__ import annotations
 
@@ -7,12 +7,11 @@ import math
 from typing import Any
 
 import pyqtgraph as pg
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QColor, QPen, QShowEvent
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
-    QComboBox,
     QGraphicsRectItem,
     QHBoxLayout,
     QHeaderView,
@@ -26,7 +25,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from modsim.planning.inspection import SpatialPlanningSnapshot
+from modsim.planning.mblocks.models import LatticePlanningSnapshot
+from modsim.planning.models import PlanningSnapshot, Pose2
 from modsim.runtime.inspection import RuntimeInspectorFrame
 from modsim_studio.appearance import theme_manager
 from modsim_studio.chrome import LegendWidget
@@ -42,7 +42,7 @@ class ActionHistory(QWidget):
 
     def __init__(self) -> None:
         super().__init__()
-        self._snapshot: SpatialPlanningSnapshot | None = None
+        self._snapshot: PlanningSnapshot | LatticePlanningSnapshot | None = None
         self._bars: dict[tuple[str, int], QGraphicsRectItem] = {}
         self._row_count = 0
         layout = QVBoxLayout(self)
@@ -66,14 +66,13 @@ class ActionHistory(QWidget):
         self.plot.enableAutoRange(x=False, y=False)
         self.plot.setLabel("bottom", "Simulation time", units="s")
         self.plot.getAxis("bottom").enableAutoSIPrefix(False)
-        self.plot.getAxis("left").setWidth(145)
-        self.plot.getAxis("left").setStyle(textFillLimits=[(0, 1.0)])
+        self.plot.getAxis("left").setWidth(105)
         self.plot.getViewBox().invertY(True)
         self.plot.setToolTip(
             "One row per docking action. Wheel zooms time only; drag pans time. "
             "Hover a segment for its state and duration."
         )
-        self.plot.setMinimumHeight(120)
+        self.plot.setMinimumHeight(170)
         self.row_scroll = QScrollBar(Qt.Orientation.Vertical)
         self.row_scroll.setToolTip("Scroll action rows; the time axis stays visible")
         chart = QHBoxLayout()
@@ -106,15 +105,15 @@ class ActionHistory(QWidget):
         first = self.row_scroll.value()
         self.plot.setYRange(first - 0.5, first + visible - 0.5, padding=0)
 
-    def set_snapshot(self, snapshot: SpatialPlanningSnapshot) -> None:
+    def set_snapshot(self, snapshot: PlanningSnapshot | LatticePlanningSnapshot) -> None:
         self._snapshot = snapshot
         theme = theme_manager().theme
         colors = phase_colors()
         colors.update(
-            moving=colors["navigating"],
-            transfer=colors["holding"],
-            retreat=colors["retreating"],
-            verify=colors["aligning"],
+            holding_initial=colors["waiting"],
+            pivoting=colors["navigating"],
+            holding_connected=colors["holding"],
+            verified=colors["complete"],
         )
         self.plot.setBackground(theme.viewport)
         for axis in ("left", "bottom"):
@@ -122,34 +121,52 @@ class ActionHistory(QWidget):
             self.plot.getAxis(axis).setPen(theme.border)
         self.plot.setLabel("bottom", "Simulation time", units="s", color=theme.muted)
         self.legend.set_entries(
-            tuple(
-                ("■", colors[p], p.capitalize())
-                for p in ("moving", "transfer", "retreat", "verify")
-            ),
-            "Each row is one stage of the handoff. Segment width is elapsed simulation time, "
+            tuple(("■", colors[p], p.capitalize()) for p in colors),
+            "Each row is one module's docking action. Segment width is elapsed simulation time, "
             "not distance. Wheel/drag changes time only; scroll the row list vertically. "
             "Hover for exact state and duration.",
         )
         ticks: list[tuple[int, str]] = []
         live_keys: set[tuple[str, int]] = set()
-        for row, observation in enumerate(snapshot.actions):
-            ticks.append((row, observation.label))
-            for index, interval in enumerate(observation.intervals):
-                key = (observation.id, index)
+        if isinstance(snapshot, LatticePlanningSnapshot):
+            grouped: dict[tuple[str, str], list[tuple[str, float, float | None]]] = {}
+            for record in snapshot.history:
+                key = (str(record.index), f"{record.index + 1}: {record.moving}")
+                grouped.setdefault(key, []).append(
+                    (record.phase, record.started_at_s, record.ended_at_s)
+                )
+            rows = [
+                (identifier, label, intervals) for (identifier, label), intervals in grouped.items()
+            ]
+        else:
+            rows = [
+                (
+                    observation.action.id,
+                    observation.action.moving,
+                    [
+                        (interval.phase, interval.start_s, interval.end_s)
+                        for interval in observation.intervals
+                    ],
+                )
+                for observation in snapshot.actions
+            ]
+        for row, (identifier, label, intervals) in enumerate(rows):
+            ticks.append((row, label))
+            for index, (phase, start_s, end_s) in enumerate(intervals):
+                key = (identifier, index)
                 live_keys.add(key)
                 bar = self._bars.get(key)
                 if bar is None:
                     bar = QGraphicsRectItem()
                     self._bars[key] = bar
                     self.plot.addItem(bar)
-                end = snapshot.time_s if interval.end_s is None else interval.end_s
-                bar.setRect(interval.start_s, row - 0.32, max(0.0, end - interval.start_s), 0.64)
-                bar.setBrush(QColor(colors[interval.phase]))
+                end = snapshot.time_s if end_s is None else end_s
+                bar.setRect(start_s, row - 0.32, max(0.0, end - start_s), 0.64)
+                bar.setBrush(QColor(colors[phase]))
                 bar.setPen(QPen(Qt.PenStyle.NoPen))
                 bar.setToolTip(
-                    f"{observation.label} → {observation.detail}\n"
-                    f"{interval.phase.capitalize()}: {interval.start_s:.2f}-{end:.2f} s\n"
-                    f"Duration: {end - interval.start_s:.2f} s"
+                    f"{label}\n{phase.replace('_', ' ').capitalize()}: {start_s:.2f}-{end:.2f} s\n"
+                    f"Duration: {end - start_s:.2f} s"
                 )
         for key in self._bars.keys() - live_keys:
             self.plot.removeItem(self._bars.pop(key))
@@ -162,130 +179,88 @@ class ActionHistory(QWidget):
 
 
 class PlanningWorkspace(QWidget):
-    """Spatial planner intent in the planar demo's workspace/table/history layout."""
+    """Read-only planner observability. Pause/stop remain authoritative runtime controls."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._appearance = theme_manager()
         self._frame: RuntimeInspectorFrame | None = None
+        self._trails: dict[str, list[tuple[float, float]]] = {}
         self._last_sample: int | None = None
-        self._trails: dict[str, list[tuple[float, float, float]]] = {}
-        self._fit_pending = True
-        self._has_been_shown = False
+        self._selected: str | None = None
         self.summary = QLabel()
         self.summary.setWordWrap(True)
-        self.projection = QComboBox()
-        self.projection.addItems(["3D overview", "Front · X/Z", "Side · Y/Z", "Top · X/Y"])
-        self.projection.setToolTip(
-            "Project the same spatial plan; front and side views show height."
-        )
-        self.paths = QCheckBox("Planned paths")
+        self.paths = QCheckBox("Paths and clearance")
         self.paths.setChecked(True)
         self.goals = QCheckBox("Goal poses")
         self.goals.setChecked(True)
-        self.fit_button = QPushButton("Fit scene")
         controls = QHBoxLayout()
         controls.addWidget(self.summary, 1)
-        controls.addWidget(self.projection)
         controls.addWidget(self.paths)
         controls.addWidget(self.goals)
-        controls.addWidget(self.fit_button)
         self.workspace: Any = pg.PlotWidget()
-        self.workspace.setMinimumHeight(240)
         self.workspace.setAspectLocked(True)
-        self.workspace.setMenuEnabled(False)
-        self.workspace.enableAutoRange(x=False, y=False)
+        self.workspace.setLabel("bottom", "World X", units="m")
+        self.workspace.setLabel("left", "World Y", units="m")
         self.workspace.showGrid(x=True, y=True, alpha=0.15)
-        self.workspace.setToolTip(
-            "Module root positions, not collision volumes. Dashed paths are the searched plan; "
-            "dotted trails are measured motion. Drag to pan; wheel to zoom."
-        )
         self.action_table = QTableWidget(0, 4)
-        self.action_table.setMinimumHeight(165)
-        self.action_table.verticalHeader().hide()
-        self.action_table.setHorizontalHeaderLabels(["Action", "Progress", "State", "Reason"])
+        self.action_table.setHorizontalHeaderLabels(["Module → parent", "Stage", "State", "Reason"])
+        stage_header = self.action_table.horizontalHeaderItem(1)
+        assert stage_header is not None
+        stage_header.setToolTip(
+            "Assembly order group. Actions in the same group may run in parallel; "
+            "earlier groups finish before dependent groups start."
+        )
+        header = self.action_table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        for column, width in enumerate((185, 60, 95)):
+            header.resizeSection(column, width)
+        header.setStretchLastSection(True)
         self.action_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.action_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.action_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Interactive
-        )
-        for column, width in enumerate((155, 75, 85)):
-            self.action_table.horizontalHeader().resizeSection(column, width)
-        self.action_table.horizontalHeader().setStretchLastSection(True)
-        self.action_table.itemSelectionChanged.connect(self._update_detail)
-        self.detail = QLabel("Select an action to inspect its progress and conditions.")
+        self.action_table.itemSelectionChanged.connect(self._select_action)
+        self.detail = QLabel("Select an action to inspect its connector errors and dependencies.")
         self.detail.setWordWrap(True)
-        self.diagnostics = QLabel()
-        self.diagnostics.setWordWrap(True)
-        self.diagnostics.setObjectName("Muted")
         self.history = ActionHistory()
-        self.history.setMaximumHeight(245)
         self.timeline = self.history.plot
         self.legend = LegendWidget("Workspace legend")
         self.decisions = QTableWidget(0, 3, self)
         self.decisions.setHorizontalHeaderLabels(["Time (s)", "Decision", "Explanation"])
         self.decisions.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.decisions.horizontalHeader().setStretchLastSection(True)
-        self.decisions.setColumnWidth(1, 165)
-        self._decision_count = 0
         right = QWidget()
         right_layout = QVBoxLayout(right)
         right_layout.addWidget(self.action_table, 2)
         right_layout.addWidget(self.detail)
-        right_layout.addWidget(self.diagnostics)
         split = QSplitter(Qt.Orientation.Horizontal)
         split.addWidget(self.workspace)
         split.addWidget(right)
         split.setSizes([650, 420])
-        vertical = QSplitter(Qt.Orientation.Vertical)
-        vertical.addWidget(split)
-        vertical.addWidget(self.history)
-        vertical.setSizes([450, 220])
-        vertical.setStretchFactor(0, 3)
-        vertical.setStretchFactor(1, 1)
         layout = QVBoxLayout(self)
         layout.addLayout(controls)
         layout.addWidget(self.legend)
+        vertical = QSplitter(Qt.Orientation.Vertical)
+        vertical.addWidget(split)
+        vertical.addWidget(self.history)
+        vertical.setSizes([450, 230])
         layout.addWidget(vertical, 1)
         self.paths.toggled.connect(self._redraw)
         self.goals.toggled.connect(self._redraw)
-        self.projection.currentIndexChanged.connect(self.fit_scene)
-        self.fit_button.clicked.connect(self.fit_scene)
         self._appearance.changed.connect(self._redraw)
-
-    def showEvent(self, event: QShowEvent) -> None:
-        super().showEvent(event)
-        if not self._has_been_shown:
-            self._has_been_shown = True
-            QTimer.singleShot(0, self.fit_scene)
 
     def set_frame(self, frame: RuntimeInspectorFrame) -> None:
         if frame.planning is None:
             return
         self._frame = frame
-        if self._last_sample != frame.view.source.sample_sequence:
+        sample = frame.view.source.sample_sequence
+        if self._last_sample != sample:
             for node in frame.view.nodes:
-                point = node.world_position_m
                 trail = self._trails.setdefault(node.id, [])
-                if not trail or math.dist(trail[-1], point) > 0.001:
-                    trail.append(point)
+                position = (node.world_position_m[0], node.world_position_m[1])
+                if not trail or math.dist(trail[-1], position) > 0.003:
+                    trail.append(position)
                     del trail[:-1500]
-            self._last_sample = frame.view.source.sample_sequence
-        self._redraw()
-
-    def project(self, point: tuple[float, float, float]) -> tuple[float, float]:
-        x, y, z = point
-        index = self.projection.currentIndex()
-        if index == 1:
-            return x, z
-        if index == 2:
-            return y, z
-        if index == 3:
-            return x, y
-        return (x - y) / math.sqrt(2), z - (x + y) / math.sqrt(6)
-
-    def fit_scene(self) -> None:
-        self._fit_pending = True
+            self._last_sample = sample
         self._redraw()
 
     def _redraw(self) -> None:
@@ -294,204 +269,164 @@ class PlanningWorkspace(QWidget):
             return
         snapshot = frame.planning
         theme = self._appearance.theme
-        colors = visual_colors(theme.id)
-        module_colors = {
-            "helper": colors["orange"],
-            "payload": colors["blue"],
-            "receiver": colors["violet"],
-            "arm": colors["green"],
-            "foot": colors["gold"],
-            "upper": colors["gold"],
-        }
-        plot = self.workspace
-        plot.setBackground(theme.viewport)
-        plot.clear()
-        labels = (
-            ("Projected horizontal", "Projected height"),
-            ("World X", "World Z"),
-            ("World Y", "World Z"),
-            ("World X", "World Y"),
-        )[self.projection.currentIndex()]
-        for axis, label in zip(("bottom", "left"), labels, strict=True):
-            plot.setLabel(axis, label, units="m", color=theme.muted)
-            plot.getAxis(axis).setPen(theme.border)
-            plot.getAxis(axis).setTextPen(theme.muted)
-        positions = {n.id: n.world_position_m for n in frame.view.nodes}
-        targets = {n.id: n.position_m for n in snapshot.targets}
-        fit_points = [self.project(p) for p in (*positions.values(), *targets.values())]
-        if self.paths.isChecked():
-            for trace in snapshot.traces:
-                if all(math.dist(trace.positions_m[0], p) < 1e-6 for p in trace.positions_m):
-                    continue
-                points = [self.project(p) for p in trace.positions_m]
-                fit_points.extend(points)
-                color = colors["cyan"] if trace.stage == "moving" else colors["magenta"]
-                curve = plot.plot(
-                    [p[0] for p in points],
-                    [p[1] for p in points],
-                    pen=pg.mkPen(color, width=2, style=Qt.PenStyle.DashLine),
-                )
-                curve.setToolTip(f"{trace.module_id}: searched {trace.stage} path")
-                if trace.module_id == "payload":
-                    action = next(a for a in snapshot.actions if a.id == trace.stage)
-                    if action.phase == trace.stage:
-                        point = points[min(action.waypoint, len(points) - 1)]
-                        plot.plot(
-                            [point[0]],
-                            [point[1]],
-                            pen=None,
-                            symbol="star",
-                            symbolSize=18,
-                            symbolBrush=color,
-                            symbolPen=theme.text,
-                        )
-            for module, trail in self._trails.items():
-                points = [self.project(p) for p in trail]
-                plot.plot(
-                    [p[0] for p in points],
-                    [p[1] for p in points],
-                    pen=pg.mkPen(
-                        module_colors.get(module, theme.text), width=1, style=Qt.PenStyle.DotLine
-                    ),
-                )
-        if self.goals.isChecked():
-            for bond in snapshot.target_bonds:
-                self._line(
-                    targets[bond.a.split("/")[0]],
-                    targets[bond.b.split("/")[0]],
-                    colors["violet"],
-                    Qt.PenStyle.DashLine,
-                )
-            for module, position in targets.items():
-                x, y = self.project(position)
-                plot.plot(
-                    [x],
-                    [y],
-                    pen=None,
-                    symbol="s",
-                    symbolSize=23,
-                    symbolBrush=None,
-                    symbolPen=pg.mkPen(module_colors.get(module, theme.text), width=2),
-                )
-        for edge in frame.view.edges:
-            self._line(positions[edge.source], positions[edge.target], colors["neutral"])
-        for node in snapshot.targets:
-            if node.anchored:
-                x, y = self.project(positions[node.id])
-                plot.plot(
-                    [x],
-                    [y],
-                    pen=None,
-                    symbol="t",
-                    symbolSize=32,
-                    symbolBrush=None,
-                    symbolPen=pg.mkPen(colors["gold"], width=2),
-                )
-        for module, position in positions.items():
-            x, y = self.project(position)
-            plot.plot(
-                [x],
-                [y],
-                pen=None,
-                symbol="o",
-                symbolSize=15,
-                symbolBrush=module_colors.get(module, theme.text),
-                symbolPen=theme.text,
-            )
-            label = pg.TextItem(text=module, color=theme.text, anchor=(0.5, -0.65))
-            label.setPos(x, y)
-            plot.addItem(label)
+        for plot in (self.workspace,):
+            plot.setBackground(theme.viewport)
+            for name in ("left", "bottom"):
+                plot.getAxis(name).setTextPen(theme.muted)
+                plot.getAxis(name).setPen(theme.border)
+            plot.clear()
+        self.workspace.setLabel("bottom", "World X", units="m", color=theme.muted)
+        self.workspace.setLabel("left", "World Y", units="m", color=theme.muted)
+        self.summary.setText(
+            f"Plan {snapshot.plan_revision} · Root {snapshot.plan.root_module} · "
+            f"{snapshot.replans} replans · Peak planning {snapshot.planning_ms:.1f} ms · "
+            f"Travel {snapshot.path_length_m:.2f} m"
+        )
+        colors = phase_colors()
+        overlay = visual_colors(theme.id)
         self.legend.set_entries(
             (
-                *(("●", c, m.capitalize()) for m, c in module_colors.items()),
-                ("┄", colors["cyan"], "Approach plan"),
-                ("┄", colors["magenta"], "Withdrawal plan"),
-                ("□", theme.text, "Goal roots (module colors)"),
-                ("┄", colors["violet"], "Target bonds"),
-                ("━", colors["neutral"], "Committed bonds"),
-                ("△", colors["gold"], "Fixed supports"),
-                ("★", theme.text, "Active waypoint"),
-                ("···", colors["neutral"], "Measured trail"),
+                ("□", theme.text, "Solid outline: measured module"),
+                ("┄", overlay["violet"], "Dashed outline: goal pose"),
+                ("━", overlay["cyan"], "Short line: module heading"),
+                ("─", overlay["orange"], "Thin line: travelled trail"),
+                ("─●─", colors["navigating"], "Route and waypoints: action state color"),
+                ("┄", colors["navigating"], "Route rectangles: predicted assembly footprint"),
             ),
-            "Positions are module roots. Solid links are committed connections. "
-            "The 3D overview is an isometric projection; front/side views show world height. "
-            "Search checks collision proxies with fixed supports; load capacity is not certified.",
+            "XY is a physical map in metres. Drag to pan; wheel to zoom. "
+            "Paths are predictions, not committed connections.",
         )
-        if self._fit_pending and fit_points:
-            plot.setXRange(
-                min(p[0] for p in fit_points) - 0.04,
-                max(p[0] for p in fit_points) + 0.04,
-                padding=0,
+        for assignment in snapshot.plan.assignments:
+            if self.goals.isChecked():
+                self._rectangle(assignment.target, snapshot, overlay["violet"], dashed=True)
+        module_poses: dict[str, Pose2] = {}
+        for node in frame.view.nodes:
+            w, x, y, z = node.world_orientation_wxyz
+            yaw = math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
+            pose = Pose2(x=node.world_position_m[0], y=node.world_position_m[1], yaw=yaw)
+            module_poses[node.id] = pose
+            self._rectangle(pose, snapshot, theme.text)
+            self._label(self.workspace, pose.x, pose.y, node.id, theme.text)
+            self.workspace.plot(
+                [pose.x, pose.x + 0.065 * math.cos(yaw)],
+                [pose.y, pose.y + 0.065 * math.sin(yaw)],
+                pen=pg.mkPen(overlay["cyan"], width=2),
             )
-            plot.setYRange(
-                min(p[1] for p in fit_points) - 0.04,
-                max(p[1] for p in fit_points) + 0.04,
-                padding=0,
-            )
-            self._fit_pending = False
-        self.summary.setText(
-            f"Supported 3D handoff · {snapshot.phase.capitalize()}\n"
-            f"Target error {snapshot.target_error_m * 1000:.2f} mm · two fixed supports"
-        )
-        self.diagnostics.setText(
-            f"BFS: capture → release\n"
-            f"A* approach: {snapshot.approach_expanded} expanded / "
-            f"{snapshot.approach_rejected} rejected\n"
-            f"A* withdrawal: {snapshot.withdrawal_expanded} expanded / "
-            f"{snapshot.withdrawal_rejected} rejected\n"
-            f"Joint error: {snapshot.joint_error_rad:.3f} rad · "
-            f"peak effort: {snapshot.peak_effort_nm:.2f} Nm\n"
-            f"Peak contact penetration: {snapshot.peak_penetration_m * 1000:.2f} mm"
-        )
-        previous = self.action_table.blockSignals(True)
+            trail = self._trails.get(node.id, [])
+            if len(trail) > 1:
+                self.workspace.plot(
+                    [p[0] for p in trail], [p[1] for p in trail], pen=pg.mkPen(overlay["orange"])
+                )
+        self.action_table.blockSignals(True)
         self.action_table.setRowCount(len(snapshot.actions))
-        for row, action in enumerate(snapshot.actions):
-            for column, value in enumerate(
+        for row, observation in enumerate(snapshot.actions):
+            action = observation.action
+            color = colors[observation.phase]
+            for column, text in enumerate(
                 (
-                    action.label,
-                    f"{action.waypoint}/{action.waypoint_count}",
-                    action.phase.capitalize(),
-                    action.detail,
+                    f"{action.moving} → {action.parent}",
+                    str(action.batch),
+                    observation.phase,
+                    observation.reason,
                 )
             ):
-                item = self.action_table.item(row, column)
-                if item is None:
-                    item = QTableWidgetItem()
-                    self.action_table.setItem(row, column, item)
-                item.setText(value)
-                item.setToolTip(value)
-        self.action_table.blockSignals(previous)
+                item = QTableWidgetItem(text)
+                item.setToolTip(text)
+                if column == 2:
+                    item.setForeground(QColor(color))
+                self.action_table.setItem(row, column, item)
+            if self._selected == action.id:
+                self.action_table.selectRow(row)
+            if self.paths.isChecked() and observation.path:
+                path = observation.path[observation.waypoint_index :]
+                self.workspace.plot(
+                    [p.pose.x for p in path],
+                    [p.pose.y for p in path],
+                    pen=pg.mkPen(color, width=2),
+                    symbol="o",
+                    symbolSize=4,
+                )
+                root = module_poses.get(action.moving)
+                relatives = (
+                    tuple(
+                        module_poses[m].relative_to(root)
+                        for m in observation.members
+                        if m in module_poses
+                    )
+                    if root is not None
+                    else ()
+                )
+                for point in path:
+                    for relative in relatives or (Pose2(x=0.0, y=0.0),):
+                        self._rectangle(point.pose.compose(relative), snapshot, color, dashed=True)
+        self.action_table.blockSignals(False)
         self.history.set_snapshot(snapshot)
-        self.decisions.setRowCount(len(snapshot.decisions))
-        for row in range(self._decision_count, len(snapshot.decisions)):
-            decision = snapshot.decisions[row]
-            for column, value in enumerate(
-                (f"{decision.time_s:.3f}", decision.kind, decision.detail)
+        decisions = snapshot.decisions[-100:]
+        scrollbar = self.decisions.verticalScrollBar()
+        follow_tail = scrollbar.value() >= scrollbar.maximum() - 1
+        self.decisions.setRowCount(len(decisions))
+        for row, decision in enumerate(decisions):
+            for column, text in enumerate(
+                (f"{decision.time_s:.2f}", decision.kind, decision.detail)
             ):
-                item = QTableWidgetItem(value)
-                item.setToolTip(value)
-                self.decisions.setItem(row, column, item)
-        self._decision_count = len(snapshot.decisions)
-        self._update_detail()
+                self.decisions.setItem(row, column, QTableWidgetItem(text))
+        if follow_tail:
+            self.decisions.scrollToBottom()
+        self._update_detail(snapshot)
 
-    def _line(
-        self,
-        first: tuple[float, float, float],
-        second: tuple[float, float, float],
-        color: str,
-        style: Qt.PenStyle = Qt.PenStyle.SolidLine,
+    def _rectangle(
+        self, pose: Pose2, snapshot: PlanningSnapshot, color: str, *, dashed: bool = False
     ) -> None:
-        a, b = self.project(first), self.project(second)
-        self.workspace.plot([a[0], b[0]], [a[1], b[1]], pen=pg.mkPen(color, width=2, style=style))
+        hx, hy = snapshot.footprint_half_m
+        cx = snapshot.footprint_center_x_m
+        corners = [
+            pose.compose(Pose2(x=cx + x, y=y))
+            for x, y in ((-hx, -hy), (hx, -hy), (hx, hy), (-hx, hy), (-hx, -hy))
+        ]
+        self.workspace.plot(
+            [p.x for p in corners],
+            [p.y for p in corners],
+            pen=pg.mkPen(
+                color, width=1.2, style=Qt.PenStyle.DashLine if dashed else Qt.PenStyle.SolidLine
+            ),
+        )
 
-    def _update_detail(self) -> None:
-        if self._frame is None or self._frame.planning is None:
-            return
+    @staticmethod
+    def _label(plot: Any, x: float, y: float, label: str, color: str) -> None:
+        item = pg.TextItem(label, color=color, anchor=(0.5, 1.0))
+        item.setPos(x, y)
+        plot.addItem(item)
+
+    def _select_action(self) -> None:
+        frame = self._frame
         row = self.action_table.currentRow()
-        actions = self._frame.planning.actions
-        if 0 <= row < len(actions):
-            action = actions[row]
+        if frame is None or frame.planning is None or row < 0:
+            return
+        self._selected = frame.planning.actions[row].action.id
+        self._update_detail(frame.planning)
+
+    def _update_detail(self, snapshot: PlanningSnapshot) -> None:
+        for observation in snapshot.actions:
+            if observation.action.id != self._selected:
+                continue
+            action = observation.action
+            position = (
+                "—"
+                if observation.position_error_m is None
+                else f"{observation.position_error_m * 1000:.1f} mm"
+            )
+            angle = (
+                "—"
+                if observation.orientation_error_rad is None
+                else f"{math.degrees(observation.orientation_error_rad):.1f}°"
+            )
+            velocity = (
+                "—"
+                if observation.relative_velocity_m_s is None
+                else f"{observation.relative_velocity_m_s:.3f} m/s"
+            )
             self.detail.setText(
-                f"{action.label} · {action.phase}\n{action.detail}\n"
-                f"Progress: {action.waypoint}/{action.waypoint_count}"
+                f"{action.moving}/{action.moving_face} → {action.parent}/{action.parent_face}\n"
+                f"Position: {position} · Axis: {angle} · Relative speed: {velocity}\n"
+                f"Dependencies: {', '.join(action.dependencies) or 'none'}\n{observation.reason}"
             )

@@ -2,18 +2,51 @@
 
 from __future__ import annotations
 
+import math
+import shutil
+from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from modsim.backends.mock import MockBackendAdapter
+from modsim.core.events import Event
+from modsim.core.scene import SceneSpec
+from modsim.robot_packs import LoadedRobotPack
 from modsim.runtime import (
     ReconfigurationPhase,
     ReconfigurationStatus,
     RuntimeDemo,
     RuntimeInspectorConfig,
     RuntimeInspectorRunner,
+    RuntimeInspectorSetupError,
     ScriptedReconfigurationScenario,
 )
+from modsim.runtime.inspector_runner import validate_runtime_inspector_config
+from modsim.runtime.physical_reconfiguration import (
+    DifferentialDriveReconfigurationConfig,
+)
+from modsim.runtime.reconfiguration import ReconfigurationPlan
+from modsim.runtime.session import RuntimeSession
+
+
+def test_runtime_inspector_config_defaults_to_real_time_playback() -> None:
+    assert RuntimeInspectorConfig(pack_path=Path("pack")).real_time_factor == 1.0
+
+
+@pytest.mark.parametrize("real_time_factor", (0.0, -1.0, math.nan, math.inf))
+def test_runtime_inspector_config_rejects_invalid_real_time_factor(
+    real_time_factor: float,
+) -> None:
+    config = RuntimeInspectorConfig(
+        pack_path=Path("pack"),
+        backend="mock",
+        real_time_factor=real_time_factor,
+    )
+
+    with pytest.raises(RuntimeInspectorSetupError, match="real_time_factor must"):
+        validate_runtime_inspector_config(config)
 
 
 def test_runner_owns_scenario_frame_cursor_and_shutdown(example_pack_dir: Path) -> None:
@@ -104,6 +137,180 @@ def test_runner_loads_smores_plan_from_the_example_tree(smores_pack_dir: Path) -
         assert len(runner.session.world.connections) == 6
     finally:
         runner.shutdown()
+
+
+def test_runner_loads_smores_plan_for_a_staged_pack_copy(
+    tmp_path: Path,
+    smores_pack_dir: Path,
+) -> None:
+    staged_pack = tmp_path / ".modsim" / "robot_packs" / "smores_ep"
+    shutil.copytree(smores_pack_dir, staged_pack)
+
+    runner = RuntimeInspectorRunner.create(
+        RuntimeInspectorConfig(
+            pack_path=staged_pack,
+            demo=RuntimeDemo.SMORES_DRIVER_TO_SNAKE,
+            backend="mock",
+            duration_s=0.01,
+            dt_s=0.01,
+        )
+    )
+    try:
+        assert isinstance(runner.scenario, ScriptedReconfigurationScenario)
+        assert runner.scenario.plan.id == "smores_driver_to_snake"
+        assert len(runner.session.world.modules) == 7
+        assert len(runner.session.world.connections) == 6
+    finally:
+        runner.shutdown()
+
+
+def test_runner_wires_physical_driver_to_snake_without_starting_mujoco(
+    monkeypatch: pytest.MonkeyPatch,
+    smores_pack_dir: Path,
+) -> None:
+    import modsim.runtime.inspector_runner as runner_module
+
+    captured: dict[str, object] = {}
+
+    class StubPhysicalScenario:
+        def __init__(self, session: RuntimeSession, plan: ReconfigurationPlan) -> None:
+            self.session = session
+            self.plan = plan
+
+        @property
+        def status(self) -> ReconfigurationStatus:
+            return ReconfigurationStatus(
+                phase=ReconfigurationPhase.HOLDING_INITIAL,
+                time_s=self.session.world.time_s,
+                plan_id=self.plan.id,
+                plan_name=self.plan.name,
+                action_index=None,
+                action_count=len(self.plan.actions),
+                detail="Physical scenario stub",
+            )
+
+        def step(self) -> tuple[Event, ...]:
+            return ()
+
+    def fake_create_session(
+        loaded: LoadedRobotPack,
+        scene: SceneSpec,
+        _config: RuntimeInspectorConfig,
+    ) -> RuntimeSession:
+        captured["scene"] = scene
+        return RuntimeSession.create(loaded, scene, MockBackendAdapter())
+
+    def fake_create_scenario(
+        session: RuntimeSession,
+        plan: ReconfigurationPlan,
+        config: DifferentialDriveReconfigurationConfig,
+    ) -> StubPhysicalScenario:
+        captured["plan"] = plan
+        captured["physical_config"] = config
+        return StubPhysicalScenario(session, plan)
+
+    monkeypatch.setattr(runner_module, "_create_session", fake_create_session)
+    monkeypatch.setattr(
+        runner_module.DifferentialDriveReconfigurationScenario,
+        "create",
+        staticmethod(fake_create_scenario),
+    )
+    statuses: list[str] = []
+    runner = RuntimeInspectorRunner.create(
+        RuntimeInspectorConfig(
+            pack_path=smores_pack_dir,
+            demo=RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE,
+            backend="mujoco",
+            duration_s=180.0,
+            dt_s=0.002,
+            gravity=True,
+            ground=True,
+            height_m=0.05,
+        ),
+        status_callback=statuses.append,
+    )
+    try:
+        scene = captured["scene"]
+        plan = captured["plan"]
+        physical_config = captured["physical_config"]
+        assert isinstance(scene, SceneSpec)
+        assert isinstance(plan, ReconfigurationPlan)
+        assert isinstance(physical_config, DifferentialDriveReconfigurationConfig)
+        assert len(scene.placements) == 7
+        assert tuple(scene.instance_ids) == plan.module_ids
+        assert all(placement.pose.translation[2] == 0.05 for placement in scene.placements)
+        assert len(plan.actions) == len(physical_config.routes) == 4
+        assert physical_config.dt_s == pytest.approx(0.002)
+        assert physical_config.navigation_speed_m_s == pytest.approx(0.03)
+        assert physical_config.approach_speed_m_s == pytest.approx(0.03)
+        assert runner.fixed_connector is None
+        assert runner.moving_connector is None
+        assert statuses[-1] == (
+            "Running smores_physical_driver_to_snake: SMORES-EP Driver to Snake with 7 modules"
+        )
+    finally:
+        runner.shutdown()
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    (
+        ({"backend": "mock"}, "smores_physical_driver_to_snake requires the MuJoCo backend"),
+        ({"gravity": False}, "requires gravity and the ground plane"),
+        ({"ground": False}, "requires gravity and the ground plane"),
+        ({"height_m": 0.03}, "requires height_m >= 0.04"),
+        ({"dt_s": 0.01}, "requires dt_s <= 0.005"),
+        ({"orientation_rad": 0.1}, "orientation_rad must be zero"),
+        (
+            {"fixed_connector": "pan", "moving_connector": "pan"},
+            "defines its connector actions",
+        ),
+        ({"undock_at_s": 1.0}, "defines its own releases"),
+        ({"connector_gap_m": 0.02}, "leave connector_gap_m unspecified"),
+        ({"retract_m_s": 0.03}, "leave retract_m_s unspecified"),
+    ),
+)
+def test_runner_validates_physical_driver_to_snake_options(
+    smores_pack_dir: Path,
+    overrides: dict[str, Any],
+    message: str,
+) -> None:
+    base = RuntimeInspectorConfig(
+        pack_path=smores_pack_dir,
+        demo=RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE,
+        backend="mujoco",
+        gravity=True,
+        ground=True,
+        height_m=0.05,
+        dt_s=0.002,
+    )
+
+    with pytest.raises(RuntimeInspectorSetupError, match=message):
+        validate_runtime_inspector_config(replace(base, **overrides))
+
+
+def test_runner_reports_missing_smores_example_content(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    smores_pack_dir: Path,
+) -> None:
+    missing_scenario = tmp_path / "missing" / "smores_driver_to_snake.py"
+    monkeypatch.setattr(
+        "modsim.runtime.inspector_runner._SMORES_EXAMPLE_SCENARIO",
+        missing_scenario,
+    )
+
+    with pytest.raises(
+        RuntimeInspectorSetupError,
+        match="requires a ModSim source checkout",
+    ):
+        RuntimeInspectorRunner.create(
+            RuntimeInspectorConfig(
+                pack_path=smores_pack_dir,
+                demo=RuntimeDemo.SMORES_DRIVER_TO_SNAKE,
+                backend="mock",
+            )
+        )
 
 
 def test_runner_dock_undock_demo_supplies_a_release_schedule(

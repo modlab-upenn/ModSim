@@ -30,13 +30,15 @@ from modsim.core.events import (
 from modsim.core.ids import (
     ConnectionId,
     ConnectorInstanceId,
+    JointInstanceId,
     ModuleInstanceId,
     connector_instance_id,
+    split_joint_instance_id,
 )
 from modsim.core.scene import SceneSpec
-from modsim.core.snapshot import BackendStateSnapshot
+from modsim.core.snapshot import BackendStateSnapshot, JointState
 from modsim.core.transforms import Transform, quat_rotate
-from modsim.robot_packs.schema import ConnectorSpec, ConnectorTypeSpec, RobotPack
+from modsim.robot_packs.schema import ConnectorSpec, ConnectorTypeSpec, JointSpec, RobotPack
 
 
 class WorldStateError(RuntimeError):
@@ -191,6 +193,33 @@ class WorldState:
         except KeyError as error:
             raise KeyError(f"connector type '{type_id}' is not defined by the pack") from error
 
+    def joint_spec(self, joint: JointInstanceId) -> JointSpec:
+        """Return the Robot Pack joint specification backing one joint instance."""
+        module_id, joint_id = split_joint_instance_id(joint)
+        try:
+            module = self._modules[module_id]
+        except KeyError as error:
+            raise KeyError(f"unknown module '{module_id}'") from error
+        module_type = self._pack.hardware_catalog.module_types[module.module_type_id]
+        for spec in module_type.joints:
+            if spec.id == joint_id:
+                return spec
+        raise KeyError(f"module '{module_id}' has no joint '{joint_id}'")
+
+    def joint_state(self, joint: JointInstanceId) -> JointState:
+        """Return the most recently ingested state for one known joint.
+
+        Knowing a joint from the Robot Pack and having a measurement for it are
+        separate conditions. A backend may omit passive or unsupported joints;
+        callers get a distinct error until such a state has been reported.
+        """
+        module_id, joint_id = split_joint_instance_id(joint)
+        self.joint_spec(joint)
+        try:
+            return self._modules[module_id].joint_states[joint_id]
+        except KeyError as error:
+            raise KeyError(f"backend has not reported state for joint '{joint}'") from error
+
     def adjacency(
         self, *, exclude: ConnectionId | None = None
     ) -> dict[ModuleInstanceId, frozenset[ModuleInstanceId]]:
@@ -343,6 +372,7 @@ class WorldState:
             orientation_index=event.orientation_index,
             constraint_handle=event.constraint_handle,
             created_at_s=event.time_s,
+            constraint=event.constraint,
         )
         self._connections[connection.id] = connection
         for connector in (first, second):

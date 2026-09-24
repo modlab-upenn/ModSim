@@ -16,7 +16,7 @@ connector_types:
     acceptance_region:
       shape: cylinder
       position_tolerance_m: 0.006
-      orientation_tolerance_rad: 0.17453292519943295
+      orientation_tolerance_rad: 0.4363323129985824
       max_relative_velocity_m_s: 0.05
     physical_connection:
       constraint: fixed
@@ -28,11 +28,11 @@ connector_types:
     supports_undocking: true
     docking_policy:
       auto_latch: false
-      alignment: nominal
+      alignment: measured
       redock_cooldown_s: 0.1
       break_force_n: null
     metadata:
       interface: electropermanent_magnet
       status: provisional_demo
       hardware_ratings_verified: false
-      note: Load limits and capture tolerances are simulation placeholders pending hardware validation.
+      note: The 25 degree orientation bound reflects published residual EP-Face attraction, not a verified reliable-latch envelope; other capture and load values remain provisional.

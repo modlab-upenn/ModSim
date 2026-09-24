@@ -67,6 +67,7 @@ class SpatialExperiment:
             timestep_s=self.dt_s,
             ground=True,
             weld_pool_size=16,
+            exclude_docked_contacts=False,
             position_servos={
                 # The longer receiver needs stiffer tracking during load transfer.
                 # Gains are provisional; the original effort bound still applies.
@@ -85,12 +86,31 @@ class SpatialExperiment:
         loaded = RobotPackLoader().load(pack_root)
         # A benchmark-local override: no nominal snap may move a root at capture.
         pack = loaded.pack.model_copy(deep=True)
+        # This benchmark uses the CAD URDF proxies and provisional position
+        # servos recorded in the manuscript, independently of planar drive tuning.
+        pack = pack.model_copy(
+            update={
+                "manifest": pack.manifest.model_copy(
+                    update={"assets": pack.manifest.assets.model_copy(update={"mujoco": {}})}
+                )
+            }
+        )
+        module = pack.hardware_catalog.module_types["smores_ep"]
+        pack.hardware_catalog.module_types["smores_ep"] = module.model_copy(
+            update={
+                "joints": tuple(j.model_copy(update={"control_modes": ()}) for j in module.joints)
+            }
+        )
         connector = pack.hardware_catalog.connector_types["ep_face"]
+        assert connector.acceptance_region is not None
         pack.hardware_catalog.connector_types["ep_face"] = connector.model_copy(
             update={
+                "acceptance_region": connector.acceptance_region.model_copy(
+                    update={"orientation_tolerance_rad": math.pi / 18}
+                ),
                 "docking_policy": connector.effective_docking_policy.model_copy(
                     update={"alignment": AlignmentMode.MEASURED}
-                )
+                ),
             }
         )
         self.session = RuntimeSession.create(

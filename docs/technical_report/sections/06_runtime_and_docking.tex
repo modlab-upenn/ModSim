@@ -1,0 +1,220 @@
+\section{Canonical Runtime, Docking, and Assembly Semantics}
+\label{sec:runtime}
+
+\subsection{Scene and canonical world}
+
+A \code{SceneSpec} is an ordered collection of module placements. It validates unique
+instance IDs and known module types; its grid helper creates deterministic names. At
+session creation, the backend loads the scene, returns stable handles, and supplies an
+initial snapshot. The runtime constructs mutable module, link, joint, connector, and
+connection records under \code{WorldState}.
+
+It is useful to qualify the term \emph{event-sourced}. Logical topology and docking
+semantics are mutated through events. Backend samples directly update time, poses,
+twists, joint state, measured connector frames, and transient lifecycle state. The
+event log is therefore a complete record of semantic connection history, not a
+lossless physical trajectory recorder.
+
+The world exposes four monotonic revisions: backend sample sequence, topology,
+docking-state, and event append count. Derived consumers can invalidate exactly what
+they depend upon.
+
+\subsection{Per-step ordering}
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  node distance=5mm,
+  step/.style={draw,rounded corners,fill=modsimblue!10,draw=modsimblue,
+               minimum width=0.78\textwidth,minimum height=8mm,align=center},
+  arrow/.style={-{Latex[length=2mm]},thick}
+]
+  \node[step] (s1) {1. Backend advances physics by $\Delta t$};
+  \node[step,below=of s1] (s2) {2. Backend snapshot reports link, joint, connector, and force observations};
+  \node[step,below=of s2] (s3) {3. World ingests the fresh sample and resolves connector frames/velocities};
+  \node[step,below=of s3] (s4) {4. Overload evaluation requests releases};
+  \node[step,below=of s4] (s5) {5. Docking processes releases, candidates, guards, and commits};
+  \node[step,below=of s5] (s6) {6. Revisions, events, metrics, and derived views become observable};
+  \foreach \a/\b in {s1/s2,s2/s3,s3/s4,s4/s5,s5/s6} \draw[arrow] (\a) -- (\b);
+\end{tikzpicture}
+\caption{One canonical runtime step. Docking decisions use state reported after the
+backend step, and releases are processed before new commits.}
+\label{fig:step-pipeline}
+\end{figure}
+
+This order prevents decisions against stale geometry. Processing releases before
+detection also prevents a connection from breaking and reforming before its release is
+visible. A redock cooldown should be authored when two just-released surfaces remain in
+capture range.
+
+\subsection{Connector frame and point velocity}
+
+For a connector $C_i$ attached to link $L_i$, an authored numeric pose gives
+
+\begin{equation}
+{}^{W}\mathbf T_{C_i} =
+{}^{W}\mathbf T_{L_i}\,{}^{L_i}\mathbf T_{C_i}.
+\label{eq:connector-transform}
+\end{equation}
+
+If the backend materializes and reports the connector frame, that measurement takes
+precedence over recomposition. This keeps acceptance consistent with engine geometry,
+especially for connectors on articulated child links.
+
+The point velocity includes angular motion:
+
+\begin{equation}
+\mathbf v_{C_i} = \mathbf v_{L_i} +
+\boldsymbol\omega_{L_i}\times(\mathbf p_{C_i}-\mathbf p_{L_i}).
+\label{eq:connector-velocity}
+\end{equation}
+
+Without the lever-arm term, a rotating connector could be classified as stationary and
+dock above its declared speed limit.
+
+\subsection{Broad phase and deterministic candidates}
+
+Free resolved connectors are indexed in a uniform spatial hash whose cell size is the
+largest position tolerance in the pack, with a small positive lower bound. Only nearby
+cells produce opportunistic pairs. Explicitly commanded pairs bypass broad-phase
+distance rejection so an invalid command produces an informative failure rather than
+silence. Pairs are sorted before evaluation.
+
+\subsection{Compatibility}
+
+Type compatibility must be mutual. If type $A$ names $B$ but $B$ does not name $A$,
+the pair is rejected as an authoring error rather than interpreted asymmetrically.
+Genders pair male--female, hermaphroditic--hermaphroditic, and
+genderless--genderless. A connector cannot dock to itself or another connector on the
+same module.
+
+\subsection{Geometric and dynamic acceptance}
+
+Acceptance produces a structured result instead of a boolean. For each tolerance $x$,
+the effective pair limit is the stricter endpoint declaration,
+
+\begin{equation}
+\epsilon_x^{ij}=\min(\epsilon_x^i,\epsilon_x^j).
+\label{eq:tolerance}
+\end{equation}
+
+Both connector-local capture shapes must contain the relative offset. A sphere uses
+Euclidean distance; a box bounds each local coordinate; a cylinder separately bounds
+axial and radial displacement.
+
+Two docking axes mate antiparallel, so the axis error is
+
+\begin{equation}
+e_a=\cos^{-1}\!\left(\hat{\mathbf a}_i^\top(-\hat{\mathbf a}_j)\right).
+\label{eq:axis-error}
+\end{equation}
+
+Roll is measured about the shared docking axis using projected connector-frame
+reference directions. For a discrete allowed set $\Phi$, the governing error is
+
+\begin{equation}
+e_\phi=\min_{\phi_k\in\Phi}
+\left|\operatorname{wrap}(\phi-\phi_k)\right|.
+\label{eq:roll-error}
+\end{equation}
+
+Both endpoints are checked with opposite roll signs. The committed connection stores
+the matched orientation index because configuration recognition cannot recover it
+reliably from a later noisy pose. Relative connector-point speed is the fourth
+criterion. The result reports each measurement, tolerance, margin, and failure reason.
+
+\subsection{Guards and docking policy}
+
+Guards operate after geometry. They reject engaged connectors, cooldown violations,
+undefined or conflicting physical intent, unsupported connection types, and missing
+commands when the pair is not jointly auto-latching. Closing a loop within an existing
+assembly is allowed but warned because rings and lattices are legitimate while
+redundant rigid constraints can be accidental.
+
+Alignment policy is either \emph{measured} or \emph{nominal}. Measured alignment freezes
+the observed relative pose. Nominal alignment asks the backend to snap connector frames
+to their ideal antiparallel/roll pose. If either endpoint requests nominal alignment,
+the pair snaps. Physical controller experiments generally prefer measured alignment;
+lattice experiments may prefer nominal alignment to avoid accumulated drift.
+
+\subsection{Two-phase physical/logical commit}
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  node distance=7mm and 12mm,
+  box/.style={draw,rounded corners,align=center,minimum width=35mm,minimum height=9mm},
+  decision/.style={diamond,draw,aspect=2.2,align=center,inner sep=1.5pt},
+  arrow/.style={-{Latex[length=2mm]},thick}
+]
+  \node[box,fill=modsimblue!10] (eval) {Recheck acceptance\\and guards};
+  \node[box,fill=modsimgold!20,right=of eval] (request) {Create physical\\connection request};
+  \node[decision,right=of request] (ok) {Backend\\accepted?};
+  \node[box,fill=modsimcyan!15,above right=6mm and 12mm of ok] (commit)
+    {Append DockCommitted\\then AssemblyMerged};
+  \node[box,fill=modsimorange!12,below right=6mm and 12mm of ok] (fail)
+    {Append DockFailed\\with reason/detail};
+  \draw[arrow] (eval) -- (request);
+  \draw[arrow] (request) -- (ok);
+  \draw[arrow] (ok) -- node[above,sloped,font=\scriptsize]{yes} (commit);
+  \draw[arrow] (ok) -- node[below,sloped,font=\scriptsize]{no} (fail);
+\end{tikzpicture}
+\caption{Two-phase connection commit. Canonical topology changes only after the
+backend confirms the physical constraint.}
+\label{fig:two-phase}
+\end{figure}
+
+The backend is first asked to create a constraint. Only a successful returned handle
+permits \code{DockCommitted}. If the endpoints previously belonged to separate
+components, \code{AssemblyMerged} follows. Backend refusal, unsupported capabilities,
+or resource exhaustion records \code{DockFailed}; core never fabricates a connection.
+
+Undocking is symmetric: remove the backend constraint first, then append
+\code{UndockCommitted}, then recompute the affected component and append
+\code{AssemblySplit} if needed. A permanent connector refuses undocking.
+
+\subsection{Assemblies and topology}
+
+At time $t$, let
+
+\begin{equation}
+G_t=(V,E_t), \qquad \mathcal A_t=\operatorname{CC}(G_t),
+\label{eq:assemblies}
+\end{equation}
+
+where $V$ is the fixed set of module instances and $E_t$ is the set of committed
+connections. Parallel edges are preserved even though connected-component membership
+does not require multiplicity. Merge joins indexed component sets. Release recomputes
+only the affected component rather than the entire world. Assembly identity derives
+from membership so it is stable across processes and replay.
+
+\subsection{Events and metrics}
+
+The append-only event vocabulary includes candidate detection, dock success/failure,
+undock success/failure, assembly merge/split, and connector overload. Appends receive a
+monotonic zero-based sequence. Opportunistic near-miss failures are not logged every
+step because they would overwhelm history; explicit failed commands are logged.
+
+Metrics are computed from canonical state and history: module/free/connected counts,
+assembly count and maximum size, connector lifecycle counts, active connections,
+docking and undocking successes/failures/attempts, merges, splits, overloads, and event
+count.
+
+\subsection{Joint commands}
+
+\code{JointCommand} carries a stable module/joint ID, semantic control mode, and scalar
+SI target. A batch is validated fully before any backend mutation: IDs must be unique
+and known, the pack must declare the mode and applicable limits, the backend must
+support the mode, and values must be finite non-booleans. A failure rejects the entire
+batch. Commands persist in a backend until replaced or cleared, which makes a complete
+batch important for preventing stale effort after a topology change.
+
+\subsection{Overload boundary}
+
+If a backend reports constraint-force magnitude and the two connector policies declare
+break-force thresholds, the weaker threshold governs. Exceeding it emits
+\code{ConnectorOverloaded} and initiates release. The mock can inject forces for tests;
+the current \mujoco{} adapter does not yet report equality force, so physical breakage
+is not active there. Normal/shear/bending values stored under connector limits remain
+descriptive until a richer load model is implemented.
+

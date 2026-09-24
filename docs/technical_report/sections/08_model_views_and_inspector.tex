@@ -1,0 +1,149 @@
+\section{Model Views, Runtime Inspector, and Human Observability}
+\label{sec:views}
+
+\subsection{Why topology is derived}
+
+A module graph is an excellent abstraction for reconfiguration algorithms, but it
+cannot be canonical physical state. It omits links, joint values, connector frames,
+contact, pose, and transient docking lifecycle. Making it independently mutable would
+create the duplicated-truth problem \modsim{} is designed to avoid.
+
+Model views are therefore strict, immutable, JSON-safe Pydantic data-transfer objects.
+They contain a schema version, source stamp, simulation time, pack identity, and typed
+content. They never contain Qt objects, \mujoco{} handles, NumPy arrays, NetworkX
+graphs, or references to mutable \code{WorldState}. A client may convert the DTO into
+its chosen rendering or analysis library.
+
+\subsection{Factory and builder abstraction}
+
+\code{ModelViewBuilder} is the extension point. A builder declares a stable ID, name,
+result type, supported modes, whether it requires a live world, a dependency token,
+and a build method. \code{ModelViewFactory} is per-client rather than global. It
+registers built-ins, rejects duplicate IDs, lists descriptors, resolves pack recipes,
+builds one or all views, and maintains a bounded thread-safe cache.
+
+Robot Pack recipes contain only builder ID, modes, default flag, display name, and
+bounded JSON configuration. They contain no executable import path. An unknown builder
+remains portable valid data but cannot be constructed until an application registers an
+implementation.
+
+\subsection{Module topology graph}
+
+The first built-in view is a runtime multigraph:
+
+\begin{itemize}
+  \item every module instance is a node, including isolated modules;
+  \item every committed connection is one undirected edge;
+  \item parallel connections remain separate edges;
+  \item nodes copy module pose and assembly identity;
+  \item edges copy endpoints, connection ID, orientation index, and commit time; and
+  \item deterministic sorting makes serialization stable.
+\end{itemize}
+
+Only \code{DockCommitted} and \code{UndockCommitted} change graph topology. Candidates,
+failed attempts, and planned edges are not drawn as committed connections.
+
+\subsection{Revision-aware caching}
+
+The topology builder observes the backend sample sequence because node poses can move,
+and the topology revision because edges can change. A cache entry is keyed by source
+identity, recipe fingerprint, and builder token. Unrelated event or docking revisions
+can update a source stamp without requiring a full graph reconstruction. The cache is
+least-recently-used and bounded, retaining the newest views rather than growing with
+simulation length.
+
+\subsection{Runtime Inspector frame}
+
+After stepping, the runtime owner builds a \code{RuntimeInspectorFrame} containing:
+
+\begin{itemize}
+  \item the immutable graph view;
+  \item scenario phase, plan/action index, and human-readable detail;
+  \item current runtime metrics;
+  \item a contiguous event delta since the last successfully published frame; and
+  \item backend, session, time, and source revision information.
+\end{itemize}
+
+Graph frames may be refresh-limited, but event deltas are lossless and contiguous. The
+event cursor advances only after a frame is successfully constructed for publication.
+
+\subsection{Two execution lanes}
+
+The Runtime Inspector supports two ownership patterns that share the same frame
+contract.
+
+\paragraph{Semantic-only lane.}
+With \code{--no-viewer}, a dedicated QThread worker owns the runtime, scenario,
+backend, and model-view factory. It paces against simulated time and emits immutable
+frames to the Qt thread at a configured wall-clock publication rate.
+
+\paragraph{Native-viewer lane.}
+With \mujoco{} viewer enabled, a companion process owns the one authoritative runtime
+and native viewer. This is required on macOS because Qt and the passive \mujoco{} viewer
+cannot both own the Cocoa main GUI thread. The Qt parent displays topology/events; the
+child advances physics and displays geometry. They are not two synchronized
+simulations.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  node distance=7mm and 18mm,
+  proc/.style={draw,rounded corners,minimum width=0.39\textwidth,minimum height=18mm,
+               align=center,fill=modsimgray},
+  item/.style={draw,rounded corners,align=center,font=\small,minimum width=0.31\textwidth,
+               minimum height=8mm},
+  arrow/.style={-{Latex[length=2mm]},thick}
+]
+  \node[proc,fill=modsimblue!10,draw=modsimblue] (qt) {Qt parent process\\Runtime Inspector};
+  \node[proc,fill=modsimcyan!10,draw=modsimcyan!80!black,right=of qt] (host)
+    {MuJoCo child process\\authoritative runtime + native viewer};
+  \node[item,below=of qt] (present) {Presenter, stable graph layout, event table};
+  \node[item,below=of host] (owner) {RuntimeSession, scenario, ModelViewFactory};
+  \node[item,below=of owner] (engine) {MjModel / MjData / passive viewer};
+  \draw[arrow] (host) -- node[above,font=\scriptsize]{versioned immutable frames} (qt);
+  \draw[arrow] (qt) -- node[below,font=\scriptsize]{initialize / stop} (host);
+  \draw[arrow] (qt) -- (present);
+  \draw[arrow] (host) -- (owner);
+  \draw[arrow] (owner) -- (engine);
+\end{tikzpicture}
+\caption{Dual-window Runtime Inspector architecture. The protocol carries values only;
+the Qt process never traverses mutable world or engine objects.}
+\label{fig:runtime-processes}
+\end{figure}
+
+\subsection{Versioned local protocol}
+
+The child emits newline-delimited strict JSON records prefixed by
+\code{MODSIM\_RUNTIME/1}. Message kinds are hello, initialize, stop, status, frame,
+error, and finished. The framer handles fragmented reads and rejects bad prefixes,
+UTF-8, multiline documents, oversized records, and unterminated input. Standard output
+is reserved for protocol data; standard error carries diagnostics that the parent
+mirrors into its session log.
+
+Shutdown is cooperative: the parent sends Stop, waits, then escalates to terminate and
+kill only after deadlines. End-of-file also stops the child. The child exits the viewer,
+shuts down the backend, sends a terminal record, and joins its input watcher. These
+details prevent orphan viewers and interpreter aborts from blocked standard-input
+threads.
+
+\subsection{Presentation behavior}
+
+The Qt-free presenter owns layout and selection, not runtime state. It assigns stable
+deterministic node positions, keeps nodes in place across pose samples, renders parallel
+edges as distinct curves, removes an edge selection when that edge disappears, and
+retains node selection. It rejects regressing source stamps and gaps or conflicts in
+event deltas.
+
+The window shows graph, event table, scenario phase/detail, backend, simulation time,
+module/assembly/connection counts, dock/undock outcomes, event count, and source
+revisions. A target-speed label explicitly states the requested pacing factor. The
+native viewer renders physical geometry and contact; the semantic window does not.
+
+\subsection{Current visualization limits}
+
+Only the module-topology graph is rendered. There are no frame, port, matrix, lattice,
+or hybrid-docking panels; no time-series plots; no pause, restart, or scrub; no manual
+joint controls; and no general scene editor. The Runtime Inspector remains a separate
+window from Robot Pack Studio. These are presentation limitations rather than reasons
+to weaken the immutable view boundary.
+

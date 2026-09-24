@@ -1,0 +1,123 @@
+\section{Overall Architecture}
+\label{sec:architecture}
+
+\subsection{Layered organization}
+
+\modsim{} is distributed as \code{modsim-robotics} and currently supports Python 3.11
+and newer. The source tree is divided into three packages:
+
+\begin{itemize}
+  \item \pathcode{src/modsim}: backend-neutral schemas, loading, validation, canonical
+        runtime, docking, model views, scenarios, CLI, and mock backend;
+  \item \pathcode{src/modsim_backend_mujoco}: optional scene composition, adapter,
+        viewer, runtime host process, and weld/contact mechanics; and
+  \item \pathcode{src/modsim_studio}: optional Qt/PyVista authoring and Qt/PyQtGraph
+        runtime visualization.
+\end{itemize}
+
+\Cref{fig:layers} shows the authority and dependency direction. Upward clients depend
+on immutable or typed core interfaces; the core does not import optional UI or physics
+packages.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  node distance=5mm and 8mm,
+  box/.style={draw,rounded corners,minimum height=9mm,align=center,font=\small,
+              fill=modsimgray,text width=0.28\textwidth},
+  core/.style={box,fill=modsimblue!12,draw=modsimblue},
+  opt/.style={box,fill=modsimcyan!12,draw=modsimcyan!80!black},
+  data/.style={box,fill=modsimgold!20,draw=modsimgold!70!black},
+  arrow/.style={-{Latex[length=2mm]},thick,draw=black!65}
+]
+  \node[data] (assets) {Mechanical assets\\URDF / MJCF / meshes};
+  \node[data,right=of assets] (pack) {Robot Pack\\semantics / mappings / recipes};
+  \node[core,below=of $(assets)!0.5!(pack)$,text width=0.60\textwidth] (load)
+    {Loader, validator, writer, importer, scene specification};
+  \node[core,below=of load,text width=0.60\textwidth] (runtime)
+    {Canonical runtime: WorldState, docking, assemblies, events, metrics, commands};
+  \node[opt,below left=of runtime] (backends) {Backend adapters\\mock / MuJoCo / future};
+  \node[core,below=of runtime] (views) {ModelViewFactory\\immutable derived views};
+  \node[opt,below left=of views] (studio) {Robot Pack Studio\\authoring};
+  \node[opt,below right=of views] (inspector) {Runtime Inspector\\graph / events / metrics};
+  \draw[arrow] (assets) -- (load);
+  \draw[arrow] (pack) -- (load);
+  \draw[arrow] (load) -- (runtime);
+  \draw[arrow] (runtime) -- (backends);
+  \draw[arrow] (backends) -- node[below,sloped,font=\scriptsize]{snapshots / outcomes} (runtime);
+  \draw[arrow] (runtime) -- (views);
+  \draw[arrow] (load) -| (studio);
+  \draw[arrow] (views) -- (inspector);
+\end{tikzpicture}
+\caption{Layered \modsim{} architecture. Arrow direction denotes the primary flow of
+data or requests, not Python import direction. Optional physics and UI packages remain
+outside the dependency-light core.}
+\label{fig:layers}
+\end{figure}
+
+\subsection{End-to-end data flow}
+
+An ordinary workflow moves through six stages.
+
+\begin{enumerate}
+  \item The user imports a concrete URDF or opens an existing pack. The loader resolves
+        split YAML documents and local assets under a pack root.
+  \item Validation checks schema and semantic cross-references under an authoring or
+        simulation-readiness profile.
+  \item A \code{SceneSpec} instantiates module types with stable instance IDs and initial
+        poses.
+  \item A backend loads the selected mechanical asset for each instance and returns a
+        handle registry. The runtime immediately ingests a snapshot.
+  \item Each step advances physics, ingests observed state, processes overload and
+        docking, appends events, and updates revision counters.
+  \item A model-view factory builds an immutable topology projection, and the Runtime
+        Inspector publishes it with event deltas, metrics, and scenario status.
+\end{enumerate}
+
+The crucial property is that no stage invents a second canonical topology. The backend
+reports constraints and frames; the world stores logical connections; the graph is
+derived from those connections.
+
+\subsection{Stable identity}
+
+Typed string identifiers are used for pack entities and runtime instances. A connector
+instance ID combines a module instance and local connector, for example
+\code{module\_3/pan}. A joint instance similarly combines module and semantic joint.
+A connection ID is canonical with respect to endpoint ordering, so requesting the same
+undirected pair in either order yields the same identity. Assembly IDs derive from
+membership, using the smallest module ID in the component, rather than from a process
+counter. These rules support deterministic logging, graph keys, replay, and
+cross-process transport.
+
+\subsection{Capability-oriented extension}
+
+A backend advertises exactly what it implements. The base contract includes loading,
+stepping, snapshots, physical connection creation/removal, shutdown, and capabilities.
+Optional protocols add module pose/twist control or joint commands. Core code checks
+capabilities before use. For example, a backend without runtime constraints produces a
+failed dock rather than a logical-only edge; a backend without effort control rejects a
+physical wheel scenario during preflight, before the initial world is mutated.
+
+Model-view extensibility follows the same pattern. A pack recipe names a stable builder
+ID, not a Python import path. An application registers builder implementations in a
+\code{ModelViewFactory}. Missing builders are valid portable data but unavailable in
+that installation, producing an explicit construction error.
+
+\subsection{Package and distribution boundary}
+
+The wheel contains the three Python packages. The source distribution additionally
+contains tests, examples, and documentation. This creates one known portability
+boundary: the named \smoresep{} demonstration configurations currently live in
+\pathcode{examples/scenarios} and are intended for a source checkout. The installed
+library exposes the generic scenario machinery, but a wheel without the example tree
+cannot execute those named source-checkout demos. A future scenario resource or
+explicit \code{--scenario} mechanism should remove this mismatch.
+
+\subsection{Implementation scale}
+
+At the current snapshot, the three source packages contain 72 Python modules and about
+20,455 lines of Python. The test directory contains 40 test modules and about 11,073
+lines. The committed \smoresep{} pack occupies approximately 16 MiB, dominated by five
+binary STL visual meshes. These numbers characterize engineering scope, not runtime
+performance; \Cref{sec:analysis} treats performance separately.
+

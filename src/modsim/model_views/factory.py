@@ -18,6 +18,7 @@ from modsim.model_views.base import (
     ModelViewUnavailableError,
     UnknownModelViewBuilderError,
 )
+from modsim.model_views.lattice import CubicLatticeBuilder
 from modsim.model_views.models import ModelView, ModelViewSourceStamp
 from modsim.model_views.topology import ModuleTopologyGraphBuilder
 from modsim.robot_packs.schema import Identifier, ModelViewMode, ModelViewSpec
@@ -52,6 +53,7 @@ class ModelViewFactory:
         self._cache: OrderedDict[_CacheSlot, _CacheEntry] = OrderedDict()
         self._lock = RLock()
         if include_builtins:
+            self.register(CubicLatticeBuilder())
             self.register(ModuleTopologyGraphBuilder())
 
     def register(self, builder: ModelViewBuilder[ModelView]) -> None:

@@ -8,6 +8,7 @@ from modsim.core.events import AssemblyMerged, DockCandidateDetected, DockCommit
 from modsim.core.ids import ConnectorInstanceId, ModuleInstanceId
 from modsim.core.scene import SceneSpec
 from modsim.robot_packs import LoadedRobotPack, RobotPackValidator, ValidationProfile
+from modsim.robot_packs.schema import ControlMode
 from modsim.runtime.reconfiguration import stage_docking_assembly_pair
 from modsim.runtime.session import RuntimeSession
 
@@ -33,6 +34,9 @@ def test_smores_example_pack_is_simulation_ready(
         smores_loaded_pack.pack.manifest.metadata["repository_inclusion"]
         == "authorized_for_collaborator_access"
     )
+    assert smores_loaded_pack.pack.manifest.assets.mujoco == {
+        "smores_ep": "assets/mujoco/smores_ep.xml"
+    }
     module = smores_loaded_pack.pack.hardware_catalog.module_types[MODULE_TYPE]
     assert {connector.id for connector in module.connectors} == {
         "bottom",
@@ -48,6 +52,20 @@ def test_smores_example_pack_is_simulation_ready(
     assert bottom.docking_axis == pytest.approx((-1.0, 0.0, 0.0))
     assert bottom.approach_axis == pytest.approx((-1.0, 0.0, 0.0))
     assert bottom.metadata["physical_location"] == "rear_base"
+
+    joints = {joint.id: joint for joint in module.joints}
+    assert all(joint.control_modes == (ControlMode.EFFORT,) for joint in joints.values())
+    assert joints["joint_left_wheel"].limits is not None
+    assert joints["joint_left_wheel"].limits.max_velocity_rad_per_s == pytest.approx(
+        1.5707963267948966
+    )
+    assert joints["joint_left_wheel"].limits.max_effort_nm == pytest.approx(0.04)
+    assert joints["joint_right_wheel"].limits is not None
+    assert joints["joint_right_wheel"].limits.max_effort_nm == pytest.approx(0.04)
+    assert joints["joint_tilt"].limits is not None
+    assert joints["joint_tilt"].limits.max_effort_nm == pytest.approx(0.1)
+    assert joints["joint_pan"].limits is not None
+    assert joints["joint_pan"].limits.max_effort_nm == pytest.approx(0.1)
 
 
 @pytest.mark.mujoco

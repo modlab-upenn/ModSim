@@ -15,6 +15,9 @@ ModuleInstanceId = NewType("ModuleInstanceId", str)
 ConnectorInstanceId = NewType("ConnectorInstanceId", str)
 """Identity of one connector on one module instance."""
 
+JointInstanceId = NewType("JointInstanceId", str)
+"""Identity of one joint on one module instance."""
+
 ConnectionId = NewType("ConnectionId", str)
 """Identity of one logical connection between two connector instances."""
 
@@ -25,6 +28,7 @@ ConstraintHandle = NewType("ConstraintHandle", str)
 """Opaque backend-owned identity of a physical constraint."""
 
 CONNECTOR_SEPARATOR = "/"
+JOINT_SEPARATOR = "/"
 
 
 def connector_instance_id(
@@ -43,6 +47,29 @@ def split_connector_instance_id(
     if not separator:
         raise ValueError(f"malformed connector instance id: {connector_instance_id_!r}")
     return ModuleInstanceId(module_id), connector_id
+
+
+def joint_instance_id(
+    module_id: ModuleInstanceId,
+    joint_id: str,
+) -> JointInstanceId:
+    """Return the canonical joint instance identifier."""
+    return JointInstanceId(f"{module_id}{JOINT_SEPARATOR}{joint_id}")
+
+
+def split_joint_instance_id(
+    joint_instance_id_: JointInstanceId,
+) -> tuple[ModuleInstanceId, str]:
+    """Return the owning module and module-local joint identifier.
+
+    A joint instance ID always has the form ``<module>/<joint>``. Splitting at
+    the final separator leaves room for a future scene namespace in the module
+    portion without weakening validation of the two required components.
+    """
+    module_id, separator, joint_id = joint_instance_id_.rpartition(JOINT_SEPARATOR)
+    if not separator or not module_id or not joint_id:
+        raise ValueError(f"malformed joint instance id: {joint_instance_id_!r}")
+    return ModuleInstanceId(module_id), joint_id
 
 
 def connection_id(

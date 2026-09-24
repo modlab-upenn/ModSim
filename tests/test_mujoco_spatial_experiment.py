@@ -104,11 +104,11 @@ def test_real_handoff_never_uses_root_control(monkeypatch: pytest.MonkeyPatch) -
         experiment.step()
         assert experiment.data.time == time
         final = runner.frame()
-        assert final.planning is not None
-        assert all(a.phase == "complete" for a in final.planning.actions)
-        assert len(final.planning.target_bonds) == 3
-        assert len(final.planning.targets) == 5
-        assert len(final.planning.decisions) >= 26
+        assert final.spatial_planning is not None
+        assert all(a.phase == "complete" for a in final.spatial_planning.actions)
+        assert len(final.spatial_planning.target_bonds) == 3
+        assert len(final.spatial_planning.targets) == 5
+        assert len(final.spatial_planning.decisions) >= 26
         assert final.scenario is not None
         assert final.scenario.phase is ReconfigurationPhase.COMPLETE
         assert len(final.view.edges) == 3

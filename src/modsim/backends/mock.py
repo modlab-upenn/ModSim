@@ -31,7 +31,7 @@ from modsim.core.transforms import (
     vec_norm,
     vec_scale,
 )
-from modsim.robot_packs.schema import RobotPack
+from modsim.robot_packs.schema import PhysicalConstraintType, RobotPack
 
 MOCK_BACKEND_NAME = "mock"
 
@@ -152,6 +152,10 @@ class MockBackendAdapter:
 
     def create_physical_connection(self, request: ConnectionRequest) -> ConnectionOutcome:
         """Weld two modules together, honouring an injected failure if armed."""
+        if request.physical_connection.constraint is PhysicalConstraintType.HINGE:
+            return ConnectionOutcome.refused(
+                "mock backend does not implement hinge constraints; use a physics backend"
+            )
         if self._next_failure is not None:
             detail, self._next_failure = self._next_failure, None
             return ConnectionOutcome.refused(detail)

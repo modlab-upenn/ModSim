@@ -69,12 +69,9 @@ class RuntimeStop(_RuntimeProtocolDTO):
 
 
 class RuntimeSetPaused(_RuntimeProtocolDTO):
+    """Parent-to-child request to pause or resume authoritative stepping."""
+
     kind: Literal["set_paused"] = "set_paused"
-    paused: bool
-
-
-class RuntimePlaybackState(_RuntimeProtocolDTO):
-    kind: Literal["playback_state"] = "playback_state"
     paused: bool
 
 
@@ -90,6 +87,13 @@ class RuntimeFrame(_RuntimeProtocolDTO):
 
     kind: Literal["frame"] = "frame"
     frame: RuntimeInspectorFrame
+
+
+class RuntimePlaybackState(_RuntimeProtocolDTO):
+    """Child-to-parent acknowledgement of authoritative playback state."""
+
+    kind: Literal["playback_state"] = "playback_state"
+    paused: bool
 
 
 class RuntimeError(_RuntimeProtocolDTO):
@@ -111,9 +115,9 @@ RuntimeProtocolMessage: TypeAlias = Annotated[
     | RuntimeInitialize
     | RuntimeStop
     | RuntimeSetPaused
-    | RuntimePlaybackState
     | RuntimeStatus
     | RuntimeFrame
+    | RuntimePlaybackState
     | RuntimeError
     | RuntimeFinished,
     Field(discriminator="kind"),
@@ -222,8 +226,10 @@ class RuntimeProtocolFramer:
 RuntimeHelloMessage = RuntimeHello
 RuntimeInitMessage = RuntimeInitialize
 RuntimeStopMessage = RuntimeStop
+RuntimeSetPausedMessage = RuntimeSetPaused
 RuntimeStatusMessage = RuntimeStatus
 RuntimeFrameMessage = RuntimeFrame
+RuntimePlaybackStateMessage = RuntimePlaybackState
 RuntimeErrorMessage = RuntimeError
 RuntimeFinishedMessage = RuntimeFinished
 RuntimeProtocolDecoder = RuntimeProtocolFramer
@@ -245,11 +251,13 @@ __all__ = [
     "RuntimeInitMessage",
     "RuntimeInitialize",
     "RuntimePlaybackState",
+    "RuntimePlaybackStateMessage",
     "RuntimeProtocolDecoder",
     "RuntimeProtocolError",
     "RuntimeProtocolFramer",
     "RuntimeProtocolMessage",
     "RuntimeSetPaused",
+    "RuntimeSetPausedMessage",
     "RuntimeStatus",
     "RuntimeStatusMessage",
     "RuntimeStop",

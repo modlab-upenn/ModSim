@@ -153,7 +153,6 @@ class LegendWidget(DetailsSection):
     """A compact legend that can be pinned open or read by hovering its toggle."""
 
     def __init__(self, title: str = "Legend") -> None:
-        self._text = ""
         self.description = QLabel()
         self.description.setWordWrap(True)
         self.description.setTextFormat(Qt.TextFormat.RichText)
@@ -165,8 +164,5 @@ class LegendWidget(DetailsSection):
             for symbol, color, label in entries
         )
         text = rows + (f"<br>{escape(hint)}" if hint else "")
-        if text == self._text:
-            return
-        self._text = text
         self.description.setText(text)
         self.toggle.setToolTip(text)

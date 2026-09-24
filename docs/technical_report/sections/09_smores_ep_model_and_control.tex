@@ -1,0 +1,241 @@
+\section{SMORES-EP Case Study: Model, Contact, and Control}
+\label{sec:smores}
+
+\subsection{Platform basis}
+
+\smoresep{} was selected because it exercises nearly every architectural concern in a
+compact platform: reusable articulated modules, four connector faces, differential
+drive, active reconfiguration, discrete mating orientations, and published connector
+and topology research. The official platform description identifies four active DOFs
+and rubber-tired left/right wheels \citep{modlabSmoresEp}. The EP-Face is genderless and
+switchable, with published holding-force and capture characterization
+\citep{tosun2016epface}. Self-assembly work divides docking into navigation, pose
+adjustment, and final approach \citep{liu2020parallel,liu2023smoresep}.
+
+The committed pack is a research artifact, not a complete hardware specification. This
+section therefore labels parameter provenance. Superscripts mean published
+(\sourcefact{}), geometry-derived (\cadfact{}), provisional simulation choice
+(\simchoice{}), or measured/tested simulation outcome (\measuredfact{}).
+
+\subsection{Pack contents}
+
+The \pathcode{examples/robot_packs/smores_ep} pack contains:
+
+\begin{itemize}
+  \item one module type and one genderless self-compatible connector type;
+  \item four connector instances named \code{bottom}, \code{pan}, \code{left}, and
+        \code{right};
+  \item dock and undock capability descriptions;
+  \item a default runtime topology view recipe;
+  \item a Fusion-derived URDF and a same-ID physics-specific MJCF asset;
+  \item five detailed STL visual meshes and simplified collision/contact assets; and
+  \item a URDF backend mapping.
+\end{itemize}
+
+The module mass is \SI{0.4386368}{kg}\cadfact{}. LEFT and RIGHT wheel joints and PAN are
+continuous; TILT is bounded to $\pm\pi/2$. The wheel speed cap is
+$\pi/2\,\mathrm{rad/s}$ (\SI{90}{\degree\per\second})\sourcefact{}. The wheel effort limit
+\SI{0.04}{N.m}\simchoice{} and PAN/TILT limits \SI{0.10}{N.m}\simchoice{} are
+simulation bootstrap values, not identified motor constants.
+
+\subsection{Connector frames}
+
+\begin{table}[htbp]
+\centering
+\caption{Committed \smoresep{} connector instances. Positions are in parent-link
+coordinates.}
+\label{tab:smores-connectors}
+\begin{tabularx}{\textwidth}{L{0.12\textwidth}L{0.19\textwidth}L{0.28\textwidth}Y}
+\toprule
+ID & Parent link & Position (m) and RPY (rad) & Docking axis \\
+\midrule
+\code{bottom} & \code{base\_link} & $(-0.0107416,0,0)$; $(0,0,\pi)$ & $(-1,0,0)$ \\
+\code{pan} & \code{front\_wheel\_1} & $(0.005762,0,0)$; $(0,0,0)$ & $(1,0,0)$ \\
+\code{left} & \code{left\_wheel\_1} & $(0,0.04405,0)$; $(0,0,\pi/2)$ & $(0,1,0)$ \\
+\code{right} & \code{right\_wheel\_1} & $(0,-0.04405,0)$; $(0,0,-\pi/2)$ & $(0,-1,0)$ \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The corrected BOTTOM connector is on the rigid rear $-X$ face of the base, not the
+underside. Its plane is derived from the dominant rear surface in the Fusion mesh. This
+correction is essential for TOP-to-BOTTOM snake connections: an underside frame turns a
+nose-to-tail chain into an unintended vertical or kinked structure.
+
+\subsection{EP-face semantic model}
+
+The connector type is genderless and self-compatible. Allowed roll states are
+$\{0,\pi/2,\pi,3\pi/2\}$\sourcefact{}. The current capture proxy is cylindrical with
+\SI{6}{mm} position tolerance\simchoice{}, \SI{25}{\degree} orientation tolerance, and
+\SI{0.05}{m/s} maximum relative speed. The 25-degree value is motivated by published
+residual attraction under angular misalignment \citep{tosun2016epface}, but it should
+not be read as a calibrated complete capture model.
+
+Connection intent is fixed, undocking is supported, auto-latch is disabled, measured
+alignment is selected, and redock cooldown is \SI{0.1}{s}. Listed normal, shear, and
+bending loads are explicitly unverified provisional metadata. The current generic
+acceptance model uses one radial position bound; it does not reproduce the literature's
+separate normal and lateral capture envelopes.
+
+\subsection{Visual and contact models}
+
+Detailed STLs carry visible shape but no textures or material graph. The URDF assigns a
+uniform silver material. In MJCF, visual meshes have zero density and do not carry
+contact. Contact uses simpler primitives:
+
+\begin{itemize}
+  \item two tire cylinders with radius \SI{0.040}{m}\cadfact{} and half-width
+        \SI{0.01045}{m}\cadfact{};
+  \item axle track \SI{0.0672}{m}\cadfact{};
+  \item a small rear support skid\simchoice{} to make the two-wheel chassis statically
+        supportable; and
+  \item connector-face collision proxies in a separate category, so faces can meet
+        without dragging against the ground.
+\end{itemize}
+
+Tire/ground contact uses \code{condim=4} and friction tuple
+$(0.05,1.0,0.01,10^{-4},10^{-4})$\simchoice{}. The low/high tangential values establish
+anisotropy; the backend rotates the tangent frame with the wheel axle. Skid/ground
+friction is $(0.08,0.08,0.005,10^{-4},10^{-4})$\simchoice{}. Wheel damping and armature
+are \num{0.001} and \num{0.0005}; PAN/TILT damping and armature are \num{0.01} and
+\num{0.0002}\simchoice{}. These quantities were tuned for stable first-pass dynamics and
+must eventually be identified from hardware.
+
+\subsection{Differential-drive kinematics}
+
+For wheel radius $r$, track $b$, and left/right angular speeds
+$\omega_L,\omega_R$, the ideal planar body twist is
+
+\begin{align}
+v &= \frac{r}{2}(\omega_R+\omega_L), \\
+\dot\psi &= \frac{r}{b}(\omega_R-\omega_L).
+\label{eq:diff-drive}
+\end{align}
+
+The inverse targets are
+
+\begin{align}
+\omega_R^\star &= \frac{v+\frac{b}{2}\dot\psi}{r}, &
+\omega_L^\star &= \frac{v-\frac{b}{2}\dot\psi}{r}.
+\label{eq:wheel-targets}
+\end{align}
+
+Each wheel uses bounded proportional velocity-to-effort feedback,
+
+\begin{equation}
+\tau_i = \operatorname{sat}_{\tau_{\max}}
+\left[k_v(\omega_i^\star-\omega_i)\right],
+\label{eq:wheel-effort}
+\end{equation}
+
+with $k_v=0.1\,\mathrm{N,m/(rad/s)}$\simchoice{} and
+$\tau_{\max}=0.04\,\mathrm{N,m}$\simchoice{}. PAN and TILT use bounded PD hold,
+
+\begin{equation}
+\tau_h = \operatorname{sat}_{\tau_{h,\max}}
+\left[k_p(q^\star-q)-k_d\dot q\right],
+\label{eq:hold-effort}
+\end{equation}
+
+with $k_p=1.0$, $k_d=0.02$, and \SI{0.1}{N.m} cap\simchoice{}. Current feedback runs at
+the solver period for stability. A calibrated actuator model should permit a more
+hardware-faithful outer-loop frequency.
+
+\subsection{Rigid-assembly wheel allocation}
+
+The final two Driver-to-Snake actions move a connected three-module component. A
+desired planar twist is evaluated at every module center. For module $i$ at position
+$\mathbf p_i$, reference point $\mathbf p_0$, reference linear velocity $\mathbf v_0$,
+and desired yaw rate $\omega$, the rigid velocity target is
+
+\begin{equation}
+\mathbf v_i^\star = \mathbf v_0 +
+\omega\,\hat{\mathbf z}\times(\mathbf p_i-\mathbf p_0).
+\label{eq:rigid-velocity}
+\end{equation}
+
+The allocator projects $\mathbf v_i^\star$ onto each module's planar forward axis and
+uses \cref{eq:wheel-targets}. The orthogonal projection is a nonholonomic residual. If
+the largest requested residual exceeds \SI{0.08}{m/s}\simchoice{}, the whole twist is
+scaled. Wheel targets are then scaled again if any exceeds $\pi/2\,\mathrm{rad/s}$.
+Both requested and applied residual maxima are retained for diagnosis.
+
+This is a pragmatic controller for a rigid assembly whose module wheel axes are not
+all located at the reference center. It is not an optimal traction allocator, and the
+reported residual is a command-space diagnostic, not measured tire slip.
+
+\subsection{Two-module physical scenario}
+
+The first physical scenario uses a stationary module's rear BOTTOM connector and a
+moving module's PAN/TOP connector. Creation performs all capability, joint-feedback,
+and effort-command preflight before staging the pair once. It then:
+
+\begin{enumerate}
+  \item settles both free modules for \SI{0.5}{s};
+  \item brakes the target and drives the mover forward through wheel effort;
+  \item steers from measured connector geometry and continues until a strict
+        \SI{1}{mm} near-contact gate is met;
+  \item requests the ordinary measured-frame fixed connection;
+  \item holds for \SI{1}{s};
+  \item waits \SI{80}{ms}\sourcefact{} as a modeled release delay;
+  \item removes the weld; and
+  \item reverses \SI{0.04}{m} through wheel effort.
+\end{enumerate}
+
+No root pose, root twist, or external wrench is written after initial staging. The
+approach and separation therefore depend on gravity, contact, inertia, joint motion,
+and effort limits. Magnetic attraction before capture is absent; the accepted latch is
+an ideal fixed weld.
+
+\subsection{Driver-to-Snake plan}
+
+The seven-module plan follows the connector substitutions reported by
+\citet{liu2019distributed}. The initial Driver tree and replacements are listed in
+\cref{tab:snake-actions}. The final physical module order is
+$1-3-2-4-5-6-7$.
+
+\begin{table}[htbp]
+\centering
+\caption{Driver-to-Snake connector replacements. TOP maps to \code{pan}; BOTTOM maps to
+\code{bottom}.}
+\label{tab:snake-actions}
+\begin{tabularx}{\textwidth}{L{0.08\textwidth}YY}
+\toprule
+Action & Release & Replacement \\
+\midrule
+1 & \code{module\_1/bottom}--\code{module\_2/pan} &
+    \code{module\_1/pan}--\code{module\_3/bottom} \\
+2 & \code{module\_7/pan}--\code{module\_5/bottom} &
+    \code{module\_7/bottom}--\code{module\_6/pan} \\
+3 & \code{module\_2/right}--\code{module\_4/left} &
+    \code{module\_2/pan}--\code{module\_4/bottom} \\
+4 & \code{module\_5/left}--\code{module\_4/right} &
+    \code{module\_5/bottom}--\code{module\_4/pan} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Actions 1 and 2 move single leaves. After they dock, action 3 moves the connected
+$\{1,3,2\}$ component, and action 4 moves $\{5,6,7\}$. The plan is separated from both
+the kinematic and physical scenarios.
+
+\subsection{Authored physical routes}
+
+The physics realization stages the initial six-edge tree upright at time zero. After
+that boundary, it permits only joint effort and ordinary dock/undock requests. Each
+action waits through the release delay, removes the old weld, follows target-relative
+clearance waypoints, performs a slow measured approach, and commits after all connector
+criteria pass. Routes are recorded under \pathcode{examples/scenarios}; they are not
+hidden in the backend.
+
+The routes include empirical details such as a \SI{8}{mm} lateral prebias for the final
+reverse-moving three-module train and a broad first clearance tolerance. These are
+transparent tuning choices. They demonstrate the framework's physical execution path,
+not robustness to arbitrary initial conditions or autonomous obstacle avoidance.
+
+\subsection{Physics ownership invariant}
+
+The end-to-end regression replaces backend root pose, twist, and wrench methods with
+functions that fail if called after scenario creation. Completing all four replacements
+under that guard is stronger evidence than merely observing wheel rotation: it proves
+that the scenario cannot secretly teleport its roots after staging.

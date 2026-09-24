@@ -10,6 +10,8 @@ from modsim.model_views import (
     ModuleGraphNode,
     ModuleTopologyGraphView,
 )
+from modsim.planning import AssemblyGoal, GoalEdge, Pose2, plan_assembly
+from modsim.planning.models import PlanningSnapshot
 from modsim.runtime.inspection import (
     RuntimeEventRow,
     RuntimeInspectorFrame,
@@ -25,7 +27,40 @@ from modsim.runtime.reconfiguration import ReconfigurationPhase, Reconfiguration
 from modsim_studio.runtime_presenter import (
     RuntimeEventSequenceError,
     RuntimeInspectorPresenter,
+    RuntimePresentation,
 )
+
+
+def test_target_graph_shares_live_layout_but_only_marks_actual_goal_connections() -> None:
+    goal = AssemblyGoal(
+        id="target",
+        nodes=("alpha", "beta"),
+        edges=(GoalEdge(a="alpha", face_a="pan", b="beta", face_b="bottom"),),
+    )
+    plan = plan_assembly(goal, {"alpha": Pose2(x=0.0, y=0.0), "beta": Pose2(x=0.3, y=0.0)})
+    snapshot = PlanningSnapshot(
+        time_s=0.0, sample_sequence=0, topology_revision=0, plan_revision=1, plan=plan, actions=()
+    )
+    initial = frame(view()).model_copy(update={"planning": snapshot})
+    presenter = RuntimeInspectorPresenter()
+    live = presenter.apply_frame(initial)
+    assert isinstance(live, RuntimePresentation)
+    target = presenter.target_presentation()
+    assert target is not None
+    assert tuple(n.position for n in target.nodes) == tuple(n.position for n in live.nodes)
+    assert len(target.edges) == 1 and target.edges[0].state == "pending"
+    assert live.edges == ()
+    target_edge = target.edges[0]
+    committed = edge("connection").model_copy(
+        update={
+            "connector_a": target_edge.connector_a,
+            "connector_b": target_edge.connector_b,
+        }
+    )
+    presenter.apply_frame(initial.model_copy(update={"view": view(connections=(committed,))}))
+    updated = presenter.target_presentation()
+    assert updated is not None and updated.edges[0].state == "matched"
+    assert tuple(n.position for n in updated.nodes) == tuple(n.position for n in target.nodes)
 
 
 def metrics(*, connections: int = 0, events: int = 0) -> DockingMetrics:
@@ -132,6 +167,7 @@ def test_initial_layout_is_deterministic_and_ignores_physical_pose_samples() -> 
     presenter = RuntimeInspectorPresenter()
     initial = presenter.apply_frame(frame(view()))
 
+    assert isinstance(initial, RuntimePresentation)
     assert {item.id: item.position for item in initial.nodes} == {
         "alpha": (-1.0, 0.0),
         "beta": (1.0, 0.0),
@@ -146,6 +182,7 @@ def test_initial_layout_is_deterministic_and_ignores_physical_pose_samples() -> 
     )
 
     moved = presenter.apply_frame(frame(view(sample=1, alpha_x=42.0)))
+    assert isinstance(moved, RuntimePresentation)
     assert {item.id: item.position for item in moved.nodes} == {
         "alpha": (-1.0, 0.0),
         "beta": (1.0, 0.0),
@@ -197,12 +234,15 @@ def test_dock_and_undock_preserve_node_layout_and_valid_selection() -> None:
             )
         )
     )
+    assert isinstance(initial, RuntimePresentation)
+    assert isinstance(docked, RuntimePresentation)
     assert docked.selection == selected_node.selection
     assert [item.position for item in docked.nodes] == [item.position for item in initial.nodes]
     assert [item.id for item in docked.edges] == [docked_edge.id]
 
     presenter.select("edge", docked_edge.id)
     released = presenter.apply_frame(frame(view(sample=2, topology=2, docking=2, event_revision=4)))
+    assert isinstance(released, RuntimePresentation)
     assert released.selection is None
     assert released.edges == ()
     assert [item.position for item in released.nodes] == [item.position for item in initial.nodes]
@@ -216,6 +256,7 @@ def test_parallel_connections_receive_distinct_stable_curves() -> None:
         frame(view(topology=2, docking=2, connections=(first, second)))
     )
 
+    assert isinstance(presented, RuntimePresentation)
     paths = {item.id: item.path for item in presented.edges}
     assert paths[first.id] != paths[second.id]
     assert paths[first.id][0] == paths[second.id][0] == (-1.0, 0.0)
@@ -225,6 +266,7 @@ def test_parallel_connections_receive_distinct_stable_curves() -> None:
     repeated = presenter.apply_frame(
         frame(view(sample=1, topology=2, docking=2, connections=(first, second)))
     )
+    assert isinstance(repeated, RuntimePresentation)
     assert {item.id: item.path for item in repeated.edges} == paths
 
 
@@ -247,6 +289,46 @@ def test_event_deltas_append_deduplicate_and_reject_gaps() -> None:
 
     with pytest.raises(RuntimeEventSequenceError, match="starts at 3"):
         presenter.apply_frame(frame(view(sample=2), start=3, stop=3))
+
+
+def test_frame_burst_keeps_all_events_and_projects_latest_state_once() -> None:
+    presenter = RuntimeInspectorPresenter()
+    first = RuntimeEventRow(sequence=0, time_s=0.1, kind="DockCandidateDetected")
+    second = RuntimeEventRow(sequence=1, time_s=0.2, kind="DockCommitted")
+
+    presented = presenter.apply_frames(
+        (
+            frame(
+                view(sample=1, event_revision=1),
+                events=(first,),
+                start=0,
+                stop=1,
+            ),
+            frame(
+                view(sample=2, event_revision=2),
+                events=(second,),
+                start=1,
+                stop=2,
+            ),
+        )
+    )
+
+    assert presented.events == (first, second)
+    assert "sample=2" in presented.source_text
+    with pytest.raises(ValueError, match="at least one"):
+        presenter.apply_frames(())
+
+
+def test_label_visibility_persists_across_topology_frames() -> None:
+    presenter = RuntimeInspectorPresenter()
+    initial = presenter.apply_frame(frame(view()))
+    assert initial.show_labels
+
+    hidden = presenter.set_labels_visible(False)
+    assert not hidden.show_labels
+
+    updated = presenter.apply_frame(frame(view(sample=1)))
+    assert not updated.show_labels
 
 
 def test_regressing_graph_frame_does_not_replace_current_presentation() -> None:

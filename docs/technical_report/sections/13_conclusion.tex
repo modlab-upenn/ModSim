@@ -1,0 +1,35 @@
+\section{Conclusion}
+\label{sec:conclusion}
+
+Modular-robot simulation requires a coherent account of meaning as well as mechanics.
+A physics engine can integrate bodies and solve a weld, but it does not inherently know
+which faces are compatible, which orientation was selected, whether policy permits a
+dock, when the logical graph should change, or how an interface should explain the
+event. \modsim{} supplies that missing semantic layer while deliberately delegating
+physics to backend adapters.
+
+The implemented architecture connects a strict portable \robotpack{}, schema-aware
+Studio authoring, canonical runtime state, structured docking acceptance, two-phase
+physical/logical commit, deterministic events, derived assemblies, atomic joint
+commands, backend capability checks, immutable model views, and a dual-window Runtime
+Inspector. A dependency-free mock provides executable semantic reference behavior, and
+the \mujoco{} adapter adds articulated dynamics, effort actuation, measured connector
+sites, contact, runtime welds, paired collision exclusions, and a native viewer.
+
+The \smoresep{} case study demonstrates the value of keeping these layers separate.
+The same connector and topology semantics support a fast kinematic lifecycle, a
+two-module physical differential-drive dock/undock cycle, and a seven-module
+wheel/contact realization of the published Driver-to-Snake connector plan. The physical
+reference run performs four $6\rightarrow5\rightarrow6$ topology transitions, reaches
+the exact final chain, records ten docks and four undocks without semantic failure, and
+does so without root motion injection after initialization. A fresh current-head
+verification run passes 537 tests with 86\% branch-aware core coverage.
+
+The strongest conclusion is architectural, not a claim of hardware fidelity: modular
+semantics, physical constraints, canonical events, and generated views can remain
+coherent while physical fidelity is increased incrementally. The remaining work is
+substantial---calibration, magnetic capture, force reporting, autonomous planning,
+additional views, richer Studio/runtime interfaces, a second dynamic backend, and
+hardware validation---but it can proceed without replacing the foundation established
+here.
+

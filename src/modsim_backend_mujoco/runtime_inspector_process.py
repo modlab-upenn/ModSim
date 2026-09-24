@@ -18,9 +18,9 @@ import sys
 import time
 import traceback
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from threading import Event as ThreadEvent
-from threading import Thread
+from threading import Lock, Thread
 from typing import BinaryIO, TextIO
 
 from modsim.runtime.inspection_protocol import (
@@ -57,6 +57,33 @@ _CONTROL_FORCE_GRACE_S = 0.5
 
 class _ProtocolOutputClosed(ConnectionError):
     """Raised internally when the parent no longer consumes child output."""
+
+
+@dataclass(slots=True)
+class _PlaybackControl:
+    """Share one pause request safely between stdin and viewer callback threads."""
+
+    paused: ThreadEvent = field(default_factory=ThreadEvent)
+    lock: Lock = field(default_factory=Lock)
+
+    def is_paused(self) -> bool:
+        return self.paused.is_set()
+
+    def set_paused(self, paused: bool) -> None:
+        with self.lock:
+            if paused:
+                self.paused.set()
+            else:
+                self.paused.clear()
+
+    def viewer_key(self, keycode: int) -> None:
+        if keycode != ord(" "):
+            return
+        with self.lock:
+            if self.paused.is_set():
+                self.paused.clear()
+            else:
+                self.paused.set()
 
 
 @dataclass(slots=True)
@@ -104,7 +131,16 @@ class _FramePublisher:
         self.writer.send(RuntimeFrame(frame=self.runner.frame()))
 
     def viewer_started(self) -> None:
-        self.writer.send(RuntimeStatus(message="MuJoCo viewer opened; runtime is running"))
+        self.writer.send(
+            RuntimeStatus(message="MuJoCo viewer opened; use Space or the Inspector to pause")
+        )
+
+    def playback_changed(self, paused: bool) -> None:
+        if paused:
+            # Freeze the semantic window at the exact acknowledged step and
+            # flush any event delta before reporting the pause.
+            self.writer.send(RuntimeFrame(frame=self.runner.frame()))
+        self.writer.send(RuntimePlaybackState(paused=paused))
 
     def after_step(self) -> None:
         now = time.monotonic()
@@ -122,8 +158,7 @@ class _FramePublisher:
         self.writer.send(
             RuntimeStatus(
                 message=(
-                    f"{self.runner.completion_message}; "
-                    "the MuJoCo viewer is holding the final state. "
+                    "Simulation ended; the MuJoCo viewer is holding the final state. "
                     "Close either window when finished."
                 )
             )
@@ -149,7 +184,7 @@ def run_runtime_inspector_process(
     """Run one protocol-controlled MuJoCo viewer child and return an exit code."""
     writer = _ProtocolWriter(output_stream)
     stop_requested = ThreadEvent()
-    paused = ThreadEvent()
+    playback = _PlaybackControl()
     control_shutdown = ThreadEvent()
     control_errors: queue.SimpleQueue[Exception] = queue.SimpleQueue()
     control_thread: Thread | None = None
@@ -163,7 +198,13 @@ def run_runtime_inspector_process(
         _validate_child_config(config)
         control_thread = Thread(
             target=_watch_control_stream,
-            args=(input_stream, stop_requested, control_shutdown, control_errors, paused),
+            args=(
+                input_stream,
+                stop_requested,
+                playback,
+                control_shutdown,
+                control_errors,
+            ),
             name="ModSimRuntimeControl",
             daemon=True,
         )
@@ -188,49 +229,51 @@ def run_runtime_inspector_process(
             runner.stop()
             publisher.viewer_stopped()
             reason = RuntimeFinishedReason.STOPPED
+        elif isinstance(runner.scenario, SpatialReconfigurationScenario):
+            motion = runner.scenario.motion
+            if not isinstance(motion, SpatialExperiment):
+                raise TypeError("spatial viewer requires MuJoCo mechanical services")
+            run_spatial_viewer(
+                motion,
+                pause_requested=playback.is_paused,
+                set_paused=playback.set_paused,
+                on_playback_changed=publisher.playback_changed,
+                speed=config.real_time_factor,
+                hold=True,
+                stop_requested=stop_requested.is_set,
+                on_started=publisher.viewer_started,
+                after_step=publisher.after_step,
+                on_scenario_complete=publisher.scenario_complete,
+                on_stopped=publisher.viewer_stopped,
+            )
+            reason = {
+                "complete": RuntimeFinishedReason.COMPLETED,
+                "stopped": RuntimeFinishedReason.STOPPED,
+                "failed": RuntimeFinishedReason.FAILED,
+                "timeout": RuntimeFinishedReason.FAILED,
+            }[runner.scenario.phase]
         else:
-            if isinstance(runner.scenario, SpatialReconfigurationScenario):
-                motion = runner.scenario.motion
-                if not isinstance(motion, SpatialExperiment):
-                    raise TypeError("spatial viewer requires MuJoCo mechanical services")
-                run_spatial_viewer(
-                    motion,
-                    pause_requested=paused.is_set,
-                    set_paused=lambda value: paused.set() if value else paused.clear(),
-                    on_playback_changed=lambda value: writer.send(
-                        RuntimePlaybackState(paused=value)
-                    ),
-                    speed=1.0,
-                    hold=True,
-                    stop_requested=stop_requested.is_set,
-                    on_started=publisher.viewer_started,
-                    after_step=publisher.after_step,
-                    on_scenario_complete=publisher.scenario_complete,
-                    on_stopped=publisher.viewer_stopped,
-                )
-                reason = {
-                    "complete": RuntimeFinishedReason.COMPLETED,
-                    "stopped": RuntimeFinishedReason.STOPPED,
-                    "failed": RuntimeFinishedReason.FAILED,
-                    "timeout": RuntimeFinishedReason.FAILED,
-                }[runner.scenario.phase]
-            else:
-                run_with_viewer(
-                    runner.session,
-                    duration_s=config.duration_s,
-                    step_once=runner.step,
-                    hold=True,
-                    stop_requested=stop_requested.is_set,
-                    on_started=publisher.viewer_started,
-                    after_step=publisher.after_step,
-                    on_scenario_complete=publisher.scenario_complete,
-                    on_stopped=publisher.viewer_stopped,
-                )
-                reason = (
-                    RuntimeFinishedReason.STOPPED
-                    if stop_requested.is_set()
-                    else RuntimeFinishedReason.VIEWER_CLOSED
-                )
+            run_with_viewer(
+                runner.session,
+                duration_s=config.duration_s,
+                step_once=runner.step,
+                real_time_factor=config.real_time_factor,
+                hold=True,
+                stop_requested=stop_requested.is_set,
+                pause_requested=playback.is_paused,
+                execution_finished=lambda: runner.execution_finished,
+                key_callback=playback.viewer_key,
+                on_started=publisher.viewer_started,
+                after_step=publisher.after_step,
+                on_pause_changed=publisher.playback_changed,
+                on_scenario_complete=publisher.scenario_complete,
+                on_stopped=publisher.viewer_stopped,
+            )
+            reason = (
+                RuntimeFinishedReason.STOPPED
+                if stop_requested.is_set()
+                else RuntimeFinishedReason.VIEWER_CLOSED
+            )
 
         control_error = _next_control_error(control_errors)
         if control_error is not None:
@@ -267,7 +310,7 @@ def run_runtime_inspector_process(
         control_shutdown,
         diagnostic_stream,
     )
-    return 1 if reason is RuntimeFinishedReason.FAILED else 0
+    return 1 if failure is not None or reason is RuntimeFinishedReason.FAILED else 0
 
 
 def _read_initialization(stream: BinaryIO) -> RuntimeInspectorConfig:
@@ -290,9 +333,9 @@ def _validate_child_config(config: RuntimeInspectorConfig) -> None:
 def _watch_control_stream(
     stream: BinaryIO,
     stop_requested: ThreadEvent,
+    playback: _PlaybackControl,
     control_shutdown: ThreadEvent,
     errors: queue.SimpleQueue[Exception],
-    paused: ThreadEvent | None = None,
 ) -> None:
     """Read parent commands without ever touching runtime or MuJoCo state."""
     while not stop_requested.is_set():
@@ -303,15 +346,12 @@ def _watch_control_stream(
                     stop_requested.set()
                 return
             message = decode_runtime_message(line)
-            if isinstance(message, RuntimeSetPaused) and paused is not None:
-                if message.paused:
-                    paused.set()
-                else:
-                    paused.clear()
+            if isinstance(message, RuntimeSetPaused):
+                playback.set_paused(message.paused)
                 continue
             if not isinstance(message, RuntimeStop):
                 raise RuntimeProtocolError(
-                    "the runtime host accepts only stop or playback commands after initialization"
+                    "the runtime host accepts only set_paused or stop messages after initialization"
                 )
         except Exception as error:
             if not control_shutdown.is_set():

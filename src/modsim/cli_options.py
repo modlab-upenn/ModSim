@@ -38,10 +38,10 @@ class OutputFormat(StrEnum):
 # fixed window. Both are overridable with ``--duration``.
 DEFAULT_HEADLESS_DURATION_S = 8.0
 DEMO_DEFAULTS: dict[RuntimeDemo, float] = {
+    RuntimeDemo.SMORES_SPATIAL_HANDOFF: 45.0,
     RuntimeDemo.DOCK: 4.0,
     RuntimeDemo.DOCK_UNDOCK: 6.0,
     RuntimeDemo.SMORES_DRIVER_TO_SNAKE: 14.0,
-    RuntimeDemo.SMORES_SPATIAL_HANDOFF: 45.0,
 }
 
 
@@ -98,7 +98,7 @@ RUN_EPILOG = (
     "  modsim run PACK --backend mujoco --count 2 --duration 8 --view\n\n"
     "[dim]Open the live Runtime Inspector on a named demo[/dim]\n"
     "  modsim run --gui PACK --backend mujoco --demo dock_undock\n\n"
-    "[dim]--demo, --publish-hz, --model-view and --viewer apply only with --gui; "
+    "[dim]--demo, --publish-hz, --model-view, --speed and --viewer apply only with --gui; "
     "--count, --spacing, --view and --output apply only to headless runs.[/dim]"
 )
 
@@ -173,11 +173,11 @@ MovingConnectorOpt = Annotated[
     ),
 ]
 ConnectorGapOpt = Annotated[
-    float,
+    float | None,
     typer.Option(
         "--connector-gap",
         min=0.0,
-        help="Initial separation between the selected connector origins.",
+        help="Initial connector separation. Defaults to 0.03 m headless, or the demo's value.",
         rich_help_panel=PANEL_MOTION,
     ),
 ]
@@ -246,10 +246,10 @@ GravityOpt = Annotated[
     ),
 ]
 GroundOpt = Annotated[
-    bool,
+    bool | None,
     typer.Option(
-        "--ground",
-        help="Add a backend ground plane at z = 0.",
+        "--ground/--no-ground",
+        help="Add a ground plane at z = 0. Defaults on for physical GUI demos, off otherwise.",
         rich_help_panel=PANEL_PHYSICS,
     ),
 ]
@@ -265,6 +265,31 @@ OutputOpt = Annotated[
 ]
 
 # --- run-specific aliases --------------------------------------------------
+RunDtOpt = Annotated[
+    float | None,
+    typer.Option(
+        "--dt",
+        help="Physics step in seconds. Defaults to 0.002 headless, or the demo's safe value.",
+        rich_help_panel=PANEL_MOTION,
+    ),
+]
+RunGravityOpt = Annotated[
+    bool | None,
+    typer.Option(
+        "--gravity/--no-gravity",
+        help="Enable gravity. Defaults on for physical GUI demos, off otherwise.",
+        rich_help_panel=PANEL_PHYSICS,
+    ),
+]
+RealTimeFactorOpt = Annotated[
+    float,
+    typer.Option(
+        "--speed",
+        "--real-time-factor",
+        help="Wall-clock playback factor (1 = real time, 2 = twice as fast). Physics is unchanged.",
+        rich_help_panel=PANEL_INSPECTOR,
+    ),
+]
 GuiFlag = Annotated[
     bool,
     typer.Option(
@@ -286,7 +311,7 @@ DemoOpt = Annotated[
     typer.Option(
         "--demo",
         case_sensitive=False,
-        help="Named demo. smores_spatial_handoff also supports headless execution.",
+        help="Named demo; smores_spatial_handoff also supports headless execution.",
         rich_help_panel=PANEL_SCENARIO,
     ),
 ]
@@ -310,10 +335,10 @@ RunSpacingOpt = Annotated[
     ),
 ]
 HeightOpt = Annotated[
-    float,
+    float | None,
     typer.Option(
         "--height",
-        help="Lift the whole scene above the origin, to clear a ground plane.",
+        help="Scene height in metres. Defaults to 0 headless, or the demo's safe value.",
         rich_help_panel=PANEL_PHYSICS,
     ),
 ]
@@ -432,9 +457,9 @@ class ScenarioOptions:
         """Fill an omitted ``--duration`` from the mode-appropriate default."""
         if self.duration_s is not None:
             return self.duration_s
-        if self.gui or self.demo is RuntimeDemo.SMORES_SPATIAL_HANDOFF:
+        if self.demo is RuntimeDemo.SMORES_SPATIAL_HANDOFF:
             return DEMO_DEFAULTS[self.demo]
-        return DEFAULT_HEADLESS_DURATION_S
+        return DEMO_DEFAULTS[self.demo] if self.gui else DEFAULT_HEADLESS_DURATION_S
 
     def validate(self) -> float:
         """Run the guards both modes share and return the resolved duration.
