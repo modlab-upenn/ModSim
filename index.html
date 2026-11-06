@@ -1,0 +1,693 @@
+<title>ModSim Project Page</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112..125,500..800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+/* Layout concept: an academic project page. One centered 880px column; title block, link pills,
+   synchronized teaser, then short sections that each lead with a figure or an interactive.
+   Palette carries over Studio's Light Studio / Midnight Panels themes. */
+:root {
+  --bg: #F7F6F2;
+  --surface: #FFFFFF;
+  --surface-2: #ECE9E1;
+  --line: #D8D3C6;
+  --ink: #142030;
+  --muted: #5A6574;
+  --accent: #1F4E8C;
+  --accent-ink: #FFFFFF;
+  --teal: #0B7A70;
+  --pass: #11795F;
+  --fail: #B4382B;
+  --warn-bg: #FBEFD9;
+  --warn: #9A5B05;
+  --pill: #142030;
+  --pill-ink: #F7F6F2;
+  --code-bg: #0F1A27;
+  --code-ink: #D9E3EC;
+  --code-com: #7A8A9C;
+  --code-str: #6FD6C5;
+  --ph-a: #E7E3D8;
+  --ph-b: #EFECE4;
+  --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --col: 880px;
+  --r: 8px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0B1521; --surface: #102030; --surface-2: #16293C; --line: #24394F;
+    --ink: #E5ECF2; --muted: #93A3B5; --accent: #79AEEA; --accent-ink: #0B1521;
+    --teal: #3CCFBA; --pass: #4FD1A5; --fail: #F0806F; --warn-bg: #3A2A10; --warn: #F0B455;
+    --pill: #E5ECF2; --pill-ink: #0B1521;
+    --code-bg: #07101A; --code-ink: #D9E3EC; --code-com: #6F8094; --code-str: #6FD6C5;
+    --ph-a: #132536; --ph-b: #172B3F;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0B1521; --surface: #102030; --surface-2: #16293C; --line: #24394F;
+  --ink: #E5ECF2; --muted: #93A3B5; --accent: #79AEEA; --accent-ink: #0B1521;
+  --teal: #3CCFBA; --pass: #4FD1A5; --fail: #F0806F; --warn-bg: #3A2A10; --warn: #F0B455;
+  --pill: #E5ECF2; --pill-ink: #0B1521;
+  --code-bg: #07101A; --code-ink: #D9E3EC; --code-com: #6F8094; --code-str: #6FD6C5;
+  --ph-a: #132536; --ph-b: #172B3F;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 16.5px; line-height: 1.7; -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); text-underline-offset: 3px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+p, ul, ol { margin: 0; }
+
+.col {
+  max-width: calc(var(--col) + 64px); margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+@media (min-width: 720px) { .col { padding-left: max(32px, env(safe-area-inset-left, 0px)); padding-right: max(32px, env(safe-area-inset-right, 0px)); } }
+
+h1, h2, h3 { font-family: var(--font-display); line-height: 1.12; text-wrap: balance; margin: 0; }
+h2 { font-size: clamp(1.45rem, 2.8vw, 1.85rem); font-weight: 750; font-stretch: 114%; letter-spacing: -0.01em; }
+h3 { font-size: 1.1rem; font-weight: 700; font-stretch: 110%; }
+code { font-family: var(--font-mono); font-size: 0.86em; }
+:not(pre) > code { background: var(--surface-2); padding: 0.1em 0.35em; border-radius: 4px; }
+
+/* ---------- title block ---------- */
+.titleblock { text-align: center; padding-block: 64px 28px; display: flex; flex-direction: column; align-items: center; gap: 18px; }
+.titleblock h1 { font-size: clamp(2.6rem, 7vw, 4.4rem); font-weight: 800; font-stretch: 125%; letter-spacing: -0.02em; display: flex; align-items: center; gap: 16px; }
+.titleblock .sub { font-family: var(--font-display); font-stretch: 108%; font-weight: 500; font-size: clamp(1.15rem, 2.4vw, 1.5rem); line-height: 1.3; max-width: 30ch; text-wrap: balance; }
+.authors { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 18px; font-size: 1.02rem; }
+.authors a { text-decoration: none; }
+.authors a:hover { text-decoration: underline; }
+.authors sup { color: var(--muted); font-size: 0.7em; margin-left: 1px; }
+.ph-text { color: var(--muted); border-bottom: 1px dashed var(--line); }
+.affils { font-size: 0.92rem; color: var(--muted); display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 18px; }
+.links { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 4px; }
+.lpill {
+  display: inline-flex; align-items: center; gap: 8px; padding: 9px 18px; border-radius: 99px;
+  background: var(--pill); color: var(--pill-ink); text-decoration: none; font-weight: 600; font-size: 0.93rem;
+}
+.lpill:hover { filter: brightness(1.15); }
+.lpill svg { width: 16px; height: 16px; flex: none; }
+.lpill.soon { background: transparent; color: var(--muted); border: 1px dashed var(--line); cursor: default; }
+.tldr { max-width: 62ch; text-align: center; font-size: 1.05rem; }
+.tldr b { font-family: var(--font-mono); font-size: 0.78rem; letter-spacing: 0.06em; color: var(--teal); margin-right: 6px; }
+
+.contents { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 6px; font-size: 0.88rem; padding-block: 8px 0; }
+.contents a { color: var(--muted); text-decoration: none; padding: 3px 10px; border: 1px solid var(--line); border-radius: 99px; background: var(--surface); }
+.contents a:hover { color: var(--ink); border-color: var(--ink); }
+
+/* ---------- teaser ---------- */
+.teaser { padding-block: 28px 8px; display: flex; flex-direction: column; gap: 10px; }
+.pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 600px) { .pair { grid-template-columns: minmax(0, 1fr); } }
+.vid { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.vid .vl { font-weight: 600; font-size: 0.95rem; text-align: center; }
+.screen {
+  position: relative; aspect-ratio: 16 / 10; width: 100%; max-width: 100%; border-radius: var(--r); overflow: hidden;
+  border: 1px dashed var(--line); background: repeating-linear-gradient(135deg, var(--ph-a) 0 10px, var(--ph-b) 10px 20px);
+  display: flex; flex-direction: column; justify-content: flex-end; padding: 12px; gap: 2px; color: var(--muted);
+}
+.screen .kind { font-family: var(--font-mono); font-size: 0.66rem; letter-spacing: 0.06em; text-transform: uppercase; }
+.screen .what { font-size: 0.84rem; color: var(--ink); font-weight: 500; line-height: 1.35; }
+.timer { position: absolute; top: 10px; left: 10px; font-family: var(--font-mono); font-size: 0.8rem; font-variant-numeric: tabular-nums; padding: 2px 8px; border-radius: 4px; background: var(--code-bg); color: var(--code-ink); }
+.bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: color-mix(in srgb, var(--ink) 10%, transparent); }
+.bar i { display: block; height: 100%; width: 0; background: var(--teal); }
+.under { display: flex; justify-content: center; align-items: center; gap: 14px; font-size: 0.88rem; color: var(--muted); flex-wrap: wrap; }
+.btn {
+  font: 600 0.85rem var(--font-body); padding: 6px 14px; border-radius: 99px; border: 1px solid var(--line);
+  background: var(--surface); color: var(--ink); cursor: pointer;
+}
+.btn:hover:not(:disabled) { border-color: var(--ink); }
+.btn:disabled { opacity: 0.45; cursor: default; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+
+/* ---------- sections ---------- */
+section.s { padding-block: 56px 8px; display: flex; flex-direction: column; gap: 18px; }
+section.s > p, section.s > ul { max-width: 70ch; }
+.abstract { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 22px 26px; }
+.abstract b { font-family: var(--font-display); font-stretch: 110%; }
+.runin b { font-weight: 700; }
+.caption { font-size: 0.88rem; color: var(--muted); text-align: center; max-width: 70ch; margin-inline: auto; }
+figure { margin: 0; display: flex; flex-direction: column; gap: 10px; }
+
+/* ---------- dock widget ---------- */
+.widget { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.w-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; padding: 10px 16px; border-bottom: 1px solid var(--line); font-family: var(--font-mono); font-size: 0.78rem; color: var(--muted); }
+.w-head .state { font-weight: 600; }
+.w-head .state[data-s="free"] { color: var(--muted); }
+.w-head .state[data-s="candidate"] { color: var(--warn); }
+.w-head .state[data-s="accept"] { color: var(--teal); }
+.w-head .state[data-s="docked"] { color: var(--accent); }
+.w-stage { position: relative; background: var(--bg); }
+.w-stage svg { display: block; width: 100%; height: auto; touch-action: none; user-select: none; -webkit-user-select: none; }
+#mover { cursor: grab; }
+#mover.dragging { cursor: grabbing; }
+#mover.locked { cursor: default; }
+.w-body { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); border-top: 1px solid var(--line); }
+@media (max-width: 720px) { .w-body { grid-template-columns: minmax(0, 1fr); } }
+.w-crit { padding: 12px 16px; border-right: 1px solid var(--line); min-width: 0; }
+@media (max-width: 720px) { .w-crit { border-right: 0; border-bottom: 1px solid var(--line); } }
+.w-crit table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+.w-crit th { text-align: left; font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 500; padding: 4px 6px; }
+.w-crit td { padding: 6px; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.w-crit td.m { font-family: var(--font-mono); font-size: 0.8rem; }
+.w-crit td.ok { color: var(--pass); font-weight: 600; }
+.w-crit td.no { color: var(--fail); font-weight: 600; }
+.w-log { background: var(--code-bg); color: var(--code-ink); font-family: var(--font-mono); font-size: 0.74rem; line-height: 1.75; padding: 12px 16px; height: 12.6em; overflow: hidden; min-width: 0; }
+.w-log div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.w-log .t { color: var(--code-com); }
+.w-log .k { color: var(--code-str); }
+.w-log .b { color: #C9B6F5; }
+.w-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 12px 16px; border-top: 1px solid var(--line); font-size: 0.88rem; }
+.w-ctl label { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.w-ctl input[type="range"] { width: 140px; accent-color: var(--accent); }
+.w-ctl output { font-family: var(--font-mono); font-size: 0.8rem; min-width: 4ch; color: var(--ink); font-variant-numeric: tabular-nums; }
+.w-ctl .sp { flex: 1; }
+.w-hint { font-size: 0.85rem; color: var(--muted); }
+
+/* ---------- diagram ---------- */
+.diagram { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; overflow-x: auto; }
+.diagram svg { display: block; width: 100%; min-width: 640px; height: auto; }
+
+/* ---------- experiment players ---------- */
+.exp { display: flex; flex-direction: column; gap: 12px; padding-top: 18px; }
+.exp > p { max-width: 70ch; }
+.player { display: flex; flex-direction: column; gap: 10px; }
+.player .screen { aspect-ratio: 16 / 8; cursor: pointer; }
+.player .screen .play { position: absolute; inset: 0; margin: auto; width: 56px; height: 56px; border-radius: 50%; background: color-mix(in srgb, var(--code-bg) 80%, transparent); display: grid; place-items: center; }
+.player .screen .play::after { content: ""; border-left: 16px solid var(--code-ink); border-top: 10px solid transparent; border-bottom: 10px solid transparent; margin-left: 4px; }
+.player.playing .screen .play { display: none; }
+.clips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.clip { font: 500 0.82rem var(--font-body); padding: 5px 12px; border-radius: 99px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+.clip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.clips .sp { flex: 1; }
+
+/* ---------- tables ---------- */
+.tbl { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+table.data { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+table.data th, table.data td { padding: 9px 14px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+table.data tr:last-child td { border-bottom: 0; }
+table.data th { font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 500; background: var(--bg); white-space: nowrap; }
+table.data td:first-child { white-space: nowrap; }
+table.data td.num { font-variant-numeric: tabular-nums; }
+table.data .good { color: var(--pass); font-weight: 600; }
+.findings { display: flex; flex-direction: column; gap: 10px; padding-left: 1.2em; }
+.findings li b { font-weight: 700; }
+.limits { background: var(--warn-bg); border-radius: var(--r); padding: 14px 18px; font-size: 0.93rem; }
+.limits b { color: var(--warn); font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; display: block; margin-bottom: 2px; }
+
+/* ---------- code ---------- */
+.code { position: relative; background: var(--code-bg); color: var(--code-ink); border-radius: var(--r); min-width: 0; }
+.code pre { margin: 0; padding: 16px 18px; overflow-x: auto; font-family: var(--font-mono); font-size: 0.82rem; line-height: 1.7; }
+.code .c { color: var(--code-com); }
+.copy { position: absolute; top: 8px; right: 8px; font-family: var(--font-mono); font-size: 0.7rem; padding: 4px 8px; background: color-mix(in srgb, var(--code-ink) 12%, transparent); color: var(--code-ink); border: 0; border-radius: 4px; cursor: pointer; }
+
+footer { margin-top: 72px; border-top: 1px solid var(--line); padding-block: 28px; color: var(--muted); font-size: 0.86rem; text-align: center; }
+</style>
+
+<main>
+<div class="col">
+  <!-- ================= TITLE BLOCK ================= -->
+  <header class="titleblock">
+    <h1>
+      <svg width="54" height="54" viewBox="0 0 26 26" aria-hidden="true">
+        <rect x="1" y="9" width="8" height="8" rx="1.5" fill="var(--accent)"/>
+        <rect x="9" y="9" width="8" height="8" rx="1.5" fill="var(--accent)" opacity="0.7"/>
+        <rect x="9" y="1" width="8" height="8" rx="1.5" fill="var(--teal)"/>
+        <rect x="17" y="17" width="8" height="8" rx="1.5" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="2 2"/>
+      </svg>
+      ModSim
+    </h1>
+    <p class="sub">A Backend-Agnostic Semantic and Physics Framework for Modular and Multi-Robot Simulation</p>
+    <div class="authors" aria-label="Authors (placeholders)">
+      <a href="#"><span class="ph-text">Author Name</span><sup>1</sup></a>
+      <a href="#"><span class="ph-text">Author Name</span><sup>1</sup></a>
+      <a href="#"><span class="ph-text">Author Name</span><sup>1</sup></a>
+      <a href="#"><span class="ph-text">Author Name</span><sup>1</sup></a>
+    </div>
+    <div class="affils"><span><sup>1</sup> ModLab, University of Pennsylvania</span></div>
+    <div class="links">
+      <span class="lpill soon" title="Add link when the paper is public">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.5h5l3 3v10H4z" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M6 8h4M6 11h4" stroke="currentColor" stroke-width="1.4"/></svg>Paper (soon)
+      </span>
+      <a class="lpill" href="https://github.com/modlab-upenn/ModSim/blob/main/docs/technical_report/modsim_technical_report.tex">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 1.5h10v13H3z" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5.5 5h5M5.5 8h5M5.5 11h3" stroke="currentColor" stroke-width="1.4"/></svg>Technical Report
+      </a>
+      <a class="lpill" href="https://github.com/modlab-upenn/ModSim">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.72 1.22 1.88.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.03 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 8 0z"/></svg>Code
+      </a>
+      <a class="lpill" href="quickstart.html">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3l8 5-8 5z" fill="currentColor"/></svg>Quickstart
+      </a>
+    </div>
+    <p class="tldr"><b>TL;DR</b>MuJoCo knows bodies and joints, but not modules, connectors or docks. ModSim adds that layer, so docking and reconfiguration stay correct no matter which physics engine runs underneath.</p>
+    <nav class="contents" aria-label="Contents">
+      <a href="#abstract">Abstract</a><a href="#problem">Motivation</a><a href="#docking">Docking</a><a href="#method">ModSim</a><a href="#experiments">Experiments</a><a href="#results">Results</a><a href="#start">Get started</a><a href="#citation">Citation</a>
+    </nav>
+  </header>
+
+  <!-- ================= TEASER ================= -->
+  <section class="teaser" aria-label="Teaser video">
+    <div class="pair">
+      <div class="vid">
+        <span class="vl">MuJoCo viewer</span>
+        <div class="screen"><span class="timer" data-timer>0.00s</span>
+          <span class="kind">Video placeholder</span>
+          <span class="what">SMORES-EP module drives its pan face into a second module, docks, holds, releases, reverses</span>
+          <span class="bar"><i data-bar></i></span>
+        </div>
+      </div>
+      <div class="vid">
+        <span class="vl">Runtime Inspector</span>
+        <div class="screen"><span class="timer" data-timer>0.00s</span>
+          <span class="kind">Video placeholder</span>
+          <span class="what">Same run: topology edge 0 → 1 → 0, event log filling with dock, merge, undock, split</span>
+          <span class="bar"><i data-bar></i></span>
+        </div>
+      </div>
+    </div>
+    <div class="under"><span>Synchronized real-time capture · SMORES-EP differential-drive dock and undock</span><button class="btn" id="replay" type="button">Replay</button></div>
+  </section>
+
+  <!-- ================= ABSTRACT ================= -->
+  <section class="s" id="abstract">
+    <div class="abstract">
+      <p><b>Abstract.</b> Modular and multi-robot research needs more than rigid-body dynamics. A simulator must also know which bodies form a reusable module, where docking interfaces are, which interfaces are compatible, when a dock is acceptable, and how changing connections alter the robot's topology. Physics engines don't provide these concepts, and platform-specific research code tends to bake them into one application. ModSim separates modular-robot semantics from simulator mechanics through a self-contained Robot Pack format, an event-driven runtime with deterministic docking acceptance and two-phase commit, and an adapter boundary with mock and MuJoCo backends. We evaluate it on SMORES-EP and 3D M-Blocks, including a seven-module wheel-driven reconfiguration with ten docks, four undocks and no semantic failures.</p>
+    </div>
+  </section>
+
+  <!-- ================= MOTIVATION ================= -->
+  <section class="s" id="problem">
+    <h2>Modular robots change shape while they run</h2>
+    <p>Modular robots get their usefulness from changing topology at runtime: modules dock into assemblies, undock and rearrange. Engines like MuJoCo, Isaac Sim and Gazebo simulate a <em>fixed</em> assembly very well. A dock is different. It changes the mechanism mid-run, and the claim that two modules are now one assembly has to stay consistent with the constraint the engine actually enforces.</p>
+    <p>General-purpose engines don't represent that second half. MuJoCo can't add a joint on contact, so welds must come from a reserved pool. A logical connection must only count once the physical constraint exists. Docking rules are written between connector frames, while physics constraints are written between bodies. ModSim handles all of this once, in one place, for every robot and every backend.</p>
+  </section>
+
+  <!-- ================= DOCKING WIDGET ================= -->
+  <section class="s" id="docking">
+    <h2>What decides whether two modules dock?</h2>
+    <p>Every connector type declares an acceptance region. Two connectors dock only when they are close enough, their docking axes point at each other, and they are closing slowly enough. Then ModSim asks the backend for the constraint and records the connection only after the backend confirms it. Try it: drag the teal module toward the blue one.</p>
+    <div class="widget" id="widget">
+      <div class="w-head"><span>connector type <b>fixed_face</b> · auto_latch: true · 6 mm · 8° · 50 mm/s</span><span>state: <span class="state" id="wState" data-s="free">free</span></span></div>
+      <div class="w-stage">
+        <svg id="wSvg" viewBox="0 0 640 280" role="img" aria-label="Drag the moving module to its target connector. Acceptance criteria update live.">
+          <defs>
+            <pattern id="wgrid" width="18" height="18" patternUnits="userSpaceOnUse"><path d="M18 0H0V18" fill="none" stroke="var(--line)" stroke-width="0.6"/></pattern>
+            <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--muted)"/></marker>
+          </defs>
+          <rect width="640" height="280" fill="url(#wgrid)"/>
+          <circle id="detect" r="54" fill="none" stroke="var(--warn)" stroke-dasharray="4 4" stroke-opacity="0.5"/>
+          <rect id="region" width="22" height="22" rx="2" fill="var(--teal)" fill-opacity="0.08" stroke="var(--teal)" stroke-dasharray="3 3"/>
+          <g id="fixedMod"></g>
+          <g id="mover"></g>
+          <text x="14" y="268" font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--muted)">dashed circle: detection radius · dashed square: 6 mm acceptance region · grid 10 mm</text>
+        </svg>
+      </div>
+      <div class="w-ctl">
+        <label for="yaw">Rotate moving module <input id="yaw" type="range" min="-30" max="30" step="1" value="12"><output id="yawOut">12°</output></label>
+        <span class="sp"></span>
+        <button class="btn primary" id="wAnimate" type="button">Animate</button>
+        <button class="btn" id="wUndock" type="button" disabled>Undock</button>
+        <button class="btn" id="wReset" type="button">Reset</button>
+      </div>
+      <div class="w-body">
+        <div class="w-crit">
+          <table>
+            <thead><tr><th>Criterion</th><th>Measured</th><th>Limit</th><th></th></tr></thead>
+            <tbody>
+              <tr><td>Position</td><td class="m" id="cPos">–</td><td class="m">≤ 6 mm</td><td id="okPos">–</td></tr>
+              <tr><td>Axis alignment</td><td class="m" id="cAx">–</td><td class="m">≤ 8°</td><td id="okAx">–</td></tr>
+              <tr><td>Relative velocity</td><td class="m" id="cVel">–</td><td class="m">≤ 50 mm/s</td><td id="okVel">–</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="w-log" id="wLog" aria-live="polite"></div>
+      </div>
+    </div>
+    <p class="w-hint">Drag too fast and the velocity check fails. Rotate past 8° and alignment fails. The full rules, including roll orientation and policy guards, are in <a href="https://github.com/modlab-upenn/ModSim/blob/main/docs/docking_semantics.md">docking semantics</a>.</p>
+  </section>
+
+  <!-- ================= METHOD ================= -->
+  <section class="s" id="method">
+    <h2>ModSim</h2>
+    <figure>
+      <div class="diagram">
+        <svg viewBox="0 0 820 250" role="img" aria-label="Architecture: Robot Pack feeds the ModSim runtime, which exchanges commands and snapshots with a backend adapter and produces model views for the Runtime Inspector.">
+          <g font-family="IBM Plex Sans, sans-serif" font-size="12" fill="var(--ink)">
+            <!-- Robot Pack -->
+            <rect x="10" y="40" width="170" height="150" rx="8" fill="var(--bg)" stroke="var(--line)"/>
+            <text x="24" y="66" font-weight="700" font-size="13">Robot Pack</text>
+            <text x="24" y="90" fill="var(--muted)">URDF + meshes</text>
+            <text x="24" y="110" fill="var(--muted)">module types</text>
+            <text x="24" y="130" fill="var(--muted)">connector types</text>
+            <text x="24" y="150" fill="var(--muted)">docking policies</text>
+            <text x="24" y="170" fill="var(--muted)">model-view recipes</text>
+            <!-- Runtime -->
+            <rect x="240" y="20" width="250" height="190" rx="8" fill="var(--surface)" stroke="var(--teal)" stroke-width="1.5"/>
+            <text x="256" y="46" font-weight="700" font-size="13">ModSim runtime</text>
+            <rect x="256" y="60" width="218" height="34" rx="5" fill="var(--bg)" stroke="var(--line)"/>
+            <text x="268" y="82">Docking: acceptance, guards, commit</text>
+            <rect x="256" y="102" width="218" height="34" rx="5" fill="var(--bg)" stroke="var(--line)"/>
+            <text x="268" y="124">WorldState + event log</text>
+            <rect x="256" y="144" width="218" height="34" rx="5" fill="var(--bg)" stroke="var(--line)"/>
+            <text x="268" y="166">Online planners</text>
+            <text x="256" y="200" fill="var(--muted)" font-size="11">no Qt, no MuJoCo imports</text>
+            <!-- Backend -->
+            <rect x="560" y="20" width="250" height="90" rx="8" fill="var(--bg)" stroke="var(--line)"/>
+            <text x="576" y="46" font-weight="700" font-size="13">Backend adapter</text>
+            <text x="576" y="70" fill="var(--muted)">mock · MuJoCo · Isaac Sim (planned)</text>
+            <text x="576" y="92" fill="var(--muted)">owns bodies, contact, constraints</text>
+            <!-- Views -->
+            <rect x="560" y="130" width="250" height="80" rx="8" fill="var(--bg)" stroke="var(--line)"/>
+            <text x="576" y="156" font-weight="700" font-size="13">Model views → Inspector</text>
+            <text x="576" y="180" fill="var(--muted)">immutable topology and lattice</text>
+            <text x="576" y="198" fill="var(--muted)">snapshots of canonical state</text>
+            <!-- arrows -->
+            <g stroke="var(--muted)" stroke-width="1.4" fill="none">
+              <path d="M180 115H236" marker-end="url(#arr2)"/>
+              <path d="M490 52H556" marker-end="url(#arr2)"/>
+              <path d="M556 82H494" marker-end="url(#arr2)"/>
+              <path d="M490 170H556" marker-end="url(#arr2)"/>
+            </g>
+            <text x="497" y="44" font-size="10.5" fill="var(--muted)">create weld?</text>
+            <text x="497" y="98" font-size="10.5" fill="var(--muted)">snapshot</text>
+            <text x="186" y="106" font-size="10.5" fill="var(--muted)">load</text>
+          </g>
+          <defs><marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--muted)"/></marker></defs>
+        </svg>
+      </div>
+      <figcaption class="caption">ModSim owns what a connection means. The backend only answers whether a requested constraint physically exists.</figcaption>
+    </figure>
+    <p class="runin"><b>Robot Packs.</b> A self-contained folder: your URDF for geometry and kinematics, plus strict split-YAML for modules, connectors, compatibility, acceptance regions and docking policy. Packs are imported from URDF and edited in a desktop Studio, and validated before they ever reach a simulator.</p>
+    <p class="runin"><b>Runtime and docking.</b> Each step, the backend advances physics and reports poses, then ModSim resolves connector frames, releases overloaded or requested connections, and evaluates new docks. A connection is committed only after the backend confirms its constraint. State changes only through events, so the log fully explains every connection.</p>
+    <p class="runin"><b>Backends and inspection.</b> Adapters implement seven methods. The mock backend is kinematic and serves as the reference semantics. MuJoCo adds contact, gravity, effort-controlled joints, and runtime welds and hinges drawn from reserved pools. The Runtime Inspector shows live topology, events and planner decisions next to the native viewer.</p>
+  </section>
+
+  <!-- ================= EXPERIMENTS ================= -->
+  <section class="s" id="experiments">
+    <h2>Experiments</h2>
+    <p>Every experiment ships with the repository and runs from one command. Videos are real-time unless marked.</p>
+
+    <div class="exp">
+      <h3>SMORES-EP dock and undock</h3>
+      <p>One module drives its pan face into a second module's rear face using differential wheel effort. The weld forms only once the measured face separation is under 1 mm, holds, releases after 80 ms, and the module reverses away.</p>
+      <div class="player" data-clips='[["MuJoCo viewer","wheel-driven approach, weld, release, reverse"],["Runtime Inspector","topology 0 → 1 → 0 with event log"],["Close-up","connector faces at latch, 1 mm gate"]]' data-dur="12"></div>
+    </div>
+
+    <div class="exp">
+      <h3>SMORES-EP Driver to Snake</h3>
+      <p>Seven modules reconfigure from a Driver into a Snake through four connector replacements. Single modules and three-module components drive along authored routes under gravity and tire contact.</p>
+      <div class="player" data-clips='[["Physics (4×)","full wheel-driven reconfiguration, sped up"],["Kinematic reference","same topology changes without dynamics"],["Topology graph","edges 6 → 5 → 6, four times"]]' data-dur="14"></div>
+    </div>
+
+    <div class="exp">
+      <h3>3D M-Blocks mat to staircase</h3>
+      <p>Twelve cubes pivot from a flat 2×6 mat into a staircase using flywheel momentum and temporary edge hinges, compared against a deterministic kinematic traversal.</p>
+      <div class="player" data-clips='[["MuJoCo physics (4×)","momentum pivots with hinge capture"],["Mock reference","analytical kinematic traversal"],["Lattice view","cubic-lattice diagnostics in the Inspector"]]' data-dur="12"></div>
+    </div>
+  </section>
+
+  <!-- ================= RESULTS ================= -->
+  <section class="s" id="results">
+    <h2>Results</h2>
+    <div class="tbl">
+      <table class="data">
+        <thead><tr><th>Measure</th><th>Seven-module physical Driver to Snake</th></tr></thead>
+        <tbody>
+          <tr><td>Connection history</td><td class="num">6 → 5 → 6, four times</td></tr>
+          <tr><td>Final topology</td><td>Chain 1–3–2–4–5–6–7, one assembly of seven</td></tr>
+          <tr><td>Docks</td><td class="num good">10 successful (6 initial + 4 replacements)</td></tr>
+          <tr><td>Undocks</td><td class="num good">4 successful</td></tr>
+          <tr><td>Failures</td><td class="num good">0 dock, 0 undock</td></tr>
+          <tr><td>Assembly events</td><td class="num">10 merges, 4 splits</td></tr>
+          <tr><td>Moving components</td><td>{1}, {7}, {1,2,3}, {5,6,7}</td></tr>
+          <tr><td>Released-face clearance</td><td class="num">&gt; 20 mm for actions 3 and 4</td></tr>
+          <tr><td>Completion</td><td class="num">≈ 177 s simulated (required by 190 s), stable through 210 s</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="caption">Outcomes enforced by the repository's test suite on the reference trace. Durations are simulated time at a 2 ms step.</p>
+    <h3>Findings</h3>
+    <ul class="findings">
+      <li><b>Semantics and physics never disagreed.</b> The event sequence was exact: six initial dock/merge pairs, then four cycles of undock, split, dock, merge.</li>
+      <li><b>Physics owns all motion.</b> After the initial placement, root pose, velocity and wrench writes are forbidden. Every movement comes from wheel effort and contact.</li>
+      <li><b>Capture is precise.</b> In the two-module cycle, the weld formed with connector translation of about 1 mm or less at latch.</li>
+      <li><b>One pack, two backends.</b> The same Robot Packs run on the mock and MuJoCo backends under one docking contract, checked by 537 passing tests with 86% branch coverage of the core.</li>
+    </ul>
+    <div class="limits"><b>Limitations</b>Magnetic attraction is not yet modeled; a latch is an ideal weld after acceptance. Contact and actuator parameters are provisional, not calibrated to hardware, and approaches start pre-aligned.</div>
+  </section>
+
+  <!-- ================= GET STARTED ================= -->
+  <section class="s" id="start">
+    <h2>Get started</h2>
+    <p>Install from source and watch two modules dock. The <a href="quickstart.html">quickstart</a> walks through building a pack for your own robot.</p>
+    <div class="code"><pre>git clone https://github.com/modlab-upenn/ModSim.git && cd ModSim
+pip install -e ".[studio,mujoco]"
+modsim run --gui examples/robot_packs/generic_cube \
+  --fixed-connector front --moving-connector front --duration 4</pre></div>
+  </section>
+
+  <!-- ================= ACK + CITATION ================= -->
+  <section class="s" id="ack">
+    <h2>Acknowledgements</h2>
+    <p class="ph-text" style="border:0">Acknowledgements placeholder: funding, collaborators, and SMORES-EP and M-Blocks hardware teams.</p>
+  </section>
+
+  <section class="s" id="citation">
+    <h2>Citation</h2>
+    <p>If ModSim is useful in your research, please cite:</p>
+    <div class="code"><pre>@misc{modsim2026,
+  title        = {ModSim: A Backend-Agnostic Semantic and Physics Framework
+                  for Modular and Multi-Robot Simulation},
+  author       = {ModSim Project Contributors},
+  year         = {2026},
+  howpublished = {\url{https://github.com/modlab-upenn/ModSim}}
+}</pre></div>
+  </section>
+</div>
+</main>
+<footer><div class="col">ModSim · ModLab, University of Pennsylvania · MIT License · mockup with placeholder media</div></footer>
+
+<script>
+(function () {
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ---------- copy buttons ---------- */
+  document.querySelectorAll(".code").forEach((block) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "copy"; b.textContent = "copy";
+    b.addEventListener("click", () => {
+      const pre = block.querySelector("pre");
+      const done = () => { b.textContent = "copied"; setTimeout(() => (b.textContent = "copy"), 1400); };
+      const fallback = () => { const r = document.createRange(); r.selectNodeContents(pre); const s = getSelection(); s.removeAllRanges(); s.addRange(r); b.textContent = "press ⌘C"; };
+      try { navigator.clipboard.writeText(pre.innerText).then(done, fallback); } catch (e) { fallback(); }
+    });
+    block.appendChild(b);
+  });
+
+  /* ---------- teaser: synchronized timers ---------- */
+  const timers = document.querySelectorAll("[data-timer]"), bars = document.querySelectorAll("[data-bar]");
+  const TEASE = 12;
+  let teaseStart = performance.now();
+  function tease(now) {
+    const t = Math.min((now - teaseStart) / 1000, TEASE);
+    timers.forEach((el) => (el.textContent = t.toFixed(2) + "s"));
+    bars.forEach((el) => (el.style.width = (t / TEASE * 100) + "%"));
+    if (t < TEASE) requestAnimationFrame(tease);
+  }
+  if (!reduce) requestAnimationFrame(tease);
+  document.getElementById("replay").addEventListener("click", () => { teaseStart = performance.now(); requestAnimationFrame(tease); });
+
+  /* ---------- experiment players ---------- */
+  document.querySelectorAll(".player").forEach((p) => {
+    const clips = JSON.parse(p.dataset.clips), dur = +p.dataset.dur;
+    p.innerHTML = `
+      <div class="screen" role="button" tabindex="0" aria-label="Play">
+        <span class="timer">0.00s</span><span class="play" aria-hidden="true"></span>
+        <span class="kind">Video placeholder</span><span class="what"></span>
+        <span class="bar"><i></i></span>
+      </div>
+      <div class="clips">${clips.map((c, i) => `<button class="clip" type="button" aria-pressed="${i === 0}">${c[0]}</button>`).join("")}
+        <span class="sp"></span><button class="btn" type="button" data-a="all">Play all</button><button class="btn" type="button" data-a="reset">Reset</button></div>`;
+    const what = p.querySelector(".what"), timer = p.querySelector(".timer"), bar = p.querySelector(".bar i"), screen = p.querySelector(".screen");
+    const btns = [...p.querySelectorAll(".clip")];
+    let idx = 0, raf = 0, start = 0, all = false;
+    function select(i) { idx = i; btns.forEach((b, j) => b.setAttribute("aria-pressed", j === i)); what.textContent = clips[i][0] + ": " + clips[i][1]; timer.textContent = "0.00s"; bar.style.width = "0"; }
+    function stop() { cancelAnimationFrame(raf); p.classList.remove("playing"); }
+    function play() {
+      stop(); p.classList.add("playing"); start = performance.now();
+      const tick = (now) => {
+        const t = Math.min((now - start) / 1000, dur);
+        timer.textContent = t.toFixed(2) + "s"; bar.style.width = (t / dur * 100) + "%";
+        if (t < dur) raf = requestAnimationFrame(tick);
+        else if (all && idx < clips.length - 1) { select(idx + 1); play(); }
+        else { all = false; p.classList.remove("playing"); }
+      };
+      raf = requestAnimationFrame(tick);
+    }
+    btns.forEach((b, i) => b.addEventListener("click", () => { all = false; select(i); play(); }));
+    screen.addEventListener("click", () => { all = false; play(); });
+    screen.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); all = false; play(); } });
+    p.querySelector('[data-a="all"]').addEventListener("click", () => { all = true; select(0); play(); });
+    p.querySelector('[data-a="reset"]').addEventListener("click", () => { all = false; stop(); select(0); });
+    select(0);
+  });
+
+  /* ---------- docking widget ---------- */
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.getElementById("wSvg");
+  const PX = 1.8;                 // px per mm
+  const HALF = 25 * PX;           // 50 mm cube
+  const TOL = { pos: 6, ax: 8, vel: 50 }, DETECT = 30;
+  const A = { x: 175 + HALF, y: 130 };   // fixed module's front connector
+  const fixedC = { x: 175, y: 130 };
+  const START = { x: 470, y: 150, yaw: 12 };
+  const st = { x: START.x, y: START.y, yaw: START.yaw, docked: false, anim: null, drag: null, samples: [], t0: performance.now() };
+  const el = (tag, a, parent) => { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); parent && parent.appendChild(e); return e; };
+
+  function drawCube(g, fill, label) {
+    el("rect", { x: -HALF, y: -HALF, width: 2 * HALF, height: 2 * HALF, rx: 6, fill, stroke: "var(--ink)", "stroke-opacity": 0.25 }, g);
+    const t = el("text", { x: 0, y: 5, "text-anchor": "middle", "font-family": "IBM Plex Mono, monospace", "font-size": 13, fill: "var(--surface)" }, g);
+    t.textContent = label;
+  }
+  const fixedG = document.getElementById("fixedMod");
+  fixedG.setAttribute("transform", `translate(${fixedC.x},${fixedC.y})`);
+  drawCube(fixedG, "var(--accent)", "module_0");
+  const fConn = el("rect", { x: HALF - 4, y: -14, width: 8, height: 28, rx: 2, fill: "var(--bg)", stroke: "var(--ink)", "stroke-opacity": 0.5 }, fixedG);
+  const fArr = el("line", { x1: HALF + 6, y1: 0, x2: HALF + 30, y2: 0, stroke: "var(--muted)", "stroke-width": 1.4, "marker-end": "url(#arr)" }, fixedG);
+  el("text", { x: HALF - 10, y: 30, "text-anchor": "end", "fill-opacity": 0.85, "font-family": "IBM Plex Mono, monospace", "font-size": 10, fill: "var(--surface)" }, fixedG).textContent = "front";
+
+  const mover = document.getElementById("mover");
+  const body = el("g", {}, mover);
+  drawCube(body, "var(--teal)", "module_1");
+  const mConn = el("rect", { x: -HALF - 4, y: -14, width: 8, height: 28, rx: 2, fill: "var(--bg)", stroke: "var(--ink)", "stroke-opacity": 0.5 }, body);
+  const mArr = el("line", { x1: -HALF - 6, y1: 0, x2: -HALF - 30, y2: 0, stroke: "var(--muted)", "stroke-width": 1.4, "marker-end": "url(#arr)" }, body);
+  el("text", { x: -HALF + 10, y: 30, "text-anchor": "start", "fill-opacity": 0.85, "font-family": "IBM Plex Mono, monospace", "font-size": 10, fill: "var(--surface)" }, body).textContent = "rear";
+
+  const showArrows = (on) => [fArr, mArr].forEach((l) => (l.style.display = on ? "" : "none"));
+  const region = document.getElementById("region"), detect = document.getElementById("detect");
+  const r = TOL.pos * PX;
+  region.setAttribute("x", A.x - r); region.setAttribute("y", A.y - r); region.setAttribute("width", 2 * r); region.setAttribute("height", 2 * r);
+  detect.setAttribute("cx", A.x); detect.setAttribute("cy", A.y); detect.setAttribute("r", DETECT * PX);
+
+  const $ = (id) => document.getElementById(id);
+  const yaw = $("yaw"), yawOut = $("yawOut"), wState = $("wState"), log = $("wLog");
+  let lines = [];
+  function push(kind, text, cls) {
+    const t = ((performance.now() - st.t0) / 1000).toFixed(3);
+    lines.push(`<div><span class="t">t=${t}</span>  <span class="${cls || "k"}">${kind}</span> ${text}</div>`);
+    lines = lines.slice(-7); log.innerHTML = lines.join("");
+  }
+  function connB() {
+    const a = st.yaw * Math.PI / 180;
+    return { x: st.x - HALF * Math.cos(a), y: st.y - HALF * Math.sin(a) };
+  }
+  function place() { mover.setAttribute("transform", `translate(${st.x},${st.y}) rotate(${st.yaw})`); }
+
+  function measure(now) {
+    const b = connB();
+    st.samples.push({ t: now, x: b.x, y: b.y });
+    st.samples = st.samples.filter((s) => now - s.t < 160);
+    let vel = 0;
+    if (st.samples.length > 1) {
+      const s0 = st.samples[0], s1 = st.samples[st.samples.length - 1], dt = (s1.t - s0.t) / 1000;
+      if (dt > 0.02) vel = Math.hypot(s1.x - s0.x, s1.y - s0.y) / PX / dt;
+    }
+    const pos = Math.hypot(b.x - A.x, b.y - A.y) / PX;
+    return { pos, ax: Math.abs(st.yaw), vel };
+  }
+  function mark(id, ok) { const c = $(id); c.textContent = ok ? "✓" : "✗"; c.className = ok ? "ok" : "no"; }
+  let lastState = "free", committing = false;
+  function setState(s) {
+    if (s === lastState) return;
+    if (s === "candidate" && lastState === "free") push("candidate", "module_0/front ↔ module_1/rear");
+    lastState = s; wState.dataset.s = s; wState.textContent = { free: "free", candidate: "candidate", accept: "in acceptance region", docked: "docked" }[s];
+  }
+  function commit() {
+    committing = true; st.docked = true; mover.classList.add("locked"); st.drag = null; st.anim = null;
+    setState("docked"); showArrows(false);
+    const steps = [
+      () => push("accept", "all criteria pass, policy auto_latch"),
+      () => push("request", "create_physical_connection(fixed)", "b"),
+      () => push("backend", "weld created, handle w0", "b"),
+      () => { push("DockCommitted", "module_0/front ↔ module_1/rear"); body.firstChild.setAttribute("fill", "var(--accent)"); [fConn, mConn].forEach((c) => c.setAttribute("fill", "var(--teal)")); },
+      () => { push("AssemblyMerged", "{module_0} + {module_1} → assembly:module_0"); $("wUndock").disabled = false; committing = false; },
+    ];
+    steps.forEach((f, i) => setTimeout(f, reduce ? 0 : i * 260));
+  }
+  function frame(now) {
+    if (st.anim) {
+      const a = st.anim, k = Math.min((now - a.t) / a.d, 1), e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+      st.x = a.fx + (a.tx - a.fx) * e; st.y = a.fy + (a.ty - a.fy) * e; st.yaw = a.fyaw + (a.tyaw - a.fyaw) * e;
+      yaw.value = Math.round(st.yaw); yawOut.textContent = Math.round(st.yaw) + "°";
+      if (k >= 1) { st.anim = null; if (a.after) a.after(); }
+      place();
+    }
+    const m = measure(now);
+    $("cPos").textContent = m.pos.toFixed(1) + " mm";
+    $("cAx").textContent = m.ax.toFixed(0) + "°";
+    $("cVel").textContent = m.vel.toFixed(0) + " mm/s";
+    const okP = m.pos <= TOL.pos, okA = m.ax <= TOL.ax, okV = m.vel <= TOL.vel;
+    mark("okPos", okP); mark("okAx", okA); mark("okVel", okV);
+    if (!st.docked) {
+      const inDetect = m.pos <= DETECT;
+      region.setAttribute("fill-opacity", okP ? 0.22 : 0.08);
+      setState(!inDetect ? "free" : okP && okA && okV ? "accept" : "candidate");
+      if (okP && okA && okV && !committing) commit();
+    }
+    requestAnimationFrame(frame);
+  }
+
+  function toSvg(e) { const p = svg.createSVGPoint(); p.x = e.clientX; p.y = e.clientY; return p.matrixTransform(svg.getScreenCTM().inverse()); }
+  mover.addEventListener("pointerdown", (e) => {
+    if (st.docked) return;
+    st.anim = null; const p = toSvg(e); st.drag = { dx: st.x - p.x, dy: st.y - p.y };
+    mover.setPointerCapture(e.pointerId); mover.classList.add("dragging");
+  });
+  mover.addEventListener("pointermove", (e) => {
+    if (!st.drag) return;
+    const p = toSvg(e);
+    st.x = Math.max(HALF, Math.min(640 - HALF, p.x + st.drag.dx));
+    st.y = Math.max(HALF, Math.min(280 - HALF, p.y + st.drag.dy));
+    if (st.x - HALF < fixedC.x + HALF && Math.abs(st.y - fixedC.y) < 2 * HALF) st.x = fixedC.x + 2 * HALF; // no overlap
+    place();
+  });
+  const endDrag = () => { st.drag = null; mover.classList.remove("dragging"); };
+  mover.addEventListener("pointerup", endDrag); mover.addEventListener("pointercancel", endDrag);
+
+  yaw.addEventListener("input", () => { if (st.docked) { yaw.value = Math.round(st.yaw); return; } st.anim = null; st.yaw = +yaw.value; yawOut.textContent = yaw.value + "°"; place(); });
+
+  $("wAnimate").addEventListener("click", () => {
+    if (st.docked) return;
+    // target: rear connector coincident with A at yaw 0 → centre at A.x + HALF
+    const tx = A.x + HALF, ty = A.y, dist = Math.hypot(tx - st.x, ty - st.y) / PX;
+    st.anim = { t: performance.now(), d: reduce ? 1 : Math.max(900, dist / 40 * 1000), fx: st.x, fy: st.y, fyaw: st.yaw, tx, ty, tyaw: 0 };
+  });
+  $("wUndock").addEventListener("click", () => {
+    if (!st.docked || committing) return;
+    $("wUndock").disabled = true;
+    push("UndockCommitted", "weld w0 removed");
+    push("AssemblySplit", "assembly:module_0 → {module_0} + {module_1}");
+    body.firstChild.setAttribute("fill", "var(--teal)"); [fConn, mConn].forEach((c) => c.setAttribute("fill", "var(--bg)"));
+    push("note", "releasing is not separating: drive the module away", "t");
+    st.anim = { t: performance.now(), d: reduce ? 1 : 1100, fx: st.x, fy: st.y, fyaw: st.yaw, tx: st.x + 150, ty: st.y + 10, tyaw: st.yaw,
+      after: () => { showArrows(true); st.docked = false; mover.classList.remove("locked"); lastState = "docked"; setState("free"); } };
+  });
+  $("wReset").addEventListener("click", () => {
+    if (committing) return;
+    Object.assign(st, { x: START.x, y: START.y, yaw: START.yaw, docked: false, anim: null, drag: null, samples: [] });
+    body.firstChild.setAttribute("fill", "var(--teal)"); [fConn, mConn].forEach((c) => c.setAttribute("fill", "var(--bg)"));
+    showArrows(true); mover.classList.remove("locked"); $("wUndock").disabled = true; yaw.value = START.yaw; yawOut.textContent = START.yaw + "°";
+    lines = []; st.t0 = performance.now(); lastState = "x"; setState("free"); push("spawn", "2 × generic_cube, mock backend"); place();
+  });
+
+  place(); push("spawn", "2 × generic_cube, mock backend");
+  requestAnimationFrame(frame);
+})();
+</script>

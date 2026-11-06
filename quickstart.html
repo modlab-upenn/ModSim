@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>ModSim Quickstart</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112..125,500..800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+/* Layout concept: a guide you read top to bottom. Sticky contents rail on the left, a 68ch reading column,
+   code and YAML set in dark slabs. Same tokens as the home page. */
+:root {
+  --bg: #F5F4EF;
+  --surface: #FFFFFF;
+  --surface-2: #ECE9E1;
+  --line: #D8D3C6;
+  --ink: #142030;
+  --muted: #586474;
+  --accent: #1F4E8C;
+  --accent-ink: #FFFFFF;
+  --teal: #0B7A70;
+  --tip-bg: #DDF1EC;
+  --warn: #9A5B05;
+  --warn-bg: #FBEFD9;
+  --code-bg: #0F1A27;
+  --code-ink: #D9E3EC;
+  --code-com: #7A8A9C;
+  --code-key: #7FB6F0;
+  --code-str: #6FD6C5;
+  --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --r: 6px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0B1521; --surface: #102030; --surface-2: #16293C; --line: #24394F;
+    --ink: #E5ECF2; --muted: #93A3B5; --accent: #79AEEA; --accent-ink: #0B1521;
+    --teal: #3CCFBA; --tip-bg: #0F3330; --warn: #F0B455; --warn-bg: #3A2A10;
+    --code-bg: #07101A; --code-ink: #D9E3EC; --code-com: #6F8094; --code-key: #7FB6F0; --code-str: #6FD6C5;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0B1521; --surface: #102030; --surface-2: #16293C; --line: #24394F;
+  --ink: #E5ECF2; --muted: #93A3B5; --accent: #79AEEA; --accent-ink: #0B1521;
+  --teal: #3CCFBA; --tip-bg: #0F3330; --warn: #F0B455; --warn-bg: #3A2A10;
+  --code-bg: #07101A; --code-ink: #D9E3EC; --code-com: #6F8094; --code-key: #7FB6F0; --code-str: #6FD6C5;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+html { scroll-behavior: smooth; scroll-padding-top: 80px; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font-family: var(--font-body); font-size: 16.5px; line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 30; background: var(--bg); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 3px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+
+.wrap {
+  max-width: 1180px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+@media (min-width: 720px) { .wrap { padding-left: max(32px, env(safe-area-inset-left, 0px)); padding-right: max(32px, env(safe-area-inset-right, 0px)); } }
+
+/* header (shared with home) */
+.site-head {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20;
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+.site-head .wrap { display: flex; align-items: center; gap: 24px; height: 60px; }
+.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ink); font-family: var(--font-display); font-weight: 800; font-stretch: 120%; font-size: 1.15rem; }
+.nav { display: flex; gap: 4px; margin-left: auto; align-items: center; }
+.nav a { color: var(--muted); text-decoration: none; font-size: 0.9rem; padding: 6px 10px; border-radius: var(--r); white-space: nowrap; }
+.nav a:hover { color: var(--ink); background: var(--surface-2); }
+.nav a[aria-current="page"] { color: var(--ink); font-weight: 600; }
+.nav .gh { color: var(--ink); border: 1px solid var(--line); }
+@media (max-width: 640px) { .nav .opt { display: none; } }
+
+/* page layout */
+.page { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 56px; padding-block: 48px 96px; }
+@media (max-width: 960px) { .page { grid-template-columns: minmax(0, 1fr); gap: 0; padding-block: 32px 72px; } }
+
+.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 84px); align-self: start; max-height: calc(100vh - 110px); overflow-y: auto; }
+.toc .tl { font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; display: block; }
+.toc ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; counter-reset: toc; }
+.toc li a { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 4px; padding: 5px 8px; border-radius: var(--r); text-decoration: none; color: var(--muted); font-size: 0.88rem; line-height: 1.4; border-left: 2px solid transparent; }
+.toc li a .num { font-family: var(--font-mono); font-size: 0.75rem; color: var(--muted); padding-top: 1px; }
+.toc li a:hover { color: var(--ink); background: var(--surface-2); }
+.toc li a.on { color: var(--ink); border-left-color: var(--accent); background: var(--surface); font-weight: 500; }
+@media (max-width: 960px) {
+  .toc { position: static; max-height: none; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 16px; margin-bottom: 40px; }
+  .toc ol { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 12px; }
+}
+@media (max-width: 480px) { .toc ol { grid-template-columns: minmax(0, 1fr); } }
+
+/* article */
+article { max-width: 72ch; min-width: 0; }
+.intro { display: flex; flex-direction: column; gap: 16px; padding-bottom: 36px; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+.eyebrow { font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--teal); font-weight: 500; }
+h1, h2, h3 { font-family: var(--font-display); font-stretch: 116%; line-height: 1.15; text-wrap: balance; margin: 0; letter-spacing: -0.01em; }
+h1 { font-size: clamp(2rem, 4.2vw, 2.9rem); font-weight: 800; }
+h2 { font-size: clamp(1.4rem, 2.6vw, 1.75rem); font-weight: 750; display: flex; gap: 14px; align-items: baseline; }
+h2 .n { font-family: var(--font-mono); font-size: 0.85rem; font-weight: 500; color: var(--accent-ink); background: var(--accent); border-radius: 99px; min-width: 28px; height: 28px; display: inline-grid; place-items: center; flex: none; transform: translateY(-3px); font-stretch: 100%; }
+h3 { font-size: 1.05rem; font-weight: 700; font-stretch: 110%; margin-top: 8px; }
+.lede { font-size: 1.15rem; color: var(--muted); }
+section.s { padding-top: 48px; display: flex; flex-direction: column; gap: 18px; }
+p, ul, ol, dl { margin: 0; }
+article ul, article ol.list { padding-left: 1.25em; display: flex; flex-direction: column; gap: 6px; }
+code { font-family: var(--font-mono); font-size: 0.86em; }
+:not(pre) > code { background: var(--surface-2); padding: 0.1em 0.35em; border-radius: 4px; overflow-wrap: anywhere; }
+kbd { font-family: var(--font-mono); font-size: 0.8em; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: var(--surface); }
+.muted { color: var(--muted); }
+
+.meta-row { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 0.9rem; color: var(--muted); }
+.meta-row b { color: var(--ink); font-weight: 600; }
+
+/* glossary */
+.gloss { display: grid; grid-template-columns: 150px minmax(0, 1fr); border: 1px solid var(--line); border-radius: 10px; background: var(--surface); overflow: hidden; }
+.gloss dt, .gloss dd { padding: 12px 16px; border-top: 1px solid var(--line); margin: 0; }
+.gloss dt:first-of-type, .gloss dt:first-of-type + dd { border-top: 0; }
+.gloss dt { font-weight: 600; background: var(--bg); }
+.gloss dd { color: var(--muted); font-size: 0.95rem; }
+@media (max-width: 560px) { .gloss { grid-template-columns: minmax(0, 1fr); } .gloss dd { border-top: 0; padding-top: 0; background: var(--bg); } .gloss dt { padding-bottom: 4px; } }
+
+/* code */
+.code { position: relative; background: var(--code-bg); color: var(--code-ink); border-radius: var(--r); min-width: 0; }
+.code .file { display: block; font-family: var(--font-mono); font-size: 0.72rem; color: var(--code-com); padding: 10px 16px 0; }
+.code pre { margin: 0; padding: 14px 16px; overflow-x: auto; font-family: var(--font-mono); font-size: 0.82rem; line-height: 1.65; }
+.code .c { color: var(--code-com); }
+.code .k { color: var(--code-key); }
+.code .s { color: var(--code-str); }
+.copy {
+  position: absolute; top: 8px; right: 8px; font-family: var(--font-mono); font-size: 0.7rem; padding: 4px 8px;
+  background: color-mix(in srgb, var(--code-ink) 12%, transparent); color: var(--code-ink); border: 0; border-radius: 4px; cursor: pointer; opacity: 0.75;
+}
+.copy:hover, .copy:focus-visible { opacity: 1; }
+
+/* annotated fields */
+.fields { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.field { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 0.95rem; }
+.field code { background: none; padding: 0; color: var(--teal); font-weight: 500; }
+.field span { color: var(--muted); }
+@media (max-width: 560px) { .field { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
+
+/* callouts */
+.note { border-radius: var(--r); padding: 14px 16px; font-size: 0.95rem; display: flex; flex-direction: column; gap: 4px; }
+.note b.t { font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; }
+.note.tip { background: var(--tip-bg); }
+.note.tip b.t { color: var(--teal); }
+.note.warn { background: var(--warn-bg); }
+.note.warn b.t { color: var(--warn); }
+
+/* tree */
+.tree { font-family: var(--font-mono); font-size: 0.82rem; line-height: 1.75; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px; overflow-x: auto; white-space: pre; }
+.tree .d { color: var(--muted); }
+
+/* troubleshooting */
+details.faq { border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+details.faq + details.faq { margin-top: -10px; }
+details.faq summary { cursor: pointer; padding: 12px 16px; font-weight: 600; list-style: none; display: flex; justify-content: space-between; gap: 12px; }
+details.faq summary::-webkit-details-marker { display: none; }
+details.faq summary::after { content: "+"; font-family: var(--font-mono); color: var(--muted); }
+details.faq[open] summary::after { content: "–"; }
+details.faq > div { padding: 0 16px 14px; color: var(--muted); font-size: 0.95rem; display: flex; flex-direction: column; gap: 8px; }
+
+.next { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 560px) { .next { grid-template-columns: minmax(0, 1fr); } }
+.card { display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); text-decoration: none; color: var(--ink); }
+.card:hover { border-color: var(--accent); }
+.card span { color: var(--muted); font-size: 0.9rem; }
+
+footer { border-top: 1px solid var(--line); padding-block: 28px; color: var(--muted); font-size: 0.88rem; }
+footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px 24px; }
+footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+
+<header class="site-head">
+  <div class="wrap">
+    <a class="brand" href="index.html" aria-label="ModSim home">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+        <rect x="1" y="9" width="8" height="8" rx="1.5" fill="var(--accent)"/>
+        <rect x="9" y="9" width="8" height="8" rx="1.5" fill="var(--accent)" opacity="0.7"/>
+        <rect x="9" y="1" width="8" height="8" rx="1.5" fill="var(--teal)"/>
+        <rect x="17" y="17" width="8" height="8" rx="1.5" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="2 2"/>
+      </svg>
+      ModSim
+    </a>
+    <nav class="nav" aria-label="Primary">
+      <a href="quickstart.html" aria-current="page">Quickstart</a>
+      <a href="index.html#demos" class="opt">Demos</a>
+      <a href="https://github.com/modlab-upenn/ModSim/tree/main/docs">Docs</a>
+      <a class="gh" href="https://github.com/modlab-upenn/ModSim">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap page">
+  <nav class="toc" aria-label="On this page">
+    <span class="tl">On this page</span>
+    <ol id="tocList">
+      <li><a href="#ideas"><span class="num">·</span><span>The five ideas</span></a></li>
+      <li><a href="#install"><span class="num">1</span><span>Install ModSim</span></a></li>
+      <li><a href="#pack"><span class="num">2</span><span>Turn your URDF into a pack</span></a></li>
+      <li><a href="#types"><span class="num">3</span><span>Decide how connectors mate</span></a></li>
+      <li><a href="#place"><span class="num">4</span><span>Put connectors on your module</span></a></li>
+      <li><a href="#joints"><span class="num">5</span><span>Make joints drivable</span></a></li>
+      <li><a href="#validate"><span class="num">6</span><span>Validate the pack</span></a></li>
+      <li><a href="#dock"><span class="num">7</span><span>Test docking without physics</span></a></li>
+      <li><a href="#mujoco"><span class="num">8</span><span>Run it in MuJoCo</span></a></li>
+      <li><a href="#python"><span class="num">9</span><span>Write your own experiment</span></a></li>
+      <li><a href="#trouble"><span class="num">?</span><span>When things don't dock</span></a></li>
+    </ol>
+  </nav>
+
+  <article>
+    <div class="intro">
+      <span class="eyebrow">Quickstart</span>
+      <h1>Simulate your own modular robot</h1>
+      <p class="lede">This guide takes you from a URDF of one module to a script where several of them find each other, dock, and come apart again. Each step builds on the last, so it reads best in order.</p>
+      <div class="meta-row">
+        <span><b>Time</b> about 45 minutes</span>
+        <span><b>You need</b> Python 3.11+ and a URDF of one module</span>
+        <span><b>Example</b> a module called <code>my_module</code> in a pack called <code>my_robot</code></span>
+      </div>
+    </div>
+
+    <!-- IDEAS -->
+    <section class="s" id="ideas">
+      <h2>The five ideas you need</h2>
+      <p>ModSim adds a few concepts that a physics engine doesn't have. Every step below is about one of them.</p>
+      <dl class="gloss">
+        <dt>Module</dt><dd>One physical unit of your robot, described by one URDF. A system is many copies of one or more module types.</dd>
+        <dt>Connector</dt><dd>A spot on a module where it can attach to another module: a magnetic face, a latch, a hinge port.</dd>
+        <dt>Connector type</dt><dd>The shared rules for a kind of connector: what it can mate with, how precisely two must line up, and what joint forms when they do.</dd>
+        <dt>Robot Pack</dt><dd>A folder holding your URDF plus a few YAML files that describe your modules and connectors. It's the only thing ModSim needs from you.</dd>
+        <dt>Assembly</dt><dd>A group of modules that are currently connected. A module on its own counts as an assembly of one.</dd>
+      </dl>
+      <p>ModSim decides <em>whether</em> two connectors should dock and keeps track of what's connected. The <b>backend</b> handles the physics. You'll use two: <code>mock</code>, which has no physics and answers instantly, and <code>mujoco</code>.</p>
+    </section>
+
+    <!-- 1 INSTALL -->
+    <section class="s" id="install">
+      <h2><span class="n">1</span>Install ModSim</h2>
+      <p>ModSim isn't on PyPI yet, so install it from a clone of the repository. The <code>mujoco</code> extra adds physics and the 3D viewer. The <code>studio</code> extra adds the desktop editor and the Runtime Inspector.</p>
+      <div class="code"><pre>git clone https://github.com/modlab-upenn/ModSim.git
+cd ModSim
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[studio,mujoco]"</pre></div>
+      <p>Check that both backends are available:</p>
+      <div class="code"><pre>modsim backends</pre></div>
+      <p class="muted">Prefer uv? Run <code>uv sync --extra studio --extra mujoco</code>, then put <code>uv run</code> in front of each <code>modsim</code> command.</p>
+    </section>
+
+    <!-- 2 PACK -->
+    <section class="s" id="pack">
+      <h2><span class="n">2</span>Turn your URDF into a Robot Pack</h2>
+      <p>Your URDF stays the source of truth for shape, mass and joints. ModSim copies it, with its meshes, into a new self-contained folder, then you add the modular parts on top.</p>
+      <div class="code"><pre>modsim pack init --from-urdf path/to/my_module.urdf --out packs/my_robot</pre></div>
+      <p>You get this folder:</p>
+      <div class="tree"><span class="d">packs/my_robot/</span>
+  robot_pack.yaml            <span class="d">the manifest: names the pack, lists every file</span>
+  <span class="d">specs/</span>
+    module_types.yaml        <span class="d">your modules and where their connectors are</span>
+    connector_types.yaml     <span class="d">the rules for each kind of connector</span>
+    capabilities.yaml        <span class="d">actions a module can perform, such as dock</span>
+  <span class="d">mappings/</span>
+    urdf_mapping.yaml        <span class="d">links URDF names to pack names</span>
+  <span class="d">assets/</span>
+    urdf/  meshes/           <span class="d">your copied URDF and meshes</span></div>
+      <p>Run <code>modsim pack inspect packs/my_robot</code> to see what was imported, including the module ID the importer chose. This guide calls it <code>my_module</code>.</p>
+      <div class="note tip"><b class="t">Tip</b><span>If you use Xacro, expand it to a plain <code>.urdf</code> first. If the importer can't find your meshes, point it at their folder with <code>--asset-root path/to/meshes</code>.</span></div>
+      <p>From here you can edit the YAML files directly or open the pack in Studio with <code>modsim studio packs/my_robot</code>. Studio edits the same files, and the steps below say where each setting lives in both.</p>
+    </section>
+
+    <!-- 3 TYPES -->
+    <section class="s" id="types">
+      <h2><span class="n">3</span>Decide how your connectors mate</h2>
+      <p>Before placing any connectors, describe the <em>kind</em> of connector your hardware uses. If every face of your module is the same magnetic face, you need one connector type. If you have, say, a male latch and a female socket, you need two.</p>
+      <p>Here's a hermaphroditic magnetic face that can attach at four rotations:</p>
+      <div class="code"><span class="file">specs/connector_types.yaml</span><pre><span class="k">schema_version</span>: <span class="s">"0.1"</span>
+<span class="k">connector_types</span>:
+  <span class="k">magnetic_face</span>:
+    <span class="k">name</span>: Magnetic Face
+    <span class="k">active</span>: true
+    <span class="k">gender</span>: hermaphroditic
+    <span class="k">compatible_with</span>: [magnetic_face]
+    <span class="k">allowed_orientations</span>:
+      <span class="k">mode</span>: discrete
+      <span class="k">values_rad</span>: [0.0, 1.5708, 3.1416, 4.7124]   <span class="c"># 0°, 90°, 180°, 270°</span>
+    <span class="k">acceptance_region</span>:
+      <span class="k">shape</span>: box
+      <span class="k">position_tolerance_m</span>: 0.006               <span class="c"># within 6 mm</span>
+      <span class="k">orientation_tolerance_rad</span>: 0.14           <span class="c"># within about 8°</span>
+      <span class="k">max_relative_velocity_m_s</span>: 0.05           <span class="c"># closing slower than 5 cm/s</span>
+    <span class="k">physical_connection</span>:
+      <span class="k">constraint</span>: fixed
+      <span class="k">compliance</span>: null
+    <span class="k">limits</span>:
+      <span class="k">max_normal_force_n</span>: 90.0
+      <span class="k">max_shear_force_n</span>: 40.0
+      <span class="k">max_bending_moment_nm</span>: 1.8
+    <span class="k">supports_undocking</span>: true
+    <span class="k">docking_policy</span>:
+      <span class="k">auto_latch</span>: true                         <span class="c"># permanent magnets grab on their own</span></pre></div>
+      <p>What each part decides:</p>
+      <div class="fields">
+        <div class="field"><code>gender</code>, <code>compatible_with</code><span>Who can mate with whom. Male pairs with female, and hermaphroditic with hermaphroditic. Compatibility must be listed on <b>both</b> types, or ModSim treats the pair as incompatible.</span></div>
+        <div class="field"><code>allowed_orientations</code><span>The rotations about the docking axis at which two connectors can join. Use <code>continuous</code> with an empty list if any rotation works.</span></div>
+        <div class="field"><code>acceptance_region</code><span>How close, how well aligned, and how slow two connectors must be before a dock is accepted. If two types disagree, the stricter value wins.</span></div>
+        <div class="field"><code>physical_connection</code><span>What the physics engine creates on docking: <code>fixed</code> for a rigid weld, or <code>hinge</code> for a pivoting joint (add <code>hinge.axis</code> and <code>hinge.anchor_separation_m</code>).</span></div>
+        <div class="field"><code>docking_policy</code><span>Optional. <code>auto_latch: true</code> docks as soon as the rules are met. Leave it <code>false</code> for connectors your robot has to actively engage, and request the dock in code. You can also set <code>break_force_n</code> so a connection releases under too much load.</span></div>
+      </div>
+      <p class="muted">In Studio: select <b>Connector Types</b>, then <b>Add connector type</b>. Turn on <b>Declare docking policy</b> to edit the policy fields.</p>
+    </section>
+
+    <!-- 4 PLACE -->
+    <section class="s" id="place">
+      <h2><span class="n">4</span>Put connectors on your module</h2>
+      <p>Now say where each connector physically sits. A connector is attached to one link of your URDF, at a pose relative to that link.</p>
+      <div class="code"><span class="file">specs/module_types.yaml</span><pre><span class="k">module_types</span>:
+  <span class="k">my_module</span>:
+    <span class="k">name</span>: My Module
+    <span class="k">asset_ref</span>: my_module
+    <span class="k">root_link</span>: base_link
+    <span class="k">mass_kg</span>: 1.0
+    <span class="k">connectors</span>:
+      - <span class="k">id</span>: front
+        <span class="k">connector_type</span>: magnetic_face
+        <span class="k">parent_link</span>: base_link
+        <span class="k">frame</span>: null
+        <span class="k">local_pose</span>:
+          <span class="k">xyz_m</span>: [0.05, 0.0, 0.0]          <span class="c"># centre of the front face</span>
+          <span class="k">rpy_rad</span>: [0.0, 0.0, 0.0]
+        <span class="k">docking_axis</span>: [1.0, 0.0, 0.0]      <span class="c"># points out of the face</span>
+        <span class="k">approach_axis</span>: [1.0, 0.0, 0.0]
+      - <span class="k">id</span>: rear
+        <span class="k">connector_type</span>: magnetic_face
+        <span class="k">parent_link</span>: base_link
+        <span class="k">frame</span>: null
+        <span class="k">local_pose</span>:
+          <span class="k">xyz_m</span>: [-0.05, 0.0, 0.0]
+          <span class="k">rpy_rad</span>: [0.0, 0.0, 3.1416]
+        <span class="k">docking_axis</span>: [-1.0, 0.0, 0.0]
+        <span class="k">approach_axis</span>: [-1.0, 0.0, 0.0]
+    <span class="k">capabilities</span>: [dock, undock]</pre></div>
+      <p>The one rule to remember: <b>the docking axis points out of the connector</b>, in the parent link's frame. Two connectors line up when their docking axes point straight at each other. Axes are unit vectors, and all distances are in metres.</p>
+      <p>The <code>capabilities</code> line refers to entries in <code>specs/capabilities.yaml</code>. Make sure <code>dock</code> and <code>undock</code> there list <code>magnetic_face</code> under <code>required_connector_types</code>.</p>
+      <p class="muted">In Studio: under <b>Module Types → my_module → Links</b>, select a link and choose <b>Add connector to this link</b>. Studio draws the connector in the 3D view as you type its pose.</p>
+    </section>
+
+    <!-- 5 JOINTS -->
+    <section class="s" id="joints">
+      <h2><span class="n">5</span>Make joints drivable <span class="muted" style="font-size:0.9rem;font-weight:500;font-family:var(--font-body)">(optional)</span></h2>
+      <p>If your module has wheels or actuated joints you want to command, mark them in the module's <code>joints</code> list. MuJoCo creates a motor for every joint that declares <code>effort</code> control with a finite effort limit.</p>
+      <div class="code"><span class="file">specs/module_types.yaml, inside my_module</span><pre><span class="k">joints</span>:
+  - <span class="k">id</span>: wheel
+    <span class="k">source_joint_name</span>: wheel_joint      <span class="c"># the name in your URDF</span>
+    <span class="k">type</span>: continuous
+    <span class="k">parent_link</span>: base_link
+    <span class="k">child_link</span>: wheel_link
+    <span class="k">axis</span>: [0.0, 1.0, 0.0]
+    <span class="k">control_modes</span>: [effort]
+    <span class="k">limits</span>:
+      <span class="k">max_effort_nm</span>: 0.8
+      <span class="k">max_velocity_rad_per_s</span>: 12.0</pre></div>
+      <p>The importer fills in most of this from your URDF. You usually only add <code>control_modes</code> and check the limits. Effort is the only control mode MuJoCo runs today.</p>
+    </section>
+
+    <!-- 6 VALIDATE -->
+    <section class="s" id="validate">
+      <h2><span class="n">6</span>Validate the pack</h2>
+      <p>Validation catches mistakes before you simulate. There are two levels:</p>
+      <div class="code"><pre>modsim pack validate packs/my_robot                        <span class="c"># while you're still editing</span>
+modsim pack validate packs/my_robot --profile simulation   <span class="c"># before you run it</span></pre></div>
+      <p>The default level reports missing details as warnings. The <code>simulation</code> level turns them into errors, because a simulation needs them. Every problem names the file, the exact field, and often a suggested fix, and you get all of them at once. In Studio, press <kbd>F6</kbd> and <kbd>F7</kbd> for the two levels.</p>
+      <div class="note warn"><b class="t">Heads up</b><span>Validation checks that the pack is complete and consistent. It doesn't run physics, so a pack can pass and still fail to dock if, say, a docking axis points into the module instead of out of it. Step 7 catches that.</span></div>
+    </section>
+
+    <!-- 7 DOCK -->
+    <section class="s" id="dock">
+      <h2><span class="n">7</span>Test docking without physics</h2>
+      <p>This is the fastest way to check your connector setup. <code>modsim dock</code> places copies of your module in a row, already touching, and asks whether they would dock. It uses the mock backend, so it takes a second.</p>
+      <div class="code"><pre>modsim dock packs/my_robot --count 3 --spacing 0.1</pre></div>
+      <p>Set <code>--spacing</code> to your module's width so the faces meet. You'll see each pair that came close, which docked, and the resulting assemblies. Three modules docked front-to-rear should give you a single assembly.</p>
+      <p>If nothing docks, the report tells you why. Each pair was either never close enough, failed one of the acceptance rules (and which one), or was blocked by a policy rule. See <a href="#trouble">When things don't dock</a> for the common causes.</p>
+      <p class="muted">Add <code>--undock</code> to check that connections also release, or <code>--no-latch</code> to see what happens with only auto-latching connectors.</p>
+    </section>
+
+    <!-- 8 MUJOCO -->
+    <section class="s" id="mujoco">
+      <h2><span class="n">8</span>Run it in MuJoCo</h2>
+      <p><code>modsim run</code> places two modules facing each other, drives one into the other along the connector's docking axis, docks them, and later pulls them apart. Name the connectors that should meet:</p>
+      <div class="code"><pre>modsim run packs/my_robot --backend mujoco \
+  --fixed-connector front --moving-connector rear \
+  --undock-at 4 --duration 6 --gui</pre></div>
+      <p>With <code>--gui</code>, two windows open on the same simulation. The <b>Runtime Inspector</b> shows the connection graph and every event as it happens. The <b>MuJoCo viewer</b> shows the bodies. Press <kbd>Space</kbd> in either window to pause both.</p>
+      <ul>
+        <li>Use <code>--view</code> for just the MuJoCo viewer, or neither flag for a headless run.</li>
+        <li>Add <code>--gravity --ground --height 0.2</code> to drop the modules onto a floor and let them settle first.</li>
+        <li>On macOS, run <code>--view</code> under <code>mjpython</code> instead of <code>python</code>.</li>
+      </ul>
+    </section>
+
+    <!-- 9 PYTHON -->
+    <section class="s" id="python">
+      <h2><span class="n">9</span>Write your own experiment</h2>
+      <p>The commands above are scripted demos. For your own research you'll want to control the scene yourself. The pattern is always the same: load the pack, place modules, create a session, then step it and react to events.</p>
+      <div class="code"><span class="file">experiment.py</span><pre><span class="k">from</span> pathlib <span class="k">import</span> Path
+
+<span class="k">from</span> modsim <span class="k">import</span> RobotPackLoader, RuntimeSession, SceneSpec
+<span class="k">from</span> modsim.core <span class="k">import</span> DockCommitted
+<span class="k">from</span> modsim.core.ids <span class="k">import</span> ConnectorInstanceId
+
+<span class="c"># 1. Load your pack</span>
+pack = RobotPackLoader().load(Path(<span class="s">"packs/my_robot"</span>))
+
+<span class="c"># 2. Place two modules 10 cm apart along x (named my_module_0, my_module_1)</span>
+scene = SceneSpec.grid(<span class="s">"my_module"</span>, count=2, spacing_m=0.1)
+
+<span class="c"># 3. Start a session on MuJoCo (swap in "mock" to test logic without physics)</span>
+session = RuntimeSession.create(pack, scene, <span class="s">"mujoco"</span>, gravity=(0.0, 0.0, 0.0))
+
+<span class="c"># 4. Ask for a dock, then step and watch what happens</span>
+session.request_dock(
+    ConnectorInstanceId(<span class="s">"my_module_0/front"</span>),
+    ConnectorInstanceId(<span class="s">"my_module_1/rear"</span>),
+)
+connection = <span class="k">None</span>
+<span class="k">for</span> _ <span class="k">in</span> range(500):
+    <span class="k">for</span> event <span class="k">in</span> session.step(0.002):
+        print(<span class="s">f"{session.world.time_s:.3f}s  {event.kind}"</span>)
+        <span class="k">if</span> isinstance(event, DockCommitted):
+            connection = event.connection_id
+
+<span class="c"># 5. Release the connection and read the results</span>
+<span class="k">if</span> connection:
+    session.request_undock(connection)
+    session.step(0.002)
+print(session.metrics().as_dict())
+session.shutdown()</pre></div>
+      <p>A few things worth knowing as you build on this:</p>
+      <ul>
+        <li><b>Docks happen inside <code>step()</code>.</b> A request is queued and checked against the rules on the next step. The dock only counts once the physics engine confirms the joint exists.</li>
+        <li><b>Events are your record.</b> <code>step()</code> returns what happened in that step: candidates found, docks committed, assemblies merged and split. <code>session.world</code> holds the current state.</li>
+        <li><b>Custom layouts.</b> Use <code>SceneSpec.of([...])</code> with <code>ModulePlacement</code> entries to place modules at any pose.</li>
+        <li><b>Driving joints.</b> Send torques with <code>session.set_joint_commands([JointCommand(JointInstanceId("my_module_0/wheel"), ControlMode.EFFORT, 0.3)])</code>. ModSim checks every command against your pack's limits before the backend sees it.</li>
+      </ul>
+    </section>
+
+    <!-- TROUBLE -->
+    <section class="s" id="trouble">
+      <h2>When things don't dock</h2>
+      <p>Most first-time problems are one of these.</p>
+      <details class="faq">
+        <summary>The connectors are never close enough</summary>
+        <div><p>Check that <code>xyz_m</code> puts the connector on the module's surface, not its centre, and that <code>--spacing</code> matches your module's size. Studio's 3D view shows where each connector actually sits.</p></div>
+      </details>
+      <details class="faq">
+        <summary>The pair fails <code>axis_alignment</code></summary>
+        <div><p>A docking axis is probably pointing into the module instead of out of it. Front and rear faces should have opposite axes, such as <code>[1, 0, 0]</code> and <code>[-1, 0, 0]</code>.</p></div>
+      </details>
+      <details class="faq">
+        <summary>The pair is blocked with <code>command_required</code></summary>
+        <div><p>At least one connector type has <code>auto_latch: false</code>, so ModSim waits for an explicit dock request. Call <code>session.request_dock(...)</code>, or set <code>auto_latch: true</code> if your hardware latches on its own.</p></div>
+      </details>
+      <details class="faq">
+        <summary>Two types that should mate are treated as incompatible</summary>
+        <div><p>Compatibility must be declared on both sides: each type lists the other in <code>compatible_with</code>. Also check that the genders pair up (male with female, hermaphroditic with hermaphroditic).</p></div>
+      </details>
+      <details class="faq">
+        <summary>A hinge connection works in MuJoCo but fails on the mock backend</summary>
+        <div><p>This is expected. The mock backend refuses hinges on purpose, because it can't model rotation. Test hinge connectors with <code>--backend mujoco</code>.</p></div>
+      </details>
+      <details class="faq">
+        <summary>After undocking, the modules stay stuck together</summary>
+        <div><p>Releasing a connection doesn't push anything apart. The modules keep moving together until something drives them away, just like real hardware. <code>modsim run</code> backs the moving module off for you. In your own scripts, drive it away after the undock.</p></div>
+      </details>
+    </section>
+
+    <section class="s" id="next">
+      <h2>Where to go next</h2>
+      <div class="next">
+        <a class="card" href="https://github.com/modlab-upenn/ModSim/blob/main/docs/robot_pack_spec.md"><b>Robot Pack reference</b><span>Every field, unit and validation rule</span></a>
+        <a class="card" href="https://github.com/modlab-upenn/ModSim/blob/main/docs/docking_semantics.md"><b>How docking works</b><span>The full acceptance, guard and lifecycle rules</span></a>
+        <a class="card" href="https://github.com/modlab-upenn/ModSim/tree/main/examples/robot_packs/smores_ep"><b>A complete real pack</b><span>SMORES-EP: meshes, four connectors, wheel motors</span></a>
+        <a class="card" href="https://github.com/modlab-upenn/ModSim/blob/main/docs/studio.md"><b>Studio guide</b><span>Every editor panel and shortcut</span></a>
+      </div>
+    </section>
+  </article>
+</div>
+
+<footer>
+  <div class="wrap">
+    <span>ModSim · <a href="https://www.modlabupenn.org/">ModLab, University of Pennsylvania</a> · MIT License</span>
+    <span><a href="https://github.com/modlab-upenn/ModSim/issues">Stuck? Open an issue</a></span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  document.querySelectorAll(".code").forEach((block) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "copy"; b.textContent = "copy";
+    b.addEventListener("click", () => {
+      const pre = block.querySelector("pre");
+      const done = () => { b.textContent = "copied"; setTimeout(() => (b.textContent = "copy"), 1400); };
+      const fallback = () => { const r = document.createRange(); r.selectNodeContents(pre); const s = getSelection(); s.removeAllRanges(); s.addRange(r); b.textContent = "press ⌘C"; };
+      try { navigator.clipboard.writeText(pre.innerText).then(done, fallback); } catch (e) { fallback(); }
+    });
+    block.appendChild(b);
+  });
+
+  /* highlight the current section in the contents rail */
+  const links = [...document.querySelectorAll("#tocList a")];
+  const byId = new Map(links.map((a) => [a.getAttribute("href").slice(1), a]));
+  const sections = [...byId.keys()].map((id) => document.getElementById(id)).filter(Boolean);
+  function update() {
+    let current = sections[0];
+    for (const s of sections) if (s.getBoundingClientRect().top < 140) current = s;
+    links.forEach((a) => a.classList.toggle("on", a === byId.get(current.id)));
+  }
+  addEventListener("scroll", update, { passive: true });
+  update();
+})();
+</script>
+</body>
+</html>
