@@ -192,6 +192,9 @@ figure { margin: 0; display: flex; flex-direction: column; gap: 10px; }
 .clip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 .clips .sp { flex: 1; }
 
+.realvid { margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.realvid video { display: block; width: 100%; max-width: 100%; aspect-ratio: 16 / 9; border-radius: var(--r); background: var(--code-bg); border: 1px solid var(--line); }
+
 /* ---------- tables ---------- */
 .tbl { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
 table.data { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
@@ -391,6 +394,10 @@ footer { margin-top: 72px; border-top: 1px solid var(--line); padding-block: 28p
       <figcaption class="caption">ModSim owns what a connection means. The backend only answers whether a requested constraint physically exists.</figcaption>
     </figure>
     <p class="runin"><b>Robot Packs.</b> A self-contained folder: your URDF for geometry and kinematics, plus strict split-YAML for modules, connectors, compatibility, acceptance regions and docking policy. Packs are imported from URDF and edited in a desktop Studio, and validated before they ever reach a simulator.</p>
+    <figure class="realvid">
+      <video src="media/studio_walkthrough_2x.mp4" autoplay muted loop playsinline controls preload="metadata" aria-label="ModSim Studio walkthrough, 2x speed"></video>
+      <figcaption class="caption">ModSim Studio with the SMORES-EP pack, 2× speed: toggling visual and collision geometry, frames, joint axes and connectors, and reading the YAML behind each module, connector and mapping.</figcaption>
+    </figure>
     <p class="runin"><b>Runtime and docking.</b> Each step, the backend advances physics and reports poses, then ModSim resolves connector frames, releases overloaded or requested connections, and evaluates new docks. A connection is committed only after the backend confirms its constraint. State changes only through events, so the log fully explains every connection.</p>
     <p class="runin"><b>Backends and inspection.</b> Adapters implement seven methods. The mock backend is kinematic and serves as the reference semantics. MuJoCo adds contact, gravity, effort-controlled joints, and runtime welds and hinges drawn from reserved pools. The Runtime Inspector shows live topology, events and planner decisions next to the native viewer.</p>
   </section>
@@ -407,15 +414,21 @@ footer { margin-top: 72px; border-top: 1px solid var(--line); padding-block: 28p
     </div>
 
     <div class="exp">
-      <h3>SMORES-EP Driver to Snake</h3>
-      <p>Seven modules reconfigure from a Driver into a Snake through four connector replacements. Single modules and three-module components drive along authored routes under gravity and tire contact.</p>
-      <div class="player" data-clips='[["Physics (4×)","full wheel-driven reconfiguration, sped up"],["Kinematic reference","same topology changes without dynamics"],["Topology graph","edges 6 → 5 → 6, four times"]]' data-dur="14"></div>
+      <h3>SMORES-EP online self-assembly</h3>
+      <p>Seven scattered SMORES-EP modules assemble into a target structure. An online planner assigns each module a goal, schedules parallel actions and plans routes, and the wheels drive every module into place under MuJoCo physics, with replanning when an approach stalls. The Runtime Inspector shows the plan, routes and action history alongside the 3D view.</p>
+      <figure class="realvid">
+        <video src="media/smores_online_assembly_6x.mp4" autoplay muted loop playsinline controls preload="metadata" aria-label="SMORES-EP online self-assembly, 6x speed"></video>
+        <figcaption class="caption">MuJoCo viewer and Runtime Inspector, 6× speed.</figcaption>
+      </figure>
     </div>
 
     <div class="exp">
-      <h3>3D M-Blocks mat to staircase</h3>
-      <p>Twelve cubes pivot from a flat 2×6 mat into a staircase using flywheel momentum and temporary edge hinges, compared against a deterministic kinematic traversal.</p>
-      <div class="player" data-clips='[["MuJoCo physics (4×)","momentum pivots with hinge capture"],["Mock reference","analytical kinematic traversal"],["Lattice view","cubic-lattice diagnostics in the Inspector"]]' data-dur="12"></div>
+      <h3>M-Blocks planar reconfiguration</h3>
+      <p>Six 3D M-Blocks cubes reconfigure from a rectangle into a line. Given only the initial and target shapes, the planner generates a sequence of lattice pivots; each cube spins up its flywheel, pivots about an edge hinge, and is checked on landing before the next move.</p>
+      <figure class="realvid">
+        <video src="media/mblocks_planar_reconf_3x.mp4" autoplay muted loop playsinline controls preload="metadata" aria-label="M-Blocks planar reconfiguration, 3x speed"></video>
+        <figcaption class="caption">MuJoCo viewer and Runtime Inspector with live and target lattices, 3× speed.</figcaption>
+      </figure>
     </div>
   </section>
 
@@ -490,6 +503,18 @@ modsim run --gui examples/robot_packs/generic_cube \
     });
     block.appendChild(b);
   });
+
+  /* ---------- real videos: respect reduced motion ---------- */
+  const realVids = document.querySelectorAll(".realvid video");
+  if (reduce) realVids.forEach((v) => { v.removeAttribute("autoplay"); v.pause(); });
+  else if ("IntersectionObserver" in window) {
+    const io = new IntersectionObserver((entries) => entries.forEach((e) => {
+      const v = e.target;
+      if (e.isIntersecting) { v.muted = true; const pr = v.play(); if (pr && pr.catch) pr.catch(() => {}); }
+      else v.pause();
+    }), { threshold: 0.35 });
+    realVids.forEach((v) => io.observe(v));
+  }
 
   /* ---------- teaser: synchronized timers ---------- */
   const timers = document.querySelectorAll("[data-timer]"), bars = document.querySelectorAll("[data-bar]");
