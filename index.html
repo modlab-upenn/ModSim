@@ -135,11 +135,10 @@ code { font-family: var(--font-mono); font-size: 0.86em; }
 
 /* ---------- sections ---------- */
 section.s { padding-block: 56px 8px; display: flex; flex-direction: column; gap: 18px; }
-section.s > p, section.s > ul { max-width: 70ch; }
 .abstract { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 22px 26px; }
 .abstract b { font-family: var(--font-display); font-stretch: 110%; }
 .runin b { font-weight: 700; }
-.caption { font-size: 0.88rem; color: var(--muted); text-align: center; max-width: 70ch; margin-inline: auto; }
+.caption { font-size: 0.88rem; color: var(--muted); text-align: center; }
 figure { margin: 0; display: flex; flex-direction: column; gap: 10px; }
 
 /* ---------- dock widget ---------- */
@@ -165,8 +164,8 @@ figure { margin: 0; display: flex; flex-direction: column; gap: 10px; }
 .w-crit td.m { font-family: var(--font-mono); font-size: 0.8rem; }
 .w-crit td.ok { color: var(--pass); font-weight: 600; }
 .w-crit td.no { color: var(--fail); font-weight: 600; }
-.w-log { background: var(--code-bg); color: var(--code-ink); font-family: var(--font-mono); font-size: 0.74rem; line-height: 1.75; padding: 12px 16px; height: 12.6em; overflow: hidden; min-width: 0; }
-.w-log div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.w-log { background: var(--code-bg); color: var(--code-ink); font-family: var(--font-mono); font-size: 0.74rem; line-height: 1.75; padding: 12px 16px; height: 12.6em; overflow-y: auto; overscroll-behavior: contain; min-width: 0; scrollbar-color: var(--code-com) transparent; }
+.w-log div { padding-left: 2ch; text-indent: -2ch; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .w-log .t { color: var(--code-com); }
 .w-log .k { color: var(--code-str); }
 .w-log .b { color: #C9B6F5; }
@@ -183,7 +182,6 @@ figure { margin: 0; display: flex; flex-direction: column; gap: 10px; }
 
 /* ---------- experiment players ---------- */
 .exp { display: flex; flex-direction: column; gap: 12px; padding-top: 18px; }
-.exp > p { max-width: 70ch; }
 .player { display: flex; flex-direction: column; gap: 10px; }
 .player .screen { aspect-ratio: 16 / 8; cursor: pointer; }
 .player .screen .play { position: absolute; inset: 0; margin: auto; width: 56px; height: 56px; border-radius: 50%; background: color-mix(in srgb, var(--code-bg) 80%, transparent); display: grid; place-items: center; }
@@ -254,7 +252,7 @@ footer { margin-top: 72px; border-top: 1px solid var(--line); padding-block: 28p
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3l8 5-8 5z" fill="currentColor"/></svg>Quickstart
       </a>
     </div>
-    <p class="tldr"><b>TL;DR</b>MuJoCo knows bodies and joints, but not modules, connectors or docks. ModSim adds that layer, so docking and reconfiguration stay correct no matter which physics engine runs underneath.</p>
+    <p class="tldr"><b>TL;DR</b>Physics engines assume a robot's structure is fixed. ModSim lets it change: modules dock and undock at runtime, and every connection is checked, confirmed by the physics engine, and logged.</p>
     <nav class="contents" aria-label="Contents">
       <a href="#abstract">Abstract</a><a href="#problem">Motivation</a><a href="#docking">Docking</a><a href="#method">ModSim</a><a href="#experiments">Experiments</a><a href="#results">Results</a><a href="#start">Get started</a><a href="#citation">Citation</a>
     </nav>
@@ -286,7 +284,7 @@ footer { margin-top: 72px; border-top: 1px solid var(--line); padding-block: 28p
   <!-- ================= ABSTRACT ================= -->
   <section class="s" id="abstract">
     <div class="abstract">
-      <p><b>Abstract.</b> Modular and multi-robot research needs more than rigid-body dynamics. A simulator must also know which bodies form a reusable module, where docking interfaces are, which interfaces are compatible, when a dock is acceptable, and how changing connections alter the robot's topology. Physics engines don't provide these concepts, and platform-specific research code tends to bake them into one application. ModSim separates modular-robot semantics from simulator mechanics through a self-contained Robot Pack format, an event-driven runtime with deterministic docking acceptance and two-phase commit, and an adapter boundary with mock and MuJoCo backends. We evaluate it on SMORES-EP and 3D M-Blocks, including a seven-module wheel-driven reconfiguration with ten docks, four undocks and no semantic failures.</p>
+      <p><b>Abstract.</b> Physics engines such as MuJoCo, Isaac Sim and Gazebo treat a robot's structure as fixed, with no concept of modules, connectors, or the docking events that change which bodies are joined. Researchers simulating modular and self-reconfigurable robots therefore rebuild these concepts by hand for each platform and each engine, typically as one-off scripts that toggle constraints with no guarantee that the logical connection graph matches what the physics actually enforces. ModSim is a Python framework that makes modular-robot semantics a first-class, engine-independent layer. Robots are described once in a validated Robot Pack that adds modules, connector types, compatibility rules and acceptance tolerances to a standard URDF. At runtime, ModSim decides when connectors may dock, asks the physics engine to create the constraint, and commits the connection only after the engine confirms it, recording every change in a replayable event log. Physics engines plug in through a small adapter interface; a kinematic mock backend and a MuJoCo backend are available today.</p>
     </div>
   </section>
 
@@ -448,7 +446,6 @@ footer { margin-top: 72px; border-top: 1px solid var(--line); padding-block: 28p
       <li><b>Capture is precise.</b> In the two-module cycle, the weld formed with connector translation of about 1 mm or less at latch.</li>
       <li><b>One pack, two backends.</b> The same Robot Packs run on the mock and MuJoCo backends under one docking contract, checked by 537 passing tests with 86% branch coverage of the core.</li>
     </ul>
-    <div class="limits"><b>Limitations</b>Magnetic attraction is not yet modeled; a latch is an ideal weld after acceptance. Contact and actuator parameters are provisional, not calibrated to hardware, and approaches start pre-aligned.</div>
   </section>
 
   <!-- ================= GET STARTED ================= -->
@@ -466,8 +463,8 @@ modsim run --gui examples/robot_packs/generic_cube \
     <h2>Citation</h2>
     <p>If ModSim is useful in your research, please cite:</p>
     <div class="code"><pre>@misc{wong2026modsim,
-  title        = {ModSim: A Backend-Agnostic Semantic and Physics Framework
-                  for Modular and Multi-Robot Simulation},
+  title        = {ModSim: An Open-Source Framework for Dynamic
+                  Modular Robot Simulation},
   author       = {Wong, Angelina and Panyam, Akshay Ram and Roede, Nils and Yim, Mark},
   year         = {2026},
   howpublished = {\url{https://github.com/modlab-upenn/ModSim}}
@@ -585,7 +582,8 @@ modsim run --gui examples/robot_packs/generic_cube \
   function push(kind, text, cls) {
     const t = ((performance.now() - st.t0) / 1000).toFixed(3);
     lines.push(`<div><span class="t">t=${t}</span>  <span class="${cls || "k"}">${kind}</span> ${text}</div>`);
-    lines = lines.slice(-7); log.innerHTML = lines.join("");
+    lines = lines.slice(-200); log.innerHTML = lines.join("");
+    log.scrollTop = log.scrollHeight;
   }
   function connB() {
     const a = st.yaw * Math.PI / 180;
