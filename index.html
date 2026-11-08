@@ -1,3 +1,9 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
 <title>ModSim Project Page</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -210,6 +216,8 @@ table.data .good { color: var(--pass); font-weight: 600; }
 
 footer { margin-top: 72px; border-top: 1px solid var(--line); padding-block: 28px; color: var(--muted); font-size: 0.86rem; text-align: center; }
 </style>
+</head>
+<body>
 
 <main>
 <div class="col">
@@ -225,11 +233,11 @@ footer { margin-top: 72px; border-top: 1px solid var(--line); padding-block: 28p
       ModSim
     </h1>
     <p class="sub">A Backend-Agnostic Semantic and Physics Framework for Modular and Multi-Robot Simulation</p>
-    <div class="authors" aria-label="Authors (placeholders)">
-      <a href="#"><span class="ph-text">Author Name</span><sup>1</sup></a>
-      <a href="#"><span class="ph-text">Author Name</span><sup>1</sup></a>
-      <a href="#"><span class="ph-text">Author Name</span><sup>1</sup></a>
-      <a href="#"><span class="ph-text">Author Name</span><sup>1</sup></a>
+    <div class="authors" aria-label="Authors">
+      <span>Angelina Wong<sup>1</sup></span>
+      <span>Akshay Ram Panyam<sup>1</sup></span>
+      <span>Nils Roede<sup>1</sup></span>
+      <span>Mark Yim<sup>1</sup></span>
     </div>
     <div class="affils"><span><sup>1</sup> ModLab, University of Pennsylvania</span></div>
     <div class="links">
@@ -453,19 +461,14 @@ modsim run --gui examples/robot_packs/generic_cube \
   --fixed-connector front --moving-connector front --duration 4</pre></div>
   </section>
 
-  <!-- ================= ACK + CITATION ================= -->
-  <section class="s" id="ack">
-    <h2>Acknowledgements</h2>
-    <p class="ph-text" style="border:0">Acknowledgements placeholder: funding, collaborators, and SMORES-EP and M-Blocks hardware teams.</p>
-  </section>
-
+  <!-- ================= CITATION ================= -->
   <section class="s" id="citation">
     <h2>Citation</h2>
     <p>If ModSim is useful in your research, please cite:</p>
-    <div class="code"><pre>@misc{modsim2026,
+    <div class="code"><pre>@misc{wong2026modsim,
   title        = {ModSim: A Backend-Agnostic Semantic and Physics Framework
                   for Modular and Multi-Robot Simulation},
-  author       = {ModSim Project Contributors},
+  author       = {Wong, Angelina and Panyam, Akshay Ram and Roede, Nils and Yim, Mark},
   year         = {2026},
   howpublished = {\url{https://github.com/modlab-upenn/ModSim}}
 }</pre></div>
@@ -691,3 +694,6 @@ modsim run --gui examples/robot_packs/generic_cube \
   requestAnimationFrame(frame);
 })();
 </script>
+
+</body>
+</html>
