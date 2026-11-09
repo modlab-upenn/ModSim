@@ -306,7 +306,7 @@ footer { margin-top: 72px; border-top: 1px solid var(--line); padding-block: 28p
     <h2>What decides whether two modules dock?</h2>
     <p>Every connector type declares an acceptance region. Two connectors dock only when they are close enough, their docking axes point at each other, and they are closing slowly enough. Then ModSim asks the backend for the constraint and records the connection only after the backend confirms it. Try it: drag the teal module toward the blue one.</p>
     <div class="widget" id="widget">
-      <div class="w-head"><span>connector type <b>fixed_face</b> · auto_latch: true · 6 mm · 8° · 50 mm/s</span><span>state: <span class="state" id="wState" data-s="free">free</span></span></div>
+      <div class="w-head"><span>connector type <b>fixed_face</b> · auto_latch: true · alignment: nominal · 6 mm · 8° · 50 mm/s</span><span>state: <span class="state" id="wState" data-s="free">free</span></span></div>
       <div class="w-stage">
         <svg id="wSvg" viewBox="0 0 640 280" role="img" aria-label="Drag the moving module to its target connector. Acceptance criteria update live.">
           <defs>
@@ -587,14 +587,14 @@ modsim run --gui examples/robot_packs/generic_cube \
   const fixedG = document.getElementById("fixedMod");
   fixedG.setAttribute("transform", `translate(${fixedC.x},${fixedC.y})`);
   drawCube(fixedG, "var(--accent)", "module_0");
-  const fConn = el("rect", { x: HALF - 4, y: -14, width: 8, height: 28, rx: 2, fill: "var(--bg)", stroke: "var(--ink)", "stroke-opacity": 0.5 }, fixedG);
+  const fConn = el("rect", { x: HALF - 9, y: -14, width: 8, height: 28, rx: 2, fill: "var(--bg)", stroke: "var(--ink)", "stroke-opacity": 0.5 }, fixedG);
   const fArr = el("line", { x1: HALF + 6, y1: 0, x2: HALF + 30, y2: 0, stroke: "var(--muted)", "stroke-width": 1.4, "marker-end": "url(#arr)" }, fixedG);
   el("text", { x: HALF - 10, y: 30, "text-anchor": "end", "fill-opacity": 0.85, "font-family": "IBM Plex Mono, monospace", "font-size": 10, fill: "var(--surface)" }, fixedG).textContent = "front";
 
   const mover = document.getElementById("mover");
   const body = el("g", {}, mover);
   drawCube(body, "var(--teal)", "module_1");
-  const mConn = el("rect", { x: -HALF - 4, y: -14, width: 8, height: 28, rx: 2, fill: "var(--bg)", stroke: "var(--ink)", "stroke-opacity": 0.5 }, body);
+  const mConn = el("rect", { x: -HALF + 1, y: -14, width: 8, height: 28, rx: 2, fill: "var(--bg)", stroke: "var(--ink)", "stroke-opacity": 0.5 }, body);
   const mArr = el("line", { x1: -HALF - 6, y1: 0, x2: -HALF - 30, y2: 0, stroke: "var(--muted)", "stroke-width": 1.4, "marker-end": "url(#arr)" }, body);
   el("text", { x: -HALF + 10, y: 30, "text-anchor": "start", "fill-opacity": 0.85, "font-family": "IBM Plex Mono, monospace", "font-size": 10, fill: "var(--surface)" }, body).textContent = "rear";
 
@@ -619,6 +619,39 @@ modsim run --gui examples/robot_packs/generic_cube \
   }
   function place() { mover.setAttribute("transform", `translate(${st.x},${st.y}) rotate(${st.yaw})`); }
 
+  /* Collision: separating-axis test between the fixed square and the rotated mover.
+     Touching (flush faces) is allowed; any interpenetration deeper than EPS is a collision. */
+  const EPS = 0.5, W = 640, H = 280;
+  function hits(x, y, yawDeg) {
+    const a = yawDeg * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
+    const dx = x - fixedC.x, dy = y - fixedC.y;
+    const axes = [[1, 0], [0, 1], [c, s], [-s, c]];
+    for (const [nx, ny] of axes) {
+      const rA = HALF * (Math.abs(nx) + Math.abs(ny));
+      const rB = HALF * (Math.abs(nx * c + ny * s) + Math.abs(-nx * s + ny * c));
+      if (Math.abs(dx * nx + dy * ny) >= rA + rB - EPS) return false;
+    }
+    return true;
+  }
+  const clampX = (x) => Math.max(HALF, Math.min(W - HALF, x));
+  const clampY = (y) => Math.max(HALF, Math.min(H - HALF, y));
+  // furthest collision-free point on the segment from a free start to a target
+  function reach(fx, fy, tx, ty, yawDeg) {
+    if (!hits(tx, ty, yawDeg)) return [tx, ty];
+    let lo = 0, hi = 1;
+    for (let i = 0; i < 16; i++) { const m = (lo + hi) / 2; hits(fx + (tx - fx) * m, fy + (ty - fy) * m, yawDeg) ? (hi = m) : (lo = m); }
+    return [fx + (tx - fx) * lo, fy + (ty - fy) * lo];
+  }
+  // move toward a target, stopping at contact and sliding along the blocking face
+  function moveTo(tx, ty) {
+    tx = clampX(tx); ty = clampY(ty);
+    if (!hits(tx, ty, st.yaw)) { st.x = tx; st.y = ty; return; }
+    let [x, y] = reach(st.x, st.y, st.x, ty, st.yaw);   // slide vertically first
+    [x, y] = reach(x, y, tx, y, st.yaw);                 // then horizontally up to contact
+    [x, y] = reach(x, y, x, ty, st.yaw);                 // and finish any remaining vertical slide
+    st.x = x; st.y = y;
+  }
+
   function measure(now) {
     const b = connB();
     st.samples.push({ t: now, x: b.x, y: b.y });
@@ -639,10 +672,13 @@ modsim run --gui examples/robot_packs/generic_cube \
     lastState = s; wState.dataset.s = s; wState.textContent = { free: "free", candidate: "candidate", accept: "in acceptance region", docked: "docked" }[s];
   }
   function commit() {
-    committing = true; st.docked = true; mover.classList.add("locked"); st.drag = null; st.anim = null;
+    committing = true; st.docked = true; mover.classList.add("locked"); st.drag = null; mover.classList.remove("dragging");
+    // alignment: nominal → connector frames snap coincident, docking axes exactly antiparallel
+    st.anim = { t: performance.now(), d: reduce ? 1 : 220, fx: st.x, fy: st.y, fyaw: st.yaw, tx: A.x + HALF, ty: A.y, tyaw: 0, free: true };
     setState("docked"); showArrows(false);
     const steps = [
       () => push("accept", "all criteria pass, policy auto_latch"),
+      () => push("align", "nominal: snap connector frames coincident, yaw 0°"),
       () => push("request", "create_physical_connection(fixed)", "b"),
       () => push("backend", "weld created, handle w0", "b"),
       () => { push("DockCommitted", "module_0/front ↔ module_1/rear"); body.firstChild.setAttribute("fill", "var(--accent)"); [fConn, mConn].forEach((c) => c.setAttribute("fill", "var(--teal)")); },
@@ -653,7 +689,13 @@ modsim run --gui examples/robot_packs/generic_cube \
   function frame(now) {
     if (st.anim) {
       const a = st.anim, k = Math.min((now - a.t) / a.d, 1), e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
-      st.x = a.fx + (a.tx - a.fx) * e; st.y = a.fy + (a.ty - a.fy) * e; st.yaw = a.fyaw + (a.tyaw - a.fyaw) * e;
+      const nx = a.fx + (a.tx - a.fx) * e, ny = a.fy + (a.ty - a.fy) * e, nyaw = a.fyaw + (a.tyaw - a.fyaw) * e;
+      if (!a.free && hits(nx, ny, nyaw)) {
+        const [cx, cy] = reach(st.x, st.y, nx, ny, st.yaw);   // stop exactly at contact
+        st.x = cx; st.y = cy; st.anim = null; place();
+        requestAnimationFrame(frame); return;
+      }
+      st.x = nx; st.y = ny; st.yaw = nyaw;
       yaw.value = Math.round(st.yaw); yawOut.textContent = Math.round(st.yaw) + "°";
       if (k >= 1) { st.anim = null; if (a.after) a.after(); }
       place();
@@ -682,15 +724,21 @@ modsim run --gui examples/robot_packs/generic_cube \
   mover.addEventListener("pointermove", (e) => {
     if (!st.drag) return;
     const p = toSvg(e);
-    st.x = Math.max(HALF, Math.min(640 - HALF, p.x + st.drag.dx));
-    st.y = Math.max(HALF, Math.min(280 - HALF, p.y + st.drag.dy));
-    if (st.x - HALF < fixedC.x + HALF && Math.abs(st.y - fixedC.y) < 2 * HALF) st.x = fixedC.x + 2 * HALF; // no overlap
+    moveTo(p.x + st.drag.dx, p.y + st.drag.dy);
     place();
   });
   const endDrag = () => { st.drag = null; mover.classList.remove("dragging"); };
   mover.addEventListener("pointerup", endDrag); mover.addEventListener("pointercancel", endDrag);
 
-  yaw.addEventListener("input", () => { if (st.docked) { yaw.value = Math.round(st.yaw); return; } st.anim = null; st.yaw = +yaw.value; yawOut.textContent = yaw.value + "°"; place(); });
+  yaw.addEventListener("input", () => { if (st.docked) { yaw.value = Math.round(st.yaw); return; } st.anim = null;
+    const ny = +yaw.value;
+    if (hits(st.x, st.y, ny)) {
+      let pushed = null;
+      for (let d = 1; d <= 90 && !pushed; d++) if (!hits(clampX(st.x + d), st.y, ny)) pushed = clampX(st.x + d);
+      if (pushed === null) { yaw.value = Math.round(st.yaw); return; }
+      st.x = pushed;
+    }
+    st.yaw = ny; yawOut.textContent = yaw.value + "°"; place(); });
 
   $("wAnimate").addEventListener("click", () => {
     if (st.docked) return;
@@ -705,7 +753,7 @@ modsim run --gui examples/robot_packs/generic_cube \
     push("AssemblySplit", "assembly:module_0 → {module_0} + {module_1}");
     body.firstChild.setAttribute("fill", "var(--teal)"); [fConn, mConn].forEach((c) => c.setAttribute("fill", "var(--bg)"));
     push("note", "releasing is not separating: drive the module away", "t");
-    st.anim = { t: performance.now(), d: reduce ? 1 : 1100, fx: st.x, fy: st.y, fyaw: st.yaw, tx: st.x + 150, ty: st.y + 10, tyaw: st.yaw,
+    st.anim = { t: performance.now(), d: reduce ? 1 : 1100, fx: st.x, fy: st.y, fyaw: st.yaw, tx: st.x + 150, ty: st.y + 10, tyaw: st.yaw, free: true,
       after: () => { showArrows(true); st.docked = false; mover.classList.remove("locked"); lastState = "docked"; setState("free"); } };
   });
   $("wReset").addEventListener("click", () => {
