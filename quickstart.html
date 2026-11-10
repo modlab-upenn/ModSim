@@ -155,9 +155,21 @@ kbd { font-family: var(--font-mono); font-size: 0.8em; border: 1px solid var(--l
 /* annotated fields */
 .fields { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
 .field { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 0.95rem; }
+.field .fk { min-width: 0; }
 .field code { background: none; padding: 0; color: var(--teal); font-weight: 500; }
 .field span { color: var(--muted); }
 @media (max-width: 560px) { .field { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
+
+
+/* connector behavior recipes */
+.behaviors { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 640px) { .behaviors { grid-template-columns: minmax(0, 1fr); } }
+.bh { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); font-size: 0.9rem; min-width: 0; }
+.bh b { font-weight: 600; font-size: 0.95rem; }
+.bh span { color: var(--muted); font-size: 0.85rem; }
+.bh .how { margin: 0; }
+.bh code { overflow-wrap: anywhere; }
+.bh em { font-style: normal; font-family: var(--font-mono); font-size: 0.72rem; color: var(--teal); margin-top: 2px; }
 
 /* callouts */
 .note { border-radius: var(--r); padding: 14px 16px; font-size: 0.95rem; display: flex; flex-direction: column; gap: 4px; }
@@ -234,7 +246,7 @@ footer a { color: var(--muted); }
   <article>
     <div class="intro">
       <span class="eyebrow">Quickstart</span>
-      <h1>Simulate your own modular robot</h1>
+      <h1>Simulate your own modular robot system</h1>
       <p class="lede">This guide takes you from a URDF of one module to a script where several of them find each other, dock, and come apart again. Each step builds on the last, so it reads best in order.</p>
       <div class="meta-row">
         <span><b>Time</b> about 45 minutes</span>
@@ -249,12 +261,12 @@ footer a { color: var(--muted); }
       <p>ModSim adds a few concepts that a physics engine doesn't have. Every step below is about one of them.</p>
       <dl class="gloss">
         <dt>Module</dt><dd>One physical unit of your robot, described by one URDF. A system is many copies of one or more module types.</dd>
-        <dt>Connector</dt><dd>A spot on a module where it can attach to another module: a magnetic face, a latch, a hinge port.</dd>
+        <dt>Connector</dt><dd>A spot on a module where it can attach to another module: a magnetic face, a latch, a hinge port, etc.</dd>
         <dt>Connector type</dt><dd>The shared rules for a kind of connector: what it can mate with, how precisely two must line up, and what joint forms when they do.</dd>
         <dt>Robot Pack</dt><dd>A folder holding your URDF plus a few YAML files that describe your modules and connectors. It's the only thing ModSim needs from you.</dd>
         <dt>Assembly</dt><dd>A group of modules that are currently connected. A module on its own counts as an assembly of one.</dd>
       </dl>
-      <p>ModSim decides <em>whether</em> two connectors should dock and keeps track of what's connected. The <b>backend</b> handles the physics. You'll use two: <code>mock</code>, which has no physics and answers instantly, and <code>mujoco</code>.</p>
+      <p>ModSim decides <em>whether</em> two connectors should dock and keeps track of what's connected. The <b>backend</b> handles the physics. You'll use two: the kinematic backend (<code>mock</code>), which has no physics and answers instantly, and <code>mujoco</code>, a full physics engine. Support for Isaac Sim is coming soon.</p>
     </section>
 
     <!-- 1 INSTALL -->
@@ -274,7 +286,7 @@ pip install -e ".[studio,mujoco]"</pre></div>
     <!-- 2 PACK -->
     <section class="s" id="pack">
       <h2><span class="n">2</span>Turn your URDF into a Robot Pack</h2>
-      <p>Your URDF stays the source of truth for shape, mass and joints. ModSim copies it, with its meshes, into a new self-contained folder, then you add the modular parts on top.</p>
+      <p>Your URDF stays the source of truth for shape, mass and joints. ModSim copies it, with its meshes, into a new self-contained folder, then you add the modular-robot specifics on top: which bodies form a module, where its connectors are, and the rules for how they dock.</p>
       <div class="code"><pre>modsim pack init --from-urdf path/to/my_module.urdf --out packs/my_robot</pre></div>
       <p>You get this folder:</p>
       <div class="tree"><span class="d">packs/my_robot/</span>
@@ -324,13 +336,32 @@ pip install -e ".[studio,mujoco]"</pre></div>
       <span class="k">auto_latch</span>: true                         <span class="c"># permanent magnets grab on their own</span></pre></div>
       <p>What each part decides:</p>
       <div class="fields">
-        <div class="field"><code>gender</code>, <code>compatible_with</code><span>Who can mate with whom. Male pairs with female, and hermaphroditic with hermaphroditic. Compatibility must be listed on <b>both</b> types, or ModSim treats the pair as incompatible.</span></div>
-        <div class="field"><code>allowed_orientations</code><span>The rotations about the docking axis at which two connectors can join. Use <code>continuous</code> with an empty list if any rotation works.</span></div>
-        <div class="field"><code>acceptance_region</code><span>How close, how well aligned, and how slow two connectors must be before a dock is accepted. If two types disagree, the stricter value wins.</span></div>
-        <div class="field"><code>physical_connection</code><span>What the physics engine creates on docking: <code>fixed</code> for a rigid weld, or <code>hinge</code> for a pivoting joint (add <code>hinge.axis</code> and <code>hinge.anchor_separation_m</code>).</span></div>
-        <div class="field"><code>docking_policy</code><span>Optional. <code>auto_latch: true</code> docks as soon as the rules are met. Leave it <code>false</code> for connectors your robot has to actively engage, and request the dock in code. You can also set <code>break_force_n</code> so a connection releases under too much load.</span></div>
+        <div class="field"><div class="fk"><code>gender</code>, <code>compatible_with</code></div><span>Who can mate with whom. Male pairs with female, hermaphroditic with hermaphroditic, and genderless with genderless. Compatibility must be listed on <b>both</b> types, or ModSim treats the pair as incompatible.</span></div>
+        <div class="field"><div class="fk"><code>allowed_orientations</code></div><span>The rotations about the docking axis at which two connectors can join. Use <code>discrete</code> with a list of angles for faces that only mate in fixed steps, or <code>continuous</code> with an empty list if any rotation works. ModSim records which discrete orientation each connection used.</span></div>
+        <div class="field"><div class="fk"><code>acceptance_region</code></div><span>How close, how well aligned, and how slow two connectors must be before a dock is accepted. The <code>shape</code> (<code>box</code>, <code>sphere</code> or <code>cylinder</code>) sets how the position tolerance is measured. If two types disagree, the stricter value wins.</span></div>
+        <div class="field"><div class="fk"><code>physical_connection</code></div><span>The joint the physics engine creates on docking. <code>fixed</code> makes a rigid weld. <code>hinge</code> makes a pivot; add <code>hinge.axis</code> (in the connector's own frame) and <code>hinge.anchor_separation_m</code>, and both mating types must declare the same values.</span></div>
+        <div class="field"><div class="fk"><code>docking_policy</code></div><span>How the connector behaves at runtime. <code>auto_latch</code> says whether it grabs on its own or waits for a command. <code>alignment</code> says whether the connection keeps the measured pose or snaps to the exact nominal one. <code>redock_cooldown_s</code> and <code>break_force_n</code> control re-docking and release under load.</span></div>
+        <div class="field"><div class="fk"><code>supports_undocking</code>, <code>limits</code></div><span>Whether the connection can ever be released (both sides must allow it), and the force and moment ratings you know for the hardware.</span></div>
+        <div class="field"><div class="fk"><code>active</code>, <code>metadata</code></div><span>Descriptive. <code>active</code> marks powered connectors, such as electropermanent magnets, versus passive ones. <code>metadata</code> holds any notes you want to keep with the type. Neither changes docking behavior.</span></div>
       </div>
-      <p class="muted">In Studio: select <b>Connector Types</b>, then <b>Add connector type</b>. Turn on <b>Declare docking policy</b> to edit the policy fields.</p>
+      <p class="muted">In Studio: select <b>Connector Types</b>, then <b>Add connector type</b>. Turn on <b>Declare docking policy</b> to edit the policy fields. Choosing <b>hinge</b> as the constraint enables the hinge axis and anchor fields.</p>
+
+      <h3>Matching your hardware's behavior</h3>
+      <p>Most real connectors differ in a few specific ways. Find the behavior your hardware has and set the matching fields. The examples are real connector types from packs in the repository.</p>
+      <div class="behaviors">
+        <div class="bh"><b>Grabs on its own when faces meet</b><span>Passive permanent magnets</span><p class="how"><code>docking_policy.auto_latch: true</code></p><em>M-Blocks magnetic face</em></div>
+        <div class="bh"><b>Latches only when your controller says so</b><span>Electropermanent magnets, motorized latches</span><p class="how"><code>docking_policy.auto_latch: false</code>, then <code>session.request_dock(...)</code></p><em>SMORES-EP EP face</em></div>
+        <div class="bh"><b>Pivots instead of locking rigid</b><span>Edge hinges for rolling or flipping modules</span><p class="how"><code>physical_connection.constraint: hinge</code> with <code>hinge.axis</code> and <code>hinge.anchor_separation_m</code></p><em>M-Blocks edge hinge</em></div>
+        <div class="bh"><b>Mates at any rotation</b><span>Round or symmetric interfaces</span><p class="how"><code>allowed_orientations.mode: continuous</code></p><em>M-Blocks edge hinge</em></div>
+        <div class="bh"><b>Mates only in fixed steps</b><span>Square faces that join every 90°</span><p class="how"><code>mode: discrete</code> with <code>values_rad</code></p><em>SMORES-EP and M-Blocks faces</em></div>
+        <div class="bh"><b>Plug and socket</b><span>Two different parts that only fit each other</span><p class="how">Two types, <code>gender: male</code> and <code>female</code>, each listing the other in <code>compatible_with</code></p></div>
+        <div class="bh"><b>Must not drift over many reconfigurations</b><span>Lattice systems</span><p class="how"><code>docking_policy.alignment: nominal</code> snaps each dock to the exact grid pose</p></div>
+        <div class="bh"><b>Needs a moment before it can grab again</b><span>Magnets that would immediately re-latch</span><p class="how"><code>docking_policy.redock_cooldown_s</code></p><em>M-Blocks face: 1.0 s</em></div>
+        <div class="bh"><b>Lets go under too much load</b><span>Connections that can be pulled apart</span><p class="how"><code>docking_policy.break_force_n</code>, a force in newtons</p></div>
+        <div class="bh"><b>Permanent once joined</b><span>Glued or one-way locks</span><p class="how"><code>supports_undocking: false</code></p></div>
+      </div>
+      <p>The full SMORES-EP and M-Blocks definitions are in <a href="https://github.com/modlab-upenn/ModSim/blob/main/examples/robot_packs/smores_ep/specs/connector_types.yaml"><code>smores_ep/specs/connector_types.yaml</code></a> and <a href="https://github.com/modlab-upenn/ModSim/blob/main/examples/robot_packs/mblocks_3d/specs/connector_types.yaml"><code>mblocks_3d/specs/connector_types.yaml</code></a>.</p>
+      <div class="note warn"><b class="t">Not simulated yet</b><span>You can already describe <code>compliant</code> (springy) connections, and record <code>ball</code> and <code>custom</code> joints, but MuJoCo doesn't simulate them yet, and simulation-level validation reports <code>ball</code> and <code>custom</code> as unsupported. Declared force limits are recorded but not yet enforced, apart from <code>break_force_n</code>.</span></div>
     </section>
 
     <!-- 4 PLACE -->
@@ -371,7 +402,7 @@ pip install -e ".[studio,mujoco]"</pre></div>
     <!-- 5 JOINTS -->
     <section class="s" id="joints">
       <h2><span class="n">5</span>Make joints drivable <span class="muted" style="font-size:0.9rem;font-weight:500;font-family:var(--font-body)">(optional)</span></h2>
-      <p>If your module has wheels or actuated joints you want to command, mark them in the module's <code>joints</code> list. MuJoCo creates a motor for every joint that declares <code>effort</code> control with a finite effort limit.</p>
+      <p>If your module has wheels or actuated joints you want to command, mark them in the module's <code>joints</code> list. MuJoCo creates an actuator for every joint that declares <code>effort</code> control with a finite effort limit.</p>
       <div class="code"><span class="file">specs/module_types.yaml, inside my_module</span><pre><span class="k">joints</span>:
   - <span class="k">id</span>: wheel
     <span class="k">source_joint_name</span>: wheel_joint      <span class="c"># the name in your URDF</span>
@@ -399,7 +430,7 @@ modsim pack validate packs/my_robot --profile simulation   <span class="c"># bef
     <!-- 7 DOCK -->
     <section class="s" id="dock">
       <h2><span class="n">7</span>Test docking without physics</h2>
-      <p>This is the fastest way to check your connector setup. <code>modsim dock</code> places copies of your module in a row, already touching, and asks whether they would dock. It uses the mock backend, so it takes a second.</p>
+      <p>This is the fastest way to check your connector setup. <code>modsim dock</code> places copies of your module in a row, already touching, and asks whether they would dock. It uses the kinematic backend (<code>mock</code>), so it takes a second.</p>
       <div class="code"><pre>modsim dock packs/my_robot --count 3 --spacing 0.1</pre></div>
       <p>Set <code>--spacing</code> to your module's width so the faces meet. You'll see each pair that came close, which docked, and the resulting assemblies. Three modules docked front-to-rear should give you a single assembly.</p>
       <p>If nothing docks, the report tells you why. Each pair was either never close enough, failed one of the acceptance rules (and which one), or was blocked by a policy rule. See <a href="#trouble">When things don't dock</a> for the common causes.</p>
@@ -419,6 +450,7 @@ modsim pack validate packs/my_robot --profile simulation   <span class="c"># bef
         <li>Add <code>--gravity --ground --height 0.2</code> to drop the modules onto a floor and let them settle first.</li>
         <li>On macOS, run <code>--view</code> under <code>mjpython</code> instead of <code>python</code>.</li>
       </ul>
+      <div class="note tip"><b class="t">More backends on the way</b><span>MuJoCo is the physics backend available today, and support for Isaac Sim and other engines is in progress. Robot Packs and experiment scripts don't depend on the backend, so moving to a new one should only mean changing <code>--backend</code>, or the backend name in <code>RuntimeSession.create</code>.</span></div>
     </section>
 
     <!-- 9 PYTHON -->
@@ -437,7 +469,7 @@ pack = RobotPackLoader().load(Path(<span class="s">"packs/my_robot"</span>))
 <span class="c"># 2. Place two modules 10 cm apart along x (named my_module_0, my_module_1)</span>
 scene = SceneSpec.grid(<span class="s">"my_module"</span>, count=2, spacing_m=0.1)
 
-<span class="c"># 3. Start a session on MuJoCo (swap in "mock" to test logic without physics)</span>
+<span class="c"># 3. Start a session on MuJoCo (swap in "mock" for the kinematic backend, no physics)</span>
 session = RuntimeSession.create(pack, scene, <span class="s">"mujoco"</span>, gravity=(0.0, 0.0, 0.0))
 
 <span class="c"># 4. Ask for a dock, then step and watch what happens</span>
@@ -488,8 +520,8 @@ session.shutdown()</pre></div>
         <div><p>Compatibility must be declared on both sides: each type lists the other in <code>compatible_with</code>. Also check that the genders pair up (male with female, hermaphroditic with hermaphroditic).</p></div>
       </details>
       <details class="faq">
-        <summary>A hinge connection works in MuJoCo but fails on the mock backend</summary>
-        <div><p>This is expected. The mock backend refuses hinges on purpose, because it can't model rotation. Test hinge connectors with <code>--backend mujoco</code>.</p></div>
+        <summary>A hinge connection works in MuJoCo but fails on the kinematic backend</summary>
+        <div><p>This is expected. The kinematic backend refuses hinges on purpose, because it can't model rotation. Test hinge connectors with <code>--backend mujoco</code>.</p></div>
       </details>
       <details class="faq">
         <summary>After undocking, the modules stay stuck together</summary>
