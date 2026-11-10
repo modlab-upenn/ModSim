@@ -688,6 +688,16 @@ modsim run --gui examples/robot_packs/generic_cube \
       [0, 10, 20, 32].forEach((extra) => [0.5, 0.38, 0.62, 0.28, 0.72].forEach((t) => [1, -1].forEach((s) => out.push({ x: x1 + (x2 - x1) * t + nx * (d + extra) * s, y: y1 + (y2 - y1) * t + ny * (d + extra) * s, anchor: "middle" }))));
       return out;
     }
+    // Candidate positions near the (x1,y1) end of an edge, for the connector face owned by that node.
+    function endCands(x1, y1, x2, y2, text, size, r) {
+      const w = textW(text, size), h = size * 1.2, len = Math.hypot(x2 - x1, y2 - y1) || 1;
+      const ux = (x2 - x1) / len, uy = (y2 - y1) / len, nx = -uy, ny = ux;
+      const d = Math.abs(nx) * w / 2 + Math.abs(ny) * h / 2 + 3;
+      const reachMax = Math.max(r + 6, len / 2 - 4), out = [];
+      [r + 12, r + 20, r + 30].map((s) => Math.min(s, reachMax)).forEach((s) => [0, 8, 16].forEach((extra) => [1, -1].forEach((sd) =>
+        out.push({ x: x1 + ux * s + nx * (d + extra) * sd, y: y1 + uy * s + ny * (d + extra) * sd, anchor: "middle" }))));
+      return out;
+    }
     // Greedy placement in the given order. memo keeps each label's previous choice to avoid flicker.
     function place(items, nodes, segs, bounds, memo) {
       const placed = [];
@@ -720,7 +730,7 @@ modsim run --gui examples/robot_packs/generic_cube \
         t.textContent = it.text; parent.appendChild(t);
       });
     }
-    return { place, draw, nodeCands, edgeCands };
+    return { place, draw, nodeCands, edgeCands, endCands };
   })();
 
   /* ---------- model-view animations (data from real ModSim plans and runs) ---------- */
@@ -838,8 +848,10 @@ modsim run --gui examples/robot_packs/generic_cube \
           el("line", { x1: A.x, y1: A.y, x2: B.x, y2: B.y, ...style }, g);
           segs.push([A.x, A.y, B.x, B.y]);
           if (style.label !== false) {
-            const lbl = e.map((c) => c.split("/")[1]).join("·");
-            labels.push({ key: "e:" + key(e), text: lbl, size: 9.5, family: mono, fill: "var(--muted)", edge: [A.x, A.y, B.x, B.y] });
+            // one face label at each end, beside the module that owns that connector
+            const [fa, fb] = e.map((c) => c.split("/")[1]);
+            labels.push({ key: "e:" + key(e) + ":a", text: fa, size: 9.5, family: mono, fill: "var(--muted)", end: [A.x, A.y, B.x, B.y] });
+            labels.push({ key: "e:" + key(e) + ":b", text: fb, size: 9.5, family: mono, fill: "var(--muted)", end: [B.x, B.y, A.x, A.y] });
           }
         };
         edges.forEach((e) => { if (adding && key(e) === key(adding) && addK < 1) return; drawEdge(e, { stroke: "var(--ink)", "stroke-opacity": 0.55, "stroke-width": 2 }); });
@@ -861,7 +873,7 @@ modsim run --gui examples/robot_packs/generic_cube \
           const P = pos[id];
           return { key: "n:" + id, text: id, size: 12, family: "IBM Plex Sans, sans-serif", fill: "var(--ink)", cands: LBL.nodeCands(P.x, P.y, 12, id, 12) };
         });
-        labels.forEach((l) => (l.cands = LBL.edgeCands(...l.edge, l.text, l.size)));
+        labels.forEach((l) => (l.cands = LBL.endCands(...l.end, l.text, l.size, 12)));
         const all = LBL.place(nodeLabels.concat(labels), circles, segs, [4, 30, LIVE_W - 4, H - 4], memo);
         LBL.draw(g, all, "var(--bg)");
         // target panel: Snake chain, vertical
@@ -886,7 +898,7 @@ modsim run --gui examples/robot_packs/generic_cube \
           meta: `connections=${conns} · assemblies=${asm} · target ${reached}/6`,
         };
       }
-      return { T, events, W, H, draw, note: "Topology model view for the SMORES-EP Driver-to-Snake plan in <code>examples/scenarios/smores_driver_to_snake.py</code>. Nodes are modules; edges are committed connections, labelled with the two connector faces." };
+      return { T, events, W, H, draw, note: "Topology model view for the SMORES-EP Driver-to-Snake plan in <code>examples/scenarios/smores_driver_to_snake.py</code>. Nodes are modules and edges are committed connections. Each end of an edge is labelled with the connector face on that module, so <code>pan</code> next to module_2 means module_2\'s pan face." };
     }
 
     /* ===== Lattice view + planner: 3D M-Blocks, six cubes, rectangle to line (modsim.planning.mblocks output) ===== */
@@ -1268,7 +1280,7 @@ modsim run --gui examples/robot_packs/generic_cube \
        targets with exponential easing, which cannot overshoot or bounce. */
     let tgt = null;
     function relayout() {
-      const L = 70, cx = (GX0 + GX1) / 2, cy = (GY0 + GY1) / 2 + 10;
+      const L = 105, cx = (GX0 + GX1) / 2, cy = (GY0 + GY1) / 2 + 10;
       const anchor = (tgt || gp).map((p) => ({ x: p.x, y: p.y }));
       const q = anchor.map((p) => ({ x: p.x, y: p.y }));
       const N = 500;
@@ -1317,7 +1329,13 @@ modsim run --gui examples/robot_packs/generic_cube \
       const LBL = window.ModSimLabels;
       const segs = conns.map((c) => [gp[c.a].x, gp[c.a].y, gp[c.b].x, gp[c.b].y]);
       const circles = gp.map((p, i) => ({ x: p.x, y: p.y, r: hover === i ? 20 : 14 }));
-      const items = conns.map((c, k) => ({ key: c.id, text: `${c.fa}·${c.fb}`, size: 9.5, family: mono, fill: "var(--muted)", cands: LBL.edgeCands(...segs[k], `${c.fa}·${c.fb}`, 9.5) }));
+      const items = conns.flatMap((c, k) => {
+        const [x1, y1, x2, y2] = segs[k];
+        return [
+          { key: c.id + ":a", text: c.fa, size: 9.5, family: mono, fill: "var(--muted)", cands: LBL.endCands(x1, y1, x2, y2, c.fa, 9.5, 14) },
+          { key: c.id + ":b", text: c.fb, size: 9.5, family: mono, fill: "var(--muted)", cands: LBL.endCands(x2, y2, x1, y1, c.fb, 9.5, 14) },
+        ];
+      });
       const lg = el("g", { "pointer-events": "none" }, graphG);
       LBL.draw(lg, LBL.place(items, circles, segs, [GX0 - 20, 30, GX1 + 8, H - 22], lblMemo), "var(--surface)");
       el("text", { x: GX1, y: H - 10, "text-anchor": "end", "font-family": mono, "font-size": 10, fill: "var(--muted)" }, graphG).textContent = "click an edge to undock";
