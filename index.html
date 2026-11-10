@@ -198,6 +198,49 @@ figure { margin: 0; display: flex; flex-direction: column; gap: 10px; }
 .realvid { margin: 0; display: flex; flex-direction: column; gap: 8px; }
 .realvid video { display: block; width: 100%; max-width: 100%; aspect-ratio: 16 / 9; border-radius: var(--r); background: var(--code-bg); border: 1px solid var(--line); }
 
+/* ---------- model-view animations ---------- */
+.mv { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.mv-tabs { display: flex; flex-wrap: wrap; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid var(--line); background: var(--bg); }
+.mv-tab { font: 500 0.85rem var(--font-body); background: none; border: 0; padding: 8px 12px; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.mv-tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.mv-status { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; padding: 10px 16px; border-bottom: 1px solid var(--line); font-family: var(--font-mono); font-size: 0.78rem; color: var(--muted); min-height: 2.6em; }
+.mv-status b { color: var(--ink); font-weight: 600; }
+.mv-status .mv-act { color: var(--ink); }
+.mv-stage { position: relative; background: var(--bg); }
+.mv-stage svg { display: block; width: 100%; height: auto; }
+.mv-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 10px 16px; border-top: 1px solid var(--line); font-size: 0.85rem; }
+.mv-ctl input[type="range"] { flex: 1; min-width: 140px; accent-color: var(--accent); }
+.mv-ctl .mv-time { font-family: var(--font-mono); font-size: 0.78rem; color: var(--muted); min-width: 9ch; text-align: right; font-variant-numeric: tabular-nums; }
+.mv-log { background: var(--code-bg); color: var(--code-ink); font-family: var(--font-mono); font-size: 0.74rem; line-height: 1.75; padding: 10px 16px; height: 7.2em; overflow-y: auto; overscroll-behavior: contain; scrollbar-color: var(--code-com) transparent; }
+.mv-log div { padding-left: 2ch; text-indent: -2ch; overflow-wrap: anywhere; }
+.mv-log .t { color: var(--code-com); }
+.mv-log .k { color: var(--code-str); }
+.mv-log .u { color: #F0A58F; }
+.mv-log .p { color: #C9B6F5; }
+.mv-note { padding: 8px 16px 12px; font-size: 0.82rem; color: var(--muted); border-top: 1px solid var(--line); }
+
+/* ---------- interactive topology playground ---------- */
+.tp { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.tp-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; padding: 10px 16px; border-bottom: 1px solid var(--line); font-family: var(--font-mono); font-size: 0.78rem; color: var(--muted); }
+.tp-head b { color: var(--ink); font-weight: 600; }
+.tp-stage { background: var(--bg); position: relative; }
+.tp-stage svg { display: block; width: 100%; height: auto; touch-action: none; user-select: none; -webkit-user-select: none; }
+.tp-mod { cursor: grab; }
+.tp-mod.dragging { cursor: grabbing; }
+.tp-joint { cursor: pointer; }
+.tp-joint:hover circle, .tp-joint:focus-visible circle { stroke-width: 3; }
+.tp-edge { cursor: pointer; }
+.tp-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 16px; border-top: 1px solid var(--line); font-size: 0.86rem; color: var(--muted); }
+.tp-ctl .sp { flex: 1; }
+.tp-hint { font-size: 0.85rem; }
+.tp-hint kbd { font-family: var(--font-mono); font-size: 0.78rem; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; background: var(--surface); color: var(--ink); }
+.tp-log { background: var(--code-bg); color: var(--code-ink); font-family: var(--font-mono); font-size: 0.74rem; line-height: 1.75; padding: 10px 16px; height: 8.8em; overflow-y: auto; overscroll-behavior: contain; scrollbar-color: var(--code-com) transparent; }
+.tp-log div { padding-left: 2ch; text-indent: -2ch; overflow-wrap: anywhere; }
+.tp-log .t { color: var(--code-com); }
+.tp-log .k { color: var(--code-str); }
+.tp-log .u { color: #F0A58F; }
+.tp-log .w { color: #F0C674; }
+
 /* ---------- tables ---------- */
 .tbl { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
 table.data { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
@@ -403,6 +446,44 @@ footer { margin-top: 72px; border-top: 1px solid var(--line); padding-block: 28p
     </figure>
     <p class="runin"><b>Runtime and docking.</b> Each step, the backend advances physics and reports poses, then ModSim resolves connector frames, releases overloaded or requested connections, and evaluates new docks. A connection is committed only after the backend confirms its constraint. State changes only through events, so the log fully explains every connection.</p>
     <p class="runin"><b>Backends and inspection.</b> Adapters implement seven methods. The mock backend is kinematic and serves as the reference semantics. MuJoCo adds contact, gravity, effort-controlled joints, and runtime welds and hinges drawn from reserved pools. The Runtime Inspector shows live topology, events and planner decisions next to the native viewer.</p>
+    <p class="runin"><b>Model views and planning.</b> ModSim never stores a picture of the robot. Model views are immutable projections generated from the canonical state on demand: a topology graph of modules and connections, or a cubic lattice for systems like M-Blocks. Online planners publish their goals, routes and action progress alongside them, so you can see what the planner intends next to what the physics actually did. Try the playground below, then see the real Runtime Inspector recordings and step-by-step replays of real ModSim plans and runs.</p>
+    <figure class="tp" id="tp" aria-label="Interactive topology playground">
+      <div class="tp-head"><span><b>Try it</b> · drag modules to dock them and watch the topology graph</span><span class="tp-counts"></span></div>
+      <div class="tp-stage"><svg viewBox="0 0 900 420" role="application" aria-label="Workspace with draggable modules beside a live topology graph"></svg></div>
+      <div class="tp-ctl">
+        <span class="tp-hint">Drag a module until a face meets another face and let go to dock. Dragging moves the whole assembly. Click a joint <kbd>⊗</kbd> or a graph edge to undock. Double-click a module to rotate it.</span>
+        <span class="sp"></span>
+        <button class="btn" id="tpUndockAll" type="button">Undock all</button>
+        <button class="btn" id="tpReset" type="button">Reset</button>
+      </div>
+      <div class="tp-log" aria-live="polite"></div>
+    </figure>
+    <figure class="realvid vclips" id="vclips">
+      <video src="media/inspector_lattice.mp4" autoplay muted loop playsinline controls preload="metadata" aria-label="Runtime Inspector recording"></video>
+      <div class="clips" role="group" aria-label="Runtime Inspector recordings">
+        <button class="clip" type="button" aria-pressed="true" data-src="media/inspector_lattice.mp4" data-cap="Cubic-lattice view, M-Blocks rectangle to line: live lattice beside the target lattice as cubes pivot into place.">Lattice view</button>
+        <button class="clip" type="button" aria-pressed="false" data-src="media/inspector_smores_planning.mp4" data-cap="Planning tab, SMORES-EP online self-assembly: goal poses, generated routes, action states and the action history.">SMORES planner</button>
+        <button class="clip" type="button" aria-pressed="false" data-src="media/inspector_mblocks_planning.mp4" data-cap="Planning tab, M-Blocks online planner: generated pivots, clearance checks and action progress.">M-Blocks planner</button>
+      </div>
+      <figcaption class="caption" id="vclipsCap">Cubic-lattice view, M-Blocks rectangle to line: live lattice beside the target lattice as cubes pivot into place.</figcaption>
+    </figure>
+    <figure class="mv" id="mv" aria-label="Animated model views and planner output">
+      <div class="mv-tabs" role="tablist" aria-label="Model view">
+        <button class="mv-tab" role="tab" type="button" data-view="topo" aria-selected="true">Topology graph · SMORES-EP</button>
+        <button class="mv-tab" role="tab" type="button" data-view="lattice" aria-selected="false">Lattice + planner · M-Blocks</button>
+        <button class="mv-tab" role="tab" type="button" data-view="smores" aria-selected="false">Online planner · SMORES-EP</button>
+      </div>
+      <div class="mv-status"><span class="mv-act"></span><span class="mv-meta"></span></div>
+      <div class="mv-stage"><svg role="img" aria-label="Animated model view"></svg></div>
+      <div class="mv-ctl">
+        <button class="btn primary" id="mvPlay" type="button">Play</button>
+        <button class="btn" id="mvRestart" type="button">Restart</button>
+        <input type="range" id="mvScrub" min="0" max="10" step="0.05" value="0" aria-label="Animation time">
+        <span class="mv-time"></span>
+      </div>
+      <div class="mv-log" aria-live="off"></div>
+      <div class="mv-note"></div>
+    </figure>
   </section>
 
   <!-- ================= EXPERIMENTS ================= -->
@@ -566,6 +647,631 @@ modsim run --gui examples/robot_packs/generic_cube \
     p.querySelector('[data-a="reset"]').addEventListener("click", () => { all = false; stop(); select(0); });
     select(0);
   });
+
+  /* ---------- model-view animations (data from real ModSim plans and runs) ---------- */
+  (function () {
+    const root = document.getElementById("mv");
+    if (!root) return;
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = root.querySelector("svg");
+    const statusL = root.querySelector(".mv-status .mv-act"), statusR = root.querySelector(".mv-status .mv-meta");
+    const logEl = root.querySelector(".mv-log"), noteEl = root.querySelector(".mv-note");
+    const scrub = root.querySelector("#mvScrub"), timeEl = root.querySelector(".mv-time");
+    const playBtn = root.querySelector("#mvPlay");
+    const el = (tag, a, parent) => { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); if (parent) parent.appendChild(e); return e; };
+    const ease = (k) => (k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2);
+    const clamp01 = (k) => Math.max(0, Math.min(1, k));
+    const MOD_COLORS = ["#2F5DA8", "#C2410C", "#7C3AED", "#15803D", "#BE185D", "#0E7490", "#B91C1C"];
+    const mono = "IBM Plex Mono, monospace";
+
+    /* ===== Topology graph: SMORES-EP Driver to Snake (plan from examples/scenarios/smores_driver_to_snake.py) ===== */
+    const TOPO = {"modules":["module_1","module_2","module_3","module_4","module_5","module_6","module_7"],"initial":[["module_2/pan","module_1/bottom"],["module_2/bottom","module_3/pan"],["module_2/right","module_4/left"],["module_4/right","module_5/left"],["module_5/pan","module_6/bottom"],["module_5/bottom","module_7/pan"]],"actions":[{"label":"Move module 1 from module 2 to module 3","undock":["module_2/pan","module_1/bottom"],"dock":["module_3/bottom","module_1/pan"],"movers":["module_1"]},{"label":"Move module 7 from module 5 to module 6","undock":["module_5/bottom","module_7/pan"],"dock":["module_6/pan","module_7/bottom"],"movers":["module_7"]},{"label":"Move the 1-3-2 subassembly onto module 4","undock":["module_4/left","module_2/right"],"dock":["module_4/bottom","module_2/pan"],"movers":["module_1","module_3","module_2"]},{"label":"Move the 5-6-7 subassembly onto module 4","undock":["module_4/right","module_5/left"],"dock":["module_4/pan","module_5/bottom"],"movers":["module_5","module_6","module_7"]}],"target":[["module_2/bottom","module_3/pan"],["module_5/pan","module_6/bottom"],["module_3/bottom","module_1/pan"],["module_6/pan","module_7/bottom"],["module_4/bottom","module_2/pan"],["module_4/pan","module_5/bottom"]],"chain":["module_1","module_3","module_2","module_4","module_5","module_6","module_7"]};
+    function topoView() {
+      const W = 900, H = 400, LIVE_W = 600;
+      const key = (e) => e.slice().sort().join("|");
+      // stage k edges: after k actions
+      const stages = [TOPO.initial.map((e) => e.slice())];
+      TOPO.actions.forEach((a) => {
+        const prev = stages[stages.length - 1].filter((e) => key(e) !== key(a.undock));
+        stages.push(prev.concat([a.dock]));
+      });
+      const ids = TOPO.modules;
+      // deterministic spring layout, seeded from the previous stage
+      function layout(edges, seed) {
+        const p = {}; ids.forEach((id, i) => (p[id] = seed ? { ...seed[id] } : { x: Math.cos(i * 0.9) * 0.3, y: Math.sin(i * 0.9) * 0.3 }));
+        const L = 0.22;
+        for (let it = 0; it < 900; it++) {
+          const f = {}; ids.forEach((id) => (f[id] = { x: 0, y: 0 }));
+          for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) {
+            const a = p[ids[i]], b = p[ids[j]]; let dx = a.x - b.x, dy = a.y - b.y; const d2 = dx * dx + dy * dy + 1e-4, d = Math.sqrt(d2);
+            const r = (L * L) / d2 * 0.6; f[ids[i]].x += dx / d * r; f[ids[i]].y += dy / d * r; f[ids[j]].x -= dx / d * r; f[ids[j]].y -= dy / d * r;
+          }
+          edges.forEach(([a0, b0]) => {
+            const a = a0.split("/")[0], b = b0.split("/")[0], A = p[a], B = p[b]; const dx = B.x - A.x, dy = B.y - A.y, d = Math.hypot(dx, dy) + 1e-6;
+            const s = (d - L) * 0.5; f[a].x += dx / d * s; f[a].y += dy / d * s; f[b].x -= dx / d * s; f[b].y -= dy / d * s;
+          });
+          const step = 0.12 * (1 - it / 900) + 0.01;
+          ids.forEach((id) => { p[id].x += f[id].x * step - p[id].x * 0.004; p[id].y += f[id].y * step - p[id].y * 0.004; });
+        }
+        // fit to box
+        const xs = ids.map((i) => p[i].x), ys = ids.map((i) => p[i].y);
+        const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+        const span = Math.max(Math.max(...xs) - Math.min(...xs), (Math.max(...ys) - Math.min(...ys)) * 1.4, 0.4);
+        const out = {}; ids.forEach((i) => (out[i] = { x: LIVE_W / 2 + (p[i].x - cx) / span * 440, y: H / 2 + 10 + (p[i].y - cy) / span * 440 }));
+        out._raw = p; return out;
+      }
+      const lay = []; let seed = null;
+      stages.forEach((edges) => { const l = layout(edges, seed); seed = l._raw; lay.push(l); });
+
+      const INTRO = 1.2, ACT = 4.4, END = 2.8;
+      const T = INTRO + TOPO.actions.length * ACT + END;
+      const events = [{ t: 0, h: `<span class="k">spawn</span> 7 × smores_ep · Driver · ${TOPO.initial.length} connections` }];
+      TOPO.actions.forEach((a, i) => {
+        const t0 = INTRO + i * ACT;
+        events.push({ t: t0, h: `<span class="p">action ${i + 1}/4</span> ${a.label}` });
+        events.push({ t: t0 + 0.6, h: `<span class="u">UndockCommitted</span> ${a.undock[0]} ✕ ${a.undock[1]}` });
+        events.push({ t: t0 + 0.6, h: `<span class="u">AssemblySplit</span> 7 → ${i === 2 || i === 3 ? "4 + 3" : "6 + 1"}` });
+        events.push({ t: t0 + 3.0, h: `<span class="k">DockCommitted</span> ${a.dock[0]} ↔ ${a.dock[1]}` });
+        events.push({ t: t0 + 3.0, h: `<span class="k">AssemblyMerged</span> → one assembly of 7` });
+      });
+      events.push({ t: T - END + 0.2, h: `<span class="k">complete</span> Snake chain 1–3–2–4–5–6–7 · 10 docks · 4 undocks · 0 failures` });
+
+      const targetEdges = TOPO.target;
+      const tKeys = new Set(targetEdges.map(key));
+      const chain = TOPO.chain;
+
+      function draw(g, t) {
+        g.innerHTML = "";
+        // phase
+        let k = Math.floor((t - INTRO) / ACT), u = (t - INTRO) - k * ACT;
+        if (t < INTRO) { k = -1; }
+        if (k >= TOPO.actions.length) { k = TOPO.actions.length; }
+        let edges, pos, removing = null, adding = null, addK = 0, remK = 0, active = null;
+        if (k < 0) { edges = stages[0]; pos = lay[0]; }
+        else if (k >= TOPO.actions.length) { edges = stages[stages.length - 1]; pos = lay[lay.length - 1]; }
+        else {
+          const a = TOPO.actions[k]; active = a;
+          const before = stages[k], after = stages[k + 1];
+          const m = ease(clamp01((u - 1.3) / 1.5));
+          pos = {}; ids.forEach((id) => (pos[id] = { x: lay[k][id].x + (lay[k + 1][id].x - lay[k][id].x) * m, y: lay[k][id].y + (lay[k + 1][id].y - lay[k][id].y) * m }));
+          if (u < 0.6) { edges = before; removing = a.undock; remK = 0; }
+          else if (u < 1.3) { edges = before.filter((e) => key(e) !== key(a.undock)); removing = a.undock; remK = clamp01((u - 0.6) / 0.7); }
+          else { edges = before.filter((e) => key(e) !== key(a.undock)); }
+          if (u >= 2.6) { adding = a.dock; addK = clamp01((u - 2.6) / 0.4); if (u >= 3.0) { edges = after; adding = a.dock; addK = 1; } }
+        }
+        const mid = (e) => e.map((c) => c.split("/")[0]);
+        const movers = active ? new Set(active.movers) : new Set();
+        // live panel frame
+        el("text", { x: 14, y: 22, "font-family": "IBM Plex Sans, sans-serif", "font-weight": 600, "font-size": 13, fill: "var(--ink)" }, g).textContent = "Live topology";
+        el("line", { x1: LIVE_W, y1: 10, x2: LIVE_W, y2: H - 10, stroke: "var(--line)" }, g);
+        // edges
+        const drawEdge = (e, style) => {
+          const [a, b] = mid(e), A = pos[a], B = pos[b];
+          el("line", { x1: A.x, y1: A.y, x2: B.x, y2: B.y, ...style }, g);
+          if (style.label !== false) {
+            const lbl = e.map((c) => c.split("/")[1]).join("·");
+            el("text", { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 - 5, "text-anchor": "middle", "font-family": mono, "font-size": 9.5, fill: "var(--muted)" }, g).textContent = lbl;
+          }
+        };
+        edges.forEach((e) => { if (adding && key(e) === key(adding) && addK < 1) return; drawEdge(e, { stroke: "var(--ink)", "stroke-opacity": 0.55, "stroke-width": 2 }); });
+        if (removing) drawEdge(removing, { stroke: "var(--fail, #B4382B)", "stroke-width": 2.5, "stroke-dasharray": "5 4", opacity: 1 - remK, label: false });
+        if (adding) {
+          const [a, b] = mid(adding), A = pos[a], B = pos[b];
+          const x2 = A.x + (B.x - A.x) * addK, y2 = A.y + (B.y - A.y) * addK;
+          el("line", { x1: A.x, y1: A.y, x2, y2, stroke: "var(--pass, #11795F)", "stroke-width": 3 }, g);
+        }
+        // nodes
+        ids.forEach((id, i) => {
+          const P = pos[id];
+          if (movers.has(id) && u > 1.0 && u < 3.0) el("circle", { cx: P.x, cy: P.y, r: 17, fill: "none", stroke: "var(--teal)", "stroke-width": 2, "stroke-dasharray": "3 3" }, g);
+          el("circle", { cx: P.x, cy: P.y, r: 11, fill: MOD_COLORS[i], stroke: "var(--surface)", "stroke-width": 2 }, g);
+          el("text", { x: P.x, y: P.y + 28, "text-anchor": "middle", "font-family": "IBM Plex Sans, sans-serif", "font-size": 12, fill: "var(--ink)" }, g).textContent = id;
+        });
+        // target panel: Snake chain, vertical
+        const TX = LIVE_W + (W - LIVE_W) / 2, top = 64, gap = (H - top - 36) / (chain.length - 1);
+        const tpos = {}; chain.forEach((id, i) => (tpos[id] = { x: TX + (i % 2 ? 26 : -26), y: top + i * gap }));
+        const liveKeys = new Set(edges.filter((e) => !(adding && key(e) === key(adding) && addK < 1)).map(key));
+        let reached = 0; targetEdges.forEach((e) => { if (liveKeys.has(key(e))) reached++; });
+        el("text", { x: LIVE_W + 16, y: 22, "font-family": "IBM Plex Sans, sans-serif", "font-weight": 600, "font-size": 13, fill: "var(--ink)" }, g).textContent = `Target topology · ${reached}/6 reached`;
+        targetEdges.forEach((e) => {
+          const [a, b] = mid(e), A = tpos[a], B = tpos[b], ok = liveKeys.has(key(e));
+          el("line", { x1: A.x, y1: A.y, x2: B.x, y2: B.y, stroke: ok ? "var(--teal)" : "#7C3AED", "stroke-width": ok ? 2.5 : 1.6, "stroke-dasharray": ok ? "" : "5 4", "stroke-opacity": ok ? 1 : 0.7 }, g);
+        });
+        chain.forEach((id) => {
+          const P = tpos[id], i = ids.indexOf(id);
+          el("circle", { cx: P.x, cy: P.y, r: 9, fill: MOD_COLORS[i], stroke: "var(--surface)", "stroke-width": 2 }, g);
+          el("text", { x: P.x + (P.x > TX ? 16 : -16), y: P.y + 4, "text-anchor": P.x > TX ? "start" : "end", "font-family": "IBM Plex Sans, sans-serif", "font-size": 11, fill: "var(--ink)" }, g).textContent = id;
+        });
+        const conns = edges.length - (adding && addK < 1 ? 1 : 0);
+        const asm = conns === 6 ? 1 : 2;
+        return {
+          act: k < 0 ? "Driver configuration · 7 modules" : k >= TOPO.actions.length ? "Target reached · Snake" : `Action ${k + 1}/4 · ${TOPO.actions[k].label}`,
+          meta: `connections=${conns} · assemblies=${asm} · target ${reached}/6`,
+        };
+      }
+      return { T, events, W, H, draw, note: "Topology model view for the SMORES-EP Driver-to-Snake plan in <code>examples/scenarios/smores_driver_to_snake.py</code>. Nodes are modules; edges are committed connections, labelled with the two connector faces." };
+    }
+
+    /* ===== Lattice view + planner: 3D M-Blocks, six cubes, rectangle to line (modsim.planning.mblocks output) ===== */
+    const MB = {"initial":{"block_1":[0,0],"block_2":[1,0],"block_3":[0,1],"block_4":[1,1],"block_5":[0,2],"block_6":[1,2]},"goal":[[1,2],[1,3],[1,4],[1,5],[1,6],[1,7]],"anchor":"block_6","actions":[["block_5","block_6",[0,2],[1,3],[1,5],-2,[[-1,2],[-1,3],[0,3],[0,4],[1,3],[1,4]],"Boundary traversal"],["block_3","block_4",[0,1],[0,2],[1,3],-1,[[-1,1],[-1,2],[0,2]],"Boundary traversal"],["block_3","block_6",[0,2],[0,3],[1,5],-1,[[-1,2],[-1,3],[0,3]],"Boundary traversal"],["block_3","block_5",[0,3],[1,4],[1,7],-2,[[-1,3],[-1,4],[0,4],[0,5],[1,4],[1,5]],"Boundary traversal"],["block_1","block_2",[0,0],[0,1],[1,1],-1,[[-1,0],[-1,1],[0,1]],"Boundary traversal"],["block_1","block_4",[0,1],[0,2],[1,3],-1,[[-1,1],[-1,2],[0,2]],"Boundary traversal"],["block_1","block_6",[0,2],[0,3],[1,5],-1,[[-1,2],[-1,3],[0,3]],"Boundary traversal"],["block_1","block_5",[0,3],[0,4],[1,7],-1,[[-1,3],[-1,4],[0,4]],"Boundary traversal"],["block_1","block_3",[0,4],[1,5],[1,9],-2,[[-1,4],[-1,5],[0,5],[0,6],[1,5],[1,6]],"Boundary traversal"],["block_2","block_4",[1,0],[0,1],[1,1],-2,[[-1,0],[-1,1],[0,-1],[0,0],[0,1],[1,-1]],"Boundary traversal"],["block_2","block_4",[0,1],[0,2],[1,3],-1,[[-1,1],[-1,2],[0,2]],"Boundary traversal"],["block_2","block_6",[0,2],[0,3],[1,5],-1,[[-1,2],[-1,3],[0,3]],"Boundary traversal"],["block_2","block_5",[0,3],[0,4],[1,7],-1,[[-1,3],[-1,4],[0,4]],"Boundary traversal"],["block_2","block_3",[0,4],[0,5],[1,9],-1,[[-1,4],[-1,5],[0,5]],"Boundary traversal"],["block_2","block_1",[0,5],[1,6],[1,11],-2,[[-1,5],[-1,6],[0,6],[0,7],[1,6],[1,7]],"Boundary traversal"],["block_4","block_6",[1,1],[0,2],[1,3],-2,[[-1,1],[-1,2],[0,0],[0,1],[0,2],[1,0]],"Boundary traversal"],["block_4","block_6",[0,2],[0,3],[1,5],-1,[[-1,2],[-1,3],[0,3]],"Boundary traversal"],["block_4","block_5",[0,3],[0,4],[1,7],-1,[[-1,3],[-1,4],[0,4]],"Boundary traversal"],["block_4","block_3",[0,4],[0,5],[1,9],-1,[[-1,4],[-1,5],[0,5]],"Boundary traversal"],["block_4","block_1",[0,5],[0,6],[1,11],-1,[[-1,5],[-1,6],[0,6]],"Boundary traversal"],["block_4","block_2",[0,6],[1,7],[1,13],-2,[[-1,6],[-1,7],[0,7],[0,8],[1,7],[1,8]],"Boundary traversal"]]};
+    function latticeView() {
+      const W = 900, H = 400;
+      const acts = MB.actions; // [moving, support, src, dst, pivot_twice, turns, clearance, reason]
+      // bounds over every cell the plan touches (lattice x → screen row, lattice y → screen column)
+      const all = Object.values(MB.initial).concat(MB.goal);
+      acts.forEach((a) => { all.push(a[2], a[3]); a[6].forEach((c) => all.push(c)); });
+      const minX = Math.min(...all.map((c) => c[0])), maxX = Math.max(...all.map((c) => c[0]));
+      const minY = Math.min(...all.map((c) => c[1])), maxY = Math.max(...all.map((c) => c[1]));
+      const cols = maxY - minY + 1, rows = maxX - minX + 1;
+      const S = Math.min((W - 80) / cols, (H - 110) / rows);
+      const ox = (W - cols * S) / 2, oy = 60 + (H - 80 - rows * S) / 2;
+      const scr = (x, y) => [ox + (y - minY + 0.5) * S, oy + (x - minX + 0.5) * S]; // centre of lattice point (x,y)
+      const INTRO = 1.0, ACT = 1.7, END = 2.8;
+      const T = INTRO + acts.length * ACT + END;
+      const events = [{ t: 0, h: `<span class="k">plan</span> sung2015_planar · 6 cubes · rectangle → line · ${acts.length} pivots · anchor ${MB.anchor}` }];
+      acts.forEach((a, i) => {
+        const t0 = INTRO + i * ACT, deg = Math.abs(a[5]) * 90;
+        events.push({ t: t0, h: `<span class="p">pivot ${i + 1}/${acts.length}</span> ${a[0]} about ${a[1]} · (${a[2]}) → (${a[3]}) · ${deg}°` });
+        events.push({ t: t0 + 1.35, h: `<span class="k">landed</span> ${a[0]} at (${a[3]}) · face capture verified` });
+      });
+      events.push({ t: T - END + 0.2, h: `<span class="k">complete</span> target reached · 6/6 goal cells` });
+      const goalKeys = new Set(MB.goal.map((c) => c.join(",")));
+      const ids = Object.keys(MB.initial);
+
+      function draw(g, t) {
+        g.innerHTML = "";
+        let k = Math.floor((t - INTRO) / ACT), u = t - INTRO - k * ACT;
+        if (t < INTRO) k = -1;
+        if (k >= acts.length) k = acts.length;
+        const cells = { ...MB.initial };
+        for (let i = 0; i < Math.min(Math.max(k, 0), acts.length); i++) cells[acts[i][0]] = acts[i][3];
+        const a = k >= 0 && k < acts.length ? acts[k] : null;
+        // grid
+        for (let x = minX; x <= maxX; x++) for (let y = minY; y <= maxY; y++) {
+          const [cx, cy] = scr(x, y);
+          el("rect", { x: cx - S / 2, y: cy - S / 2, width: S, height: S, fill: "none", stroke: "var(--line)", "stroke-width": 1 }, g);
+        }
+        // clearance cells for the active pivot
+        if (a && u < 1.35) a[6].forEach(([x, y]) => { const [cx, cy] = scr(x, y); el("rect", { x: cx - S / 2 + 1, y: cy - S / 2 + 1, width: S - 2, height: S - 2, fill: "var(--warn, #9A5B05)", "fill-opacity": 0.14 }, g); });
+        // goal cells
+        MB.goal.forEach(([x, y]) => { const [cx, cy] = scr(x, y); el("rect", { x: cx - S / 2 + 4, y: cy - S / 2 + 4, width: S - 8, height: S - 8, rx: 5, fill: "none", stroke: "#7C3AED", "stroke-width": 1.6, "stroke-dasharray": "5 4", "stroke-opacity": 0.8 }, g); });
+        // blocks
+        let filled = 0;
+        ids.forEach((id) => {
+          const isMover = a && a[0] === id && u < 1.35, isSupport = a && a[1] === id && u < 1.35;
+          const c = cells[id]; const [cx, cy] = scr(c[0], c[1]);
+          const grp = el("g", {}, g);
+          if (isMover) {
+            const m = ease(clamp01((u - 0.25) / 1.0));
+            const px = a[4][0] / 2, py = a[4][1] / 2; const [Px, Py] = scr(px, py);
+            grp.setAttribute("transform", `rotate(${-a[5] * 90 * m} ${Px} ${Py})`);
+            el("circle", { cx: Px, cy: Py, r: 5, fill: "var(--warn, #9A5B05)" }, g);
+          }
+          if (!isMover && goalKeys.has(c.join(","))) filled++;
+          el("rect", { x: cx - S / 2 + 3, y: cy - S / 2 + 3, width: S - 6, height: S - 6, rx: 6, fill: isMover ? "var(--teal)" : "var(--accent)", stroke: isSupport ? "var(--warn, #9A5B05)" : "var(--ink)", "stroke-opacity": isSupport ? 1 : 0.2, "stroke-width": isSupport ? 3 : 1 }, grp);
+          el("text", { x: cx, y: cy + 4, "text-anchor": "middle", "font-family": mono, "font-size": Math.max(10, S * 0.2), fill: "var(--surface)" }, grp).textContent = id.replace("block_", "");
+        });
+        el("text", { x: 14, y: 22, "font-family": "IBM Plex Sans, sans-serif", "font-weight": 600, "font-size": 13, fill: "var(--ink)" }, g).textContent = "Live lattice · top view";
+        el("text", { x: W - 14, y: 22, "text-anchor": "end", "font-family": mono, "font-size": 11, fill: "var(--muted)" }, g).textContent = "dashed: target line · amber: cells that must be clear · dot: pivot edge";
+        return {
+          act: k < 0 ? "Initial 2×3 rectangle · anchor block_6" : k >= acts.length ? "Target reached · line" : `Pivot ${k + 1}/${acts.length} · ${a[0]} about ${a[1]} · ${Math.abs(a[5]) * 90}° ${a[5] > 0 ? "ccw" : "cw"}`,
+          meta: `goal cells ${filled}/6 · ${a ? a[7].toLowerCase() : "planner: sung2015_planar"}`,
+        };
+      }
+      return { T, events, W, H, draw, note: "Real output of ModSim's planar M-Blocks planner (<code>mblocks_online_planning.py --preset large --plan-only</code>), drawn as a top view of the cubic lattice. Each pivot rotates one cube about an edge of its support cube." };
+    }
+
+    /* ===== SMORES-EP online planner (frames sampled from a headless smores_online_assembly run) ===== */
+    const SM = {"ids":["module_0","module_1","module_2","module_3","module_4","module_5","module_6"],"samples":[[0.0,[[0.017,0.357,1.14],[0.0,0.0,0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.264,-0.448,-0.76],[-0.172,-0.38,-2.43]],[["module_5","module_1","pending",-1,1],["module_2","module_1","pending",-1,1],["module_0","module_1","pending",-1,1],["module_6","module_1","pending",-1,1],["module_4","module_6","pending",-1,2],["module_3","module_4","pending",-1,3]],1,0,0],[1.0,[[0.013,0.352,1.17],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.256,-0.442,-0.78],[-0.172,-0.38,-2.43]],[["module_5","module_1","navigating",6,1],["module_2","module_1","pending",-1,1],["module_0","module_1","navigating",7,1],["module_6","module_1","pending",-1,1],["module_4","module_6","pending",-1,2],["module_3","module_4","pending",-1,3]],3,0,1],[2.0,[[0.007,0.344,1.27],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.239,-0.427,-0.83],[-0.172,-0.38,-2.43]],0,3,0,1],[3.0,[[0.004,0.342,1.38],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.223,-0.415,-0.92],[-0.172,-0.38,-2.43]],0,3,0,1],[4.0,[[0.003,0.339,1.45],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.213,-0.41,-1.07],[-0.172,-0.38,-2.43]],0,3,0,1],[5.0,[[0.002,0.335,1.49],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.208,-0.408,-1.24],[-0.172,-0.38,-2.43]],0,3,0,1],[6.0,[[0.001,0.33,1.51],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.207,-0.406,-1.4],[-0.172,-0.38,-2.43]],0,3,0,1],[7.0,[[0.0,0.314,1.51],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.206,-0.404,-1.47],[-0.172,-0.38,-2.43]],0,3,0,1],[8.0,[[-0.0,0.302,1.52],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.205,-0.399,-1.5],[-0.172,-0.38,-2.43]],0,3,0,1],[9.0,[[-0.001,0.293,1.53],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.205,-0.392,-1.52],[-0.172,-0.38,-2.43]],0,3,0,1],[10.0,[[-0.001,0.286,1.53],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.205,-0.386,-1.52],[-0.172,-0.38,-2.43]],0,3,0,1],[11.0,[[-0.001,0.282,1.53],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.204,-0.381,-1.52],[-0.172,-0.38,-2.43]],0,3,0,1],[12.0,[[-0.001,0.279,1.53],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.204,-0.378,-1.52],[-0.172,-0.38,-2.43]],0,3,0,1],[13.0,[[-0.001,0.276,1.53],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.204,-0.375,-1.53],[-0.172,-0.38,-2.43]],0,3,0,1],[14.0,[[-0.001,0.275,1.55],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.205,-0.374,-1.55],[-0.172,-0.38,-2.43]],0,3,0,1],[15.0,[[-0.0,0.275,1.57],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.205,-0.373,-1.57],[-0.172,-0.38,-2.43]],0,3,0,1],[16.0,[[0.0,0.274,1.59],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.206,-0.372,-1.59],[-0.172,-0.38,-2.43]],0,3,0,1],[17.0,[[0.001,0.273,1.61],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.206,-0.372,-1.61],[-0.172,-0.38,-2.43]],0,3,0,1],[18.0,[[0.002,0.272,1.64],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.207,-0.371,-1.64],[-0.172,-0.38,-2.43]],0,3,0,1],[19.0,[[0.006,0.27,1.73],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.21,-0.356,-1.66],[-0.172,-0.38,-2.43]],0,3,0,1],[20.0,[[0.013,0.261,1.8],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.211,-0.34,-1.64],[-0.172,-0.38,-2.43]],0,3,0,1],[21.0,[[0.024,0.249,1.88],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.212,-0.33,-1.63],[-0.172,-0.38,-2.43]],0,3,0,1],[22.0,[[0.032,0.234,1.9],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.212,-0.322,-1.62],[-0.172,-0.38,-2.43]],0,3,0,1],[23.0,[[0.029,0.23,1.73],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.213,-0.316,-1.62],[-0.172,-0.38,-2.43]],[["module_5","module_1","navigating",6,1],["module_2","module_1","pending",-1,1],["module_0","module_1","aligning",7,1],["module_6","module_1","pending",-1,1],["module_4","module_6","pending",-1,2],["module_3","module_4","pending",-1,3]],3,0,1],[24.0,[[0.033,0.204,1.73],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.213,-0.311,-1.62],[-0.172,-0.38,-2.43]],[["module_5","module_1","navigating",6,1],["module_2","module_1","pending",-1,1],["module_0","module_1","approaching",7,1],["module_6","module_1","pending",-1,1],["module_4","module_6","pending",-1,2],["module_3","module_4","pending",-1,3]],3,0,1],[25.0,[[0.035,0.19,1.69],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.213,-0.307,-1.62],[-0.172,-0.38,-2.43]],0,3,0,1],[26.0,[[0.037,0.175,1.66],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.213,-0.304,-1.62],[-0.172,-0.38,-2.43]],0,3,0,1],[27.0,[[0.038,0.159,1.64],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.213,-0.302,-1.61],[-0.172,-0.38,-2.43]],0,3,0,1],[28.0,[[0.039,0.142,1.63],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.213,-0.3,-1.6],[-0.172,-0.38,-2.43]],0,3,0,1],[29.0,[[0.04,0.125,1.62],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.213,-0.299,-1.59],[-0.172,-0.38,-2.43]],0,3,0,1],[30.0,[[0.041,0.107,1.62],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.212,-0.299,-1.57],[-0.172,-0.38,-2.43]],0,3,0,1],[31.0,[[0.042,0.091,1.61],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.212,-0.298,-1.55],[-0.172,-0.38,-2.43]],0,3,0,1],[32.0,[[0.042,0.075,1.61],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.211,-0.297,-1.53],[-0.172,-0.38,-2.43]],0,3,0,1],[33.0,[[0.042,0.069,1.6],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.211,-0.296,-1.52],[-0.172,-0.38,-2.43]],0,3,0,1],[34.0,[[0.042,0.067,1.6],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.208,-0.293,-1.46],[-0.172,-0.38,-2.43]],0,3,0,1],[35.0,[[0.042,0.066,1.6],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.2,-0.294,-1.32],[-0.172,-0.38,-2.43]],0,3,0,1],[36.0,[[0.042,0.065,1.59],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.188,-0.295,-1.16],[-0.172,-0.38,-2.43]],0,3,0,1],[37.0,[[0.042,0.064,1.58],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.174,-0.284,-1.07],[-0.172,-0.38,-2.43]],0,3,0,1],[38.0,[[0.041,0.063,1.57],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.156,-0.273,-0.97],[-0.172,-0.38,-2.43]],0,3,0,1],[39.0,[[0.041,0.061,1.56],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.138,-0.259,-0.92],[-0.172,-0.38,-2.43]],0,3,0,1],[40.0,[[0.041,0.061,1.56],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.12,-0.241,-0.89],[-0.172,-0.38,-2.43]],0,3,0,1],[41.0,[[0.041,0.06,1.55],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.104,-0.227,-0.78],[-0.172,-0.38,-2.43]],0,3,0,1],[42.0,[[0.04,0.059,1.54],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.088,-0.219,-0.62],[-0.172,-0.38,-2.43]],[["module_5","module_1","aligning",6,1],["module_2","module_1","pending",-1,1],["module_0","module_1","approaching",7,1],["module_6","module_1","pending",-1,1],["module_4","module_6","pending",-1,2],["module_3","module_4","pending",-1,3]],3,0,1],[43.0,[[0.04,0.059,1.53],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.064,-0.204,-0.59],[-0.172,-0.38,-2.43]],0,3,0,1],[44.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.04,-0.197,-0.51],[-0.172,-0.38,-2.43]],0,3,0,1],[45.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.037,-0.198,-0.77],[-0.172,-0.38,-2.43]],[["module_5","module_1","aligning",6,1],["module_2","module_1","pending",-1,1],["module_0","module_1","complete",7,1],["module_6","module_1","pending",-1,1],["module_4","module_6","pending",-1,2],["module_3","module_4","pending",-1,3]],3,0,2],[46.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.045,-0.204,-1.08],[-0.172,-0.38,-2.43]],0,3,0,2],[47.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.053,-0.211,-1.36],[-0.172,-0.38,-2.43]],0,3,0,2],[48.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.046,-0.196,-1.33],[-0.172,-0.38,-2.43]],[["module_5","module_1","approaching",6,1],["module_2","module_1","pending",-1,1],["module_0","module_1","complete",7,1],["module_6","module_1","pending",-1,1],["module_4","module_6","pending",-1,2],["module_3","module_4","pending",-1,3]],3,0,2],[49.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.04,-0.173,-1.35],[-0.172,-0.38,-2.43]],0,3,0,2],[50.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.036,-0.16,-1.4],[-0.172,-0.38,-2.43]],0,3,0,2],[51.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.034,-0.147,-1.45],[-0.172,-0.38,-2.43]],0,3,0,2],[52.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.032,-0.132,-1.48],[-0.172,-0.38,-2.43]],0,3,0,2],[53.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.031,-0.116,-1.5],[-0.172,-0.38,-2.43]],0,3,0,2],[54.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.099,-1.51],[-0.172,-0.38,-2.43]],0,3,0,2],[55.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.029,-0.082,-1.52],[-0.172,-0.38,-2.43]],0,3,0,2],[56.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.028,-0.07,-1.53],[-0.172,-0.38,-2.43]],0,3,0,2],[57.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.028,-0.066,-1.53],[-0.172,-0.38,-2.43]],0,3,0,2],[58.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.028,-0.065,-1.53],[-0.172,-0.38,-2.43]],0,3,0,2],[59.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.028,-0.065,-1.53],[-0.172,-0.38,-2.43]],0,3,0,2],[60.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.029,-0.064,-1.54],[-0.172,-0.38,-2.43]],0,3,0,2],[61.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.029,-0.063,-1.55],[-0.172,-0.38,-2.43]],0,3,0,2],[62.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.029,-0.062,-1.55],[-0.172,-0.38,-2.43]],0,3,0,2],[63.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.029,-0.061,-1.56],[-0.172,-0.38,-2.43]],0,3,0,2],[64.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.029,-0.061,-1.56],[-0.172,-0.38,-2.43]],0,3,0,2],[65.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.029,-0.06,-1.57],[-0.172,-0.38,-2.43]],0,3,0,2],[66.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.06,-1.57],[-0.172,-0.38,-2.43]],0,3,0,2],[67.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.305,0.129,0.64],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.172,-0.38,-2.43]],0,3,0,2],[68.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.298,0.125,0.65],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.166,-0.376,-2.42]],[["module_5","module_1","complete",6,1],["module_2","module_1","navigating",8,1],["module_0","module_1","complete",7,1],["module_6","module_1","navigating",9,1],["module_4","module_6","pending",-1,2],["module_3","module_4","pending",-1,3]],5,0,3],[69.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.278,0.111,0.7],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.148,-0.364,-2.35]],0,5,0,3],[70.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.262,0.104,0.84],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.135,-0.361,-2.21]],0,5,0,3],[71.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.252,0.105,1.04],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.126,-0.362,-2.05]],0,5,0,3],[72.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.246,0.106,1.19],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.12,-0.36,-1.93]],0,5,0,3],[73.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.243,0.105,1.33],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.117,-0.358,-1.81]],0,5,0,3],[74.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.241,0.103,1.42],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.115,-0.355,-1.73]],0,5,0,3],[75.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.24,0.098,1.47],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.114,-0.35,-1.68]],0,5,0,3],[76.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.239,0.091,1.5],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.113,-0.343,-1.65]],0,5,0,3],[77.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.239,0.083,1.52],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.113,-0.335,-1.63]],0,5,0,3],[78.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.238,0.076,1.52],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.112,-0.327,-1.62]],0,5,0,3],[79.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.238,0.071,1.52],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.112,-0.322,-1.62]],0,5,0,3],[80.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.238,0.067,1.52],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.112,-0.318,-1.62]],0,5,0,3],[81.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.238,0.063,1.53],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.112,-0.315,-1.61]],0,5,0,3],[82.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.238,0.06,1.53],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.112,-0.312,-1.61]],0,5,0,3],[83.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.238,0.059,1.55],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.112,-0.31,-1.61]],0,5,0,3],[84.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.239,0.058,1.57],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.112,-0.309,-1.59]],0,5,0,3],[85.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.239,0.057,1.59],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.113,-0.308,-1.58]],0,5,0,3],[86.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.24,0.056,1.6],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.113,-0.307,-1.56]],0,5,0,3],[87.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.24,0.055,1.62],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.113,-0.306,-1.54]],0,5,0,3],[88.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.243,0.053,1.68],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.114,-0.305,-1.53]],0,5,0,3],[89.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.25,0.05,1.81],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.115,-0.304,-1.51]],0,5,0,3],[90.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.261,0.053,1.96],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.119,-0.301,-1.43]],0,5,0,3],[91.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.253,0.059,1.7],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.128,-0.3,-1.27]],0,5,0,3],[92.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.249,0.061,1.6],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.142,-0.302,-1.1]],0,5,0,3],[93.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.248,0.062,1.54],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.154,-0.291,-1.12]],0,5,0,3],[94.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.244,0.065,1.42],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.162,-0.283,-1.22]],0,5,0,3],[95.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.238,0.049,1.39],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.167,-0.279,-1.33]],[["module_5","module_1","complete",6,1],["module_2","module_1","aligning",8,1],["module_0","module_1","complete",7,1],["module_6","module_1","navigating",9,1],["module_4","module_6","pending",-1,2],["module_3","module_4","pending",-1,3]],5,0,3],[96.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.234,0.03,1.41],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.169,-0.276,-1.42]],0,5,0,3],[97.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.232,0.016,1.45],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.17,-0.27,-1.47]],0,5,0,3],[98.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.23,0.003,1.48],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.17,-0.264,-1.5]],0,5,0,3],[99.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.23,-0.006,1.51],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.171,-0.256,-1.52]],0,5,0,3],[100.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.225,-0.006,1.37],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.171,-0.241,-1.52]],0,5,0,3],[101.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.216,0.002,1.11],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.172,-0.227,-1.52]],0,5,0,3],[102.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.206,0.007,0.76],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.173,-0.217,-1.53]],0,5,0,3],[103.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.198,0.007,0.39],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.173,-0.209,-1.53]],0,5,0,3],[104.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.181,-0.002,0.15],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.173,-0.205,-1.53]],[["module_5","module_1","complete",6,1],["module_2","module_1","approaching",8,1],["module_0","module_1","complete",7,1],["module_6","module_1","navigating",9,1],["module_4","module_6","pending",-1,2],["module_3","module_4","pending",-1,3]],5,0,3],[105.0,[[0.04,0.058,1.53],[0.0,0.0,-0.0],[0.151,-0.003,0.07],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.173,-0.202,-1.53]],0,5,0,3],[106.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.122,-0.003,0.05],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.173,-0.199,-1.54]],0,5,0,3],[107.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.101,-0.004,0.03],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.173,-0.198,-1.56]],0,5,0,3],[108.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.172,-0.197,-1.59]],[["module_5","module_1","complete",6,1],["module_2","module_1","complete",8,1],["module_0","module_1","complete",7,1],["module_6","module_1","navigating",9,1],["module_4","module_6","pending",-1,2],["module_3","module_4","pending",-1,3]],5,0,4],[109.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.171,-0.197,-1.61]],0,5,0,4],[110.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.171,-0.18,-1.61]],0,5,0,4],[111.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.17,-0.164,-1.62]],0,5,0,4],[112.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.169,-0.151,-1.62]],0,5,0,4],[113.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.168,-0.124,-1.62]],0,5,0,4],[114.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.167,-0.101,-1.62]],0,5,0,4],[115.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.166,-0.083,-1.61]],0,5,0,4],[116.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.165,-0.069,-1.61]],0,5,0,4],[117.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.165,-0.056,-1.61]],[["module_5","module_1","complete",6,1],["module_2","module_1","complete",8,1],["module_0","module_1","complete",7,1],["module_6","module_1","aligning",9,1],["module_4","module_6","pending",-1,2],["module_3","module_4","pending",-1,3]],5,0,4],[118.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.164,-0.032,-1.6]],0,5,0,4],[119.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.164,-0.01,-1.6]],0,5,0,4],[120.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.163,0.007,-1.6]],0,5,0,4],[121.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.165,0.007,-1.53]],0,5,0,4],[122.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.169,0.005,-1.42]],0,5,0,4],[123.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.178,-0.001,-1.17]],0,5,0,4],[124.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.188,-0.007,-0.85]],0,5,0,4],[125.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.196,-0.008,-0.48]],0,5,0,4],[126.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.194,-0.002,-0.1]],[["module_5","module_1","complete",6,1],["module_2","module_1","complete",8,1],["module_0","module_1","complete",7,1],["module_6","module_1","approaching",9,1],["module_4","module_6","pending",-1,2],["module_3","module_4","pending",-1,3]],5,0,4],[127.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.166,-0.001,-0.04]],0,5,0,4],[128.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.137,-0.003,-0.02]],0,5,0,4],[129.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.11,-0.004,-0.01]],0,5,0,4],[130.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.318,0.158,0.82],[0.03,-0.059,-1.58],[-0.097,-0.004,-0.01]],0,5,0,4],[131.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.319,0.157,0.83],[0.03,-0.059,-1.58],[-0.095,-0.004,-0.01]],[["module_5","module_1","complete",6,1],["module_2","module_1","complete",8,1],["module_0","module_1","complete",7,1],["module_6","module_1","complete",9,1],["module_4","module_6","navigating",10,2],["module_3","module_4","pending",-1,3]],6,0,5],[132.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.335,0.144,0.89],[0.03,-0.059,-1.58],[-0.095,-0.004,-0.01]],0,6,0,5],[133.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.347,0.138,1.0],[0.03,-0.059,-1.58],[-0.095,-0.004,-0.01]],0,6,0,5],[134.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.355,0.134,1.13],[0.03,-0.059,-1.58],[-0.095,-0.004,-0.01]],0,6,0,5],[135.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.36,0.131,1.26],[0.03,-0.059,-1.58],[-0.095,-0.004,-0.01]],0,6,0,5],[136.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.363,0.129,1.37],[0.03,-0.059,-1.58],[-0.095,-0.004,-0.01]],0,6,0,5],[137.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.364,0.126,1.44],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.01]],0,6,0,5],[138.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.365,0.12,1.48],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.01]],0,6,0,5],[139.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.366,0.113,1.51],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.01]],0,6,0,5],[140.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.366,0.106,1.52],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.01]],0,6,0,5],[141.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.366,0.1,1.52],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.01]],0,6,0,5],[142.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.367,0.095,1.52],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.01]],0,6,0,5],[143.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.367,0.091,1.52],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.01]],0,6,0,5],[144.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.367,0.088,1.53],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.01]],0,6,0,5],[145.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.367,0.085,1.53],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.01]],0,6,0,5],[146.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.367,0.083,1.54],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.01]],0,6,0,5],[147.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.366,0.082,1.56],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.01]],0,6,0,5],[148.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.366,0.082,1.58],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[149.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.366,0.081,1.59],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[150.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.365,0.08,1.61],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[151.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.364,0.079,1.63],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[152.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.362,0.076,1.68],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[153.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.354,0.075,1.82],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[154.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.341,0.079,1.99],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[155.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.328,0.061,2.02],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[156.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.318,0.043,1.98],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[157.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.311,0.034,1.9],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[158.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.306,0.027,1.81],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[159.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.303,0.021,1.74],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[160.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.302,0.014,1.68],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[161.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.301,0.006,1.65],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[162.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.3,-0.003,1.63],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[163.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.3,-0.01,1.62],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[164.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.299,-0.017,1.62],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[165.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.299,-0.021,1.62],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[166.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.299,-0.024,1.61],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[167.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.3,-0.025,1.57],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[168.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.302,-0.024,1.5],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[169.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.308,-0.021,1.33],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[170.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.318,-0.013,1.05],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[171.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.328,-0.009,0.7],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[172.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.334,-0.011,0.33],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[173.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.319,-0.014,0.16],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],[["module_5","module_1","complete",6,1],["module_2","module_1","complete",8,1],["module_0","module_1","complete",7,1],["module_6","module_1","complete",9,1],["module_4","module_6","approaching",10,2],["module_3","module_4","pending",-1,3]],6,0,5],[174.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.291,-0.004,0.09],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.01]],0,6,0,5],[175.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.262,0.005,0.0],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.01]],0,6,0,5],[176.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.234,0.015,-0.09],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.01]],0,6,0,5],[177.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.205,0.022,-0.16],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.01]],0,6,0,5],[178.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.192,0.022,-0.18],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.01]],0,6,0,5],[179.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.188,0.022,-0.18],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.01]],0,6,0,5],[180.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.188,0.022,-0.18],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.01]],0,6,0,5],[181.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.03],[-0.318,-0.132,0.45],[-0.188,0.022,-0.18],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.01]],0,6,0,5],[182.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.188,0.022,-0.18],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[183.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.188,0.022,-0.18],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[184.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.188,0.022,-0.18],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[185.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.188,0.022,-0.18],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[186.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.188,0.023,-0.18],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[187.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.188,0.023,-0.19],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[188.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.188,0.023,-0.18],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[189.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.188,0.023,-0.19],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[190.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.188,0.023,-0.19],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[191.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.188,0.023,-0.19],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[192.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.188,0.024,-0.19],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[193.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.188,0.024,-0.19],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[194.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.188,0.024,-0.19],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[195.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.188,0.024,-0.19],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[196.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.188,0.024,-0.2],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[197.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.188,0.024,-0.2],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[198.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.188,0.025,-0.2],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[199.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.096,-0.004,0.02],[-0.318,-0.132,0.45],[-0.188,0.025,-0.2],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[200.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.096,-0.004,0.02],[-0.318,-0.132,0.45],[-0.188,0.025,-0.2],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[201.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.096,-0.004,0.02],[-0.318,-0.132,0.45],[-0.188,0.025,-0.2],[0.03,-0.059,-1.58],[-0.095,-0.003,-0.02]],0,6,0,5],[202.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.01],[0.096,-0.004,0.02],[-0.318,-0.132,0.45],[-0.188,0.025,-0.2],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,6,0,5],[203.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.01],[0.096,-0.004,0.02],[-0.318,-0.132,0.45],[-0.188,0.025,-0.2],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,6,0,5],[204.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.01],[0.096,-0.004,0.02],[-0.318,-0.132,0.45],[-0.199,0.028,-0.21],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],[["module_5","module_1","complete",6,1],["module_2","module_1","complete",8,1],["module_0","module_1","complete",7,1],["module_6","module_1","complete",9,1],["module_4","module_6","retreating",11,2],["module_3","module_4","pending",-1,3]],7,1,6],[205.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.01],[0.096,-0.004,0.02],[-0.318,-0.132,0.45],[-0.226,0.034,-0.2],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,7,1,6],[206.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.01],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.252,0.039,-0.2],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,7,1,6],[207.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.01],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.278,0.044,-0.2],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,7,1,6],[208.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.302,0.048,-0.17],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,7,1,6],[209.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.316,0.047,-0.11],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],[["module_5","module_1","complete",6,1],["module_2","module_1","complete",8,1],["module_0","module_1","complete",7,1],["module_6","module_1","complete",9,1],["module_4","module_6","navigating",12,2],["module_3","module_4","pending",-1,3]],8,1,6],[210.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.318,0.051,0.22],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,8,1,6],[211.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.319,0.051,0.23],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,8,1,6],[212.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.335,0.047,0.37],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,8,1,6],[213.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.35,0.049,0.58],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,8,1,6],[214.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.36,0.056,0.78],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,8,1,6],[215.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.367,0.06,0.96],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,8,1,6],[216.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.372,0.062,1.1],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,8,1,6],[217.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.376,0.062,1.23],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,8,1,6],[218.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.379,0.062,1.34],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,8,1,6],[219.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.38,0.06,1.41],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,8,1,6],[220.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.381,0.057,1.46],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,8,1,6],[221.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.382,0.051,1.49],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,8,1,6],[222.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.382,0.045,1.51],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,8,1,6],[223.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.382,0.038,1.52],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,8,1,6],[224.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.382,0.032,1.52],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,8,1,6],[225.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.383,0.027,1.53],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,8,1,6],[226.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.382,0.024,1.54],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,8,1,6],[227.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.382,0.022,1.56],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,8,1,6],[228.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.381,0.021,1.58],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,8,1,6],[229.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.381,0.02,1.59],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,8,1,6],[230.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.38,0.019,1.61],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],[["module_5","module_1","complete",6,1],["module_2","module_1","complete",8,1],["module_0","module_1","complete",7,1],["module_6","module_1","complete",9,1],["module_4","module_6","waiting",-1,2],["module_3","module_4","pending",-1,3]],9,2,7],[231.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.38,0.008,1.61],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],[["module_5","module_1","complete",6,1],["module_2","module_1","complete",8,1],["module_0","module_1","complete",7,1],["module_6","module_1","complete",9,1],["module_4","module_6","navigating",13,2],["module_3","module_4","pending",-1,3]],10,2,8],[232.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.38,-0.002,1.58],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,10,2,8],[233.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.382,-0.001,1.51],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,10,2,8],[234.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.388,0.002,1.36],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,10,2,8],[235.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.397,0.009,1.07],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,10,2,8],[236.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.407,0.015,0.73],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,10,2,8],[237.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.413,0.014,0.47],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,10,2,8],[238.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.406,0.015,0.38],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,10,2,8],[239.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.411,0.011,-0.03],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,10,2,8],[240.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.412,0.007,-0.3],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,10,2,8],[241.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.412,0.007,-0.31],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,10,2,8],[242.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.412,0.007,-0.31],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,10,2,8],[243.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.392,0.001,-0.3],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],[["module_5","module_1","complete",6,1],["module_2","module_1","complete",8,1],["module_0","module_1","complete",7,1],["module_6","module_1","complete",9,1],["module_4","module_6","aligning",13,2],["module_3","module_4","pending",-1,3]],10,2,8],[244.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.376,-0.004,-0.27],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,10,2,8],[245.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.376,-0.004,-0.27],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,10,2,8],[246.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.376,-0.004,-0.27],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,10,2,8],[247.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.376,-0.004,-0.27],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,10,2,8],[248.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.376,-0.004,-0.27],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,10,2,8],[249.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.376,-0.004,-0.27],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,10,2,8],[250.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.376,-0.004,-0.27],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,10,2,8],[251.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.376,-0.004,-0.27],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,10,2,8],[252.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.376,-0.004,-0.27],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,10,2,8],[253.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.376,-0.004,-0.27],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,10,2,8],[254.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.376,-0.004,-0.27],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,10,2,8],[255.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.376,-0.004,-0.27],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,10,2,8],[256.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.376,-0.004,-0.27],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,10,2,8],[257.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.376,-0.004,-0.27],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,10,2,8],[258.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.376,-0.004,-0.27],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,10,2,8],[259.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.376,-0.004,-0.27],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,10,2,8],[260.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.376,-0.004,-0.27],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,10,2,8],[261.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.376,-0.004,-0.27],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,10,2,8],[262.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.377,-0.004,-0.24],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],[["module_5","module_1","complete",6,1],["module_2","module_1","complete",8,1],["module_0","module_1","complete",7,1],["module_6","module_1","complete",9,1],["module_4","module_6","navigating",14,2],["module_3","module_4","pending",-1,3]],12,3,9],[263.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.379,0.0,0.11],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,12,3,9],[264.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.38,0.001,0.15],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,12,3,9],[265.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.361,0.003,0.14],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],[["module_5","module_1","complete",6,1],["module_2","module_1","complete",8,1],["module_0","module_1","complete",7,1],["module_6","module_1","complete",9,1],["module_4","module_6","aligning",14,2],["module_3","module_4","pending",-1,3]],12,3,9],[266.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.335,0.008,0.07],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,12,3,9],[267.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.334,0.009,0.02],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,12,3,9],[268.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.334,0.009,0.01],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,12,3,9],[269.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.334,0.009,0.01],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],[["module_5","module_1","complete",6,1],["module_2","module_1","complete",8,1],["module_0","module_1","complete",7,1],["module_6","module_1","complete",9,1],["module_4","module_6","approaching",14,2],["module_3","module_4","pending",-1,3]],12,3,9],[270.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.306,0.01,-0.06],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.02]],0,12,3,9],[271.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.277,0.009,-0.06],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.01]],0,12,3,9],[272.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.248,0.007,-0.07],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.01]],0,12,3,9],[273.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.219,0.005,-0.07],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.01]],0,12,3,9],[274.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.45],[-0.197,0.003,-0.07],[0.03,-0.059,-1.59],[-0.095,-0.003,-0.01]],0,12,3,9],[275.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.318,-0.132,0.43],[-0.191,0.003,-0.07],[0.03,-0.059,-1.59],[-0.095,-0.004,-0.01]],[["module_5","module_1","complete",6,1],["module_2","module_1","complete",8,1],["module_0","module_1","complete",7,1],["module_6","module_1","complete",9,1],["module_4","module_6","complete",14,2],["module_3","module_4","navigating",15,3]],13,3,10],[276.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.322,-0.137,0.11],[-0.191,0.003,-0.07],[0.03,-0.059,-1.59],[-0.095,-0.004,-0.01]],0,13,3,10],[277.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.322,-0.137,0.09],[-0.191,0.003,-0.06],[0.03,-0.059,-1.59],[-0.095,-0.004,-0.01]],0,13,3,10],[278.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.323,-0.14,-0.17],[-0.191,0.003,-0.06],[0.03,-0.059,-1.59],[-0.095,-0.004,-0.01]],0,13,3,10],[279.0,[[0.04,0.058,1.53],[0.0,-0.0,-0.0],[0.095,-0.004,0.02],[-0.324,-0.142,-0.3],[-0.191,0.003,-0.06],[0.03,-0.059,-1.59],[-0.095,-0.004,-0.01]],0,13,3,10],[280.0,[[0.04,0.058,1.53],[0.0,-0.001,-0.0],[0.095,-0.004,0.02],[-0.331,-0.141,-0.35],[-0.191,0.002,-0.06],[0.03,-0.059,-1.59],[-0.095,-0.004,-0.01]],0,13,3,10],[281.0,[[0.04,0.058,1.53],[0.0,-0.001,-0.0],[0.095,-0.004,0.02],[-0.347,-0.141,-0.53],[-0.191,0.002,-0.06],[0.03,-0.059,-1.59],[-0.095,-0.004,-0.01]],0,13,3,10],[282.0,[[0.04,0.058,1.53],[0.0,-0.001,-0.0],[0.095,-0.004,0.02],[-0.359,-0.145,-0.69],[-0.191,0.002,-0.06],[0.03,-0.059,-1.59],[-0.095,-0.004,-0.01]],0,13,3,10],[283.0,[[0.04,0.058,1.53],[0.0,-0.001,-0.0],[0.095,-0.005,0.02],[-0.369,-0.149,-0.81],[-0.191,0.002,-0.06],[0.03,-0.059,-1.59],[-0.095,-0.004,-0.01]],0,13,3,10],[284.0,[[0.04,0.057,1.53],[0.0,-0.001,-0.0],[0.095,-0.005,0.02],[-0.378,-0.152,-0.91],[-0.191,0.002,-0.06],[0.03,-0.059,-1.59],[-0.095,-0.004,-0.01]],0,13,3,10],[285.0,[[0.04,0.057,1.53],[0.0,-0.001,-0.0],[0.095,-0.005,0.02],[-0.385,-0.152,-0.99],[-0.191,0.002,-0.06],[0.03,-0.06,-1.59],[-0.095,-0.004,-0.01]],0,13,3,10],[286.0,[[0.04,0.057,1.53],[0.0,-0.001,-0.0],[0.095,-0.005,0.02],[-0.391,-0.151,-1.07],[-0.191,0.002,-0.06],[0.03,-0.06,-1.59],[-0.095,-0.004,-0.01]],0,13,3,10],[287.0,[[0.04,0.057,1.53],[0.0,-0.001,-0.0],[0.095,-0.005,0.02],[-0.396,-0.148,-1.15],[-0.191,0.002,-0.06],[0.03,-0.06,-1.59],[-0.095,-0.004,-0.01]],0,13,3,10],[288.0,[[0.04,0.057,1.53],[0.0,-0.001,-0.0],[0.095,-0.005,0.02],[-0.4,-0.145,-1.23],[-0.191,0.002,-0.06],[0.03,-0.06,-1.58],[-0.095,-0.004,-0.01]],0,13,3,10],[289.0,[[0.04,0.057,1.53],[0.0,-0.001,-0.0],[0.095,-0.005,0.02],[-0.403,-0.143,-1.32],[-0.191,0.002,-0.06],[0.03,-0.06,-1.59],[-0.095,-0.004,-0.01]],0,13,3,10],[290.0,[[0.04,0.057,1.53],[0.0,-0.001,-0.0],[0.095,-0.005,0.02],[-0.404,-0.142,-1.39],[-0.191,0.002,-0.06],[0.03,-0.06,-1.59],[-0.095,-0.004,-0.01]],0,13,3,10],[291.0,[[0.04,0.057,1.53],[0.0,-0.001,-0.0],[0.095,-0.005,0.02],[-0.406,-0.139,-1.43],[-0.191,0.002,-0.06],[0.03,-0.06,-1.59],[-0.095,-0.004,-0.01]],0,13,3,10],[292.0,[[0.04,0.057,1.53],[0.0,-0.001,-0.0],[0.095,-0.005,0.02],[-0.406,-0.133,-1.47],[-0.191,0.002,-0.06],[0.03,-0.06,-1.59],[-0.095,-0.004,-0.01]],0,13,3,10],[293.0,[[0.04,0.057,1.53],[0.0,-0.001,-0.0],[0.095,-0.005,0.02],[-0.407,-0.127,-1.49],[-0.191,0.002,-0.06],[0.03,-0.06,-1.58],[-0.095,-0.004,-0.01]],0,13,3,10],[294.0,[[0.04,0.057,1.53],[0.0,-0.001,-0.0],[0.095,-0.005,0.02],[-0.408,-0.121,-1.51],[-0.191,0.001,-0.06],[0.03,-0.06,-1.58],[-0.095,-0.004,-0.01]],0,13,3,10],[295.0,[[0.04,0.057,1.53],[0.0,-0.001,-0.0],[0.095,-0.005,0.02],[-0.408,-0.114,-1.51],[-0.191,0.001,-0.06],[0.03,-0.06,-1.58],[-0.095,-0.004,-0.01]],0,13,3,10],[296.0,[[0.04,0.057,1.53],[0.0,-0.001,-0.0],[0.095,-0.005,0.02],[-0.407,-0.11,-1.54],[-0.191,0.001,-0.06],[0.03,-0.06,-1.58],[-0.095,-0.004,-0.01]],0,13,3,10],[297.0,[[0.04,0.057,1.53],[0.0,-0.001,-0.0],[0.095,-0.005,0.02],[-0.407,-0.107,-1.56],[-0.191,0.001,-0.06],[0.03,-0.06,-1.58],[-0.095,-0.004,-0.01]],0,13,3,10],[298.0,[[0.04,0.057,1.53],[0.0,-0.001,-0.0],[0.095,-0.005,0.02],[-0.406,-0.105,-1.59],[-0.191,0.001,-0.05],[0.03,-0.06,-1.58],[-0.095,-0.004,-0.01]],0,13,3,10],[299.0,[[0.04,0.057,1.53],[0.0,-0.001,-0.0],[0.095,-0.005,0.02],[-0.405,-0.09,-1.59],[-0.191,0.001,-0.05],[0.03,-0.06,-1.58],[-0.095,-0.005,-0.01]],[["module_5","module_1","complete",6,1],["module_2","module_1","complete",8,1],["module_0","module_1","complete",7,1],["module_6","module_1","complete",9,1],["module_4","module_6","complete",14,2],["module_3","module_4","navigating",16,3]],15,4,11],[300.0,[[0.04,0.057,1.53],[0.0,-0.001,-0.0],[0.095,-0.005,0.02],[-0.403,-0.084,-1.65],[-0.191,0.001,-0.05],[0.03,-0.06,-1.58],[-0.095,-0.005,-0.01]],0,15,4,11],[301.0,[[0.04,0.057,1.53],[0.0,-0.001,-0.0],[0.095,-0.005,0.02],[-0.397,-0.088,-1.84],[-0.191,0.001,-0.05],[0.03,-0.06,-1.58],[-0.095,-0.005,-0.01]],0,15,4,11],[302.0,[[0.04,0.057,1.53],[0.0,-0.001,-0.0],[0.095,-0.005,0.02],[-0.394,-0.09,-1.91],[-0.191,0.001,-0.05],[0.03,-0.06,-1.58],[-0.095,-0.005,-0.01]],0,15,4,11],[303.0,[[0.04,0.057,1.53],[0.0,-0.001,-0.0],[0.095,-0.005,0.02],[-0.394,-0.09,-1.92],[-0.192,0.0,-0.05],[0.03,-0.06,-1.58],[-0.095,-0.005,-0.01]],0,15,4,11],[304.0,[[0.04,0.057,1.53],[0.0,-0.001,-0.0],[0.095,-0.005,0.02],[-0.386,-0.069,-1.92],[-0.192,0.0,-0.05],[0.03,-0.06,-1.58],[-0.095,-0.005,-0.01]],[["module_5","module_1","complete",6,1],["module_2","module_1","complete",8,1],["module_0","module_1","complete",7,1],["module_6","module_1","complete",9,1],["module_4","module_6","complete",14,2],["module_3","module_4","aligning",16,3]],15,4,11],[305.0,[[0.04,0.057,1.53],[0.0,-0.001,-0.0],[0.095,-0.005,0.02],[-0.376,-0.043,-1.91],[-0.191,0.0,-0.05],[0.03,-0.06,-1.58],[-0.095,-0.005,-0.01]],0,15,4,11],[306.0,[[0.04,0.057,1.53],[0.0,-0.001,-0.0],[0.095,-0.005,0.02],[-0.367,-0.019,-1.9],[-0.192,0.0,-0.05],[0.03,-0.06,-1.58],[-0.095,-0.005,-0.01]],0,15,4,11],[307.0,[[0.04,0.057,1.53],[0.0,-0.001,-0.0],[0.095,-0.005,0.02],[-0.36,-0.003,-1.85],[-0.192,0.0,-0.05],[0.03,-0.06,-1.58],[-0.095,-0.005,-0.01]],0,15,4,11],[308.0,[[0.04,0.057,1.52],[0.0,-0.001,-0.0],[0.095,-0.005,0.02],[-0.355,0.006,-1.78],[-0.192,0.0,-0.05],[0.03,-0.06,-1.58],[-0.095,-0.005,-0.01]],0,15,4,11],[309.0,[[0.04,0.057,1.52],[0.0,-0.001,-0.0],[0.095,-0.005,0.02],[-0.353,0.011,-1.72],[-0.192,0.0,-0.05],[0.03,-0.06,-1.58],[-0.095,-0.005,-0.01]],0,15,4,11],[310.0,[[0.04,0.057,1.52],[0.0,-0.001,-0.0],[0.095,-0.005,0.02],[-0.352,0.016,-1.67],[-0.192,0.0,-0.05],[0.03,-0.06,-1.58],[-0.095,-0.005,-0.01]],0,15,4,11],[311.0,[[0.04,0.057,1.52],[0.0,-0.001,-0.0],[0.095,-0.005,0.03],[-0.353,0.018,-1.61],[-0.192,-0.0,-0.05],[0.03,-0.06,-1.58],[-0.095,-0.005,-0.01]],0,15,4,11],[312.0,[[0.04,0.057,1.52],[0.0,-0.001,-0.0],[0.095,-0.005,0.03],[-0.355,0.017,-1.54],[-0.192,-0.0,-0.05],[0.03,-0.06,-1.58],[-0.095,-0.005,-0.01]],0,15,4,11],[313.0,[[0.04,0.057,1.52],[0.0,-0.001,-0.0],[0.095,-0.005,0.03],[-0.358,0.016,-1.45],[-0.192,-0.0,-0.05],[0.03,-0.06,-1.58],[-0.095,-0.005,-0.01]],0,15,4,11],[314.0,[[0.04,0.057,1.52],[0.0,-0.001,-0.0],[0.095,-0.005,0.03],[-0.367,0.008,-1.2],[-0.192,-0.0,-0.05],[0.03,-0.06,-1.58],[-0.095,-0.005,-0.01]],0,15,4,11],[315.0,[[0.04,0.057,1.52],[-0.0,-0.002,-0.0],[0.095,-0.005,0.03],[-0.377,0.002,-0.88],[-0.192,-0.001,-0.05],[0.03,-0.06,-1.58],[-0.095,-0.005,-0.01]],0,15,4,11],[316.0,[[0.04,0.057,1.52],[-0.0,-0.002,-0.0],[0.095,-0.005,0.03],[-0.386,-0.0,-0.52],[-0.192,-0.001,-0.05],[0.03,-0.06,-1.58],[-0.095,-0.005,-0.0]],0,15,4,11],[317.0,[[0.04,0.056,1.52],[-0.0,-0.002,-0.0],[0.095,-0.005,0.03],[-0.384,0.005,-0.14],[-0.192,-0.001,-0.05],[0.03,-0.06,-1.58],[-0.095,-0.005,-0.0]],[["module_5","module_1","complete",6,1],["module_2","module_1","complete",8,1],["module_0","module_1","complete",7,1],["module_6","module_1","complete",9,1],["module_4","module_6","complete",14,2],["module_3","module_4","approaching",16,3]],15,4,11],[318.0,[[0.04,0.056,1.52],[-0.0,-0.002,-0.0],[0.095,-0.005,0.03],[-0.355,0.006,-0.08],[-0.192,-0.001,-0.05],[0.03,-0.061,-1.58],[-0.095,-0.006,-0.0]],0,15,4,11],[319.0,[[0.04,0.056,1.52],[-0.0,-0.002,-0.0],[0.095,-0.006,0.03],[-0.326,0.004,-0.07],[-0.192,-0.001,-0.05],[0.03,-0.061,-1.58],[-0.095,-0.006,-0.0]],0,15,4,11],[320.0,[[0.04,0.056,1.52],[-0.0,-0.002,-0.0],[0.095,-0.006,0.03],[-0.299,0.002,-0.07],[-0.192,-0.001,-0.05],[0.03,-0.061,-1.58],[-0.095,-0.006,-0.0]],0,15,4,11],[321.0,[[0.04,0.056,1.52],[-0.0,-0.002,-0.0],[0.095,-0.006,0.03],[-0.288,0.002,-0.07],[-0.192,-0.001,-0.05],[0.03,-0.061,-1.58],[-0.095,-0.006,-0.0]],0,15,4,11],[322.0,[[0.04,0.056,1.52],[-0.0,-0.002,-0.0],[0.095,-0.006,0.03],[-0.284,0.001,-0.07],[-0.192,-0.001,-0.05],[0.03,-0.061,-1.58],[-0.095,-0.006,-0.0]],0,15,4,11],[323.0,[[0.04,0.056,1.52],[-0.0,-0.002,-0.0],[0.095,-0.006,0.03],[-0.283,0.001,-0.06],[-0.192,-0.001,-0.05],[0.03,-0.061,-1.58],[-0.095,-0.006,-0.0]],0,15,4,11],[324.0,[[0.04,0.056,1.52],[-0.0,-0.002,-0.0],[0.095,-0.006,0.03],[-0.283,0.001,-0.06],[-0.192,-0.001,-0.05],[0.03,-0.061,-1.58],[-0.095,-0.006,-0.0]],0,15,4,11],[325.0,[[0.04,0.056,1.52],[-0.0,-0.002,-0.0],[0.095,-0.006,0.03],[-0.283,0.001,-0.06],[-0.192,-0.001,-0.05],[0.03,-0.061,-1.58],[-0.095,-0.006,-0.0]],0,15,4,11],[326.0,[[0.04,0.056,1.52],[-0.0,-0.002,-0.0],[0.095,-0.006,0.03],[-0.283,0.001,-0.06],[-0.192,-0.001,-0.05],[0.03,-0.061,-1.58],[-0.095,-0.006,-0.0]],0,15,4,11],[327.0,[[0.04,0.056,1.52],[-0.0,-0.002,-0.0],[0.095,-0.006,0.03],[-0.283,0.001,-0.06],[-0.192,-0.001,-0.05],[0.03,-0.061,-1.58],[-0.095,-0.006,-0.0]],0,15,4,11],[328.0,[[0.04,0.056,1.52],[-0.0,-0.002,-0.0],[0.095,-0.006,0.03],[-0.283,0.001,-0.06],[-0.192,-0.001,-0.05],[0.03,-0.061,-1.58],[-0.095,-0.006,-0.0]],[["module_5","module_1","complete",6,1],["module_2","module_1","complete",8,1],["module_0","module_1","complete",7,1],["module_6","module_1","complete",9,1],["module_4","module_6","complete",14,2],["module_3","module_4","holding",16,3]],15,4,11],[328.1,[[0.04,0.056,1.52],[-0.0,-0.002,-0.0],[0.095,-0.006,0.03],[-0.283,0.001,-0.06],[-0.192,-0.001,-0.05],[0.03,-0.061,-1.58],[-0.095,-0.006,-0.0]],[["module_5","module_1","complete",6,1],["module_2","module_1","complete",8,1],["module_0","module_1","complete",7,1],["module_6","module_1","complete",9,1],["module_4","module_6","complete",14,2],["module_3","module_4","complete",16,3]],15,4,12]],"details":["0/6 docks committed \u00b7 0 active \u00b7 0 replans","0/6 docks committed \u00b7 2 active \u00b7 0 replans","1/6 docks committed \u00b7 1 active \u00b7 0 replans","2/6 docks committed \u00b7 2 active \u00b7 0 replans","3/6 docks committed \u00b7 1 active \u00b7 0 replans","4/6 docks committed \u00b7 1 active \u00b7 0 replans","4/6 docks committed \u00b7 1 active \u00b7 1 replans","4/6 docks committed \u00b7 0 active \u00b7 2 replans","4/6 docks committed \u00b7 1 active \u00b7 2 replans","4/6 docks committed \u00b7 1 active \u00b7 3 replans","5/6 docks committed \u00b7 1 active \u00b7 3 replans","5/6 docks committed \u00b7 1 active \u00b7 4 replans","6/6 docks committed \u00b7 0 active \u00b7 4 replans"],"routes":[[],[],[],[],[],[],[[0.264,-0.448],[0.246,-0.4],[0.207,-0.367],[0.189,-0.318],[0.15,-0.285],[0.114,-0.251],[0.078,-0.216],[0.071,-0.226],[0.003,-0.195],[0.034,-0.175]],[[0.017,0.357],[0.019,0.306],[0.04,0.259],[0.034,0.207],[0.034,0.207],[0.033,0.175],[0.034,0.175]],[[0.305,0.129],[0.282,0.083],[0.256,0.04],[0.261,0.038],[0.232,-0.032],[0.211,0.0]],[[-0.172,-0.38],[-0.152,-0.333],[-0.152,-0.281],[-0.148,-0.231],[-0.144,-0.181],[-0.164,-0.134],[-0.179,-0.086],[-0.195,-0.039],[-0.18,-0.037],[-0.173,0.034],[-0.211,0.0]],[[-0.318,0.158],[-0.333,0.109],[-0.327,0.057],[-0.325,0.008],[-0.323,-0.042],[-0.359,-0.012],[-0.306,-0.006],[-0.306,-0.002]],[[-0.188,0.026],[-0.385,0.003]],[[-0.316,0.047],[-0.315,0.034],[-0.353,-0.001],[-0.358,0.033],[-0.303,0.012],[-0.305,0.001]],[[-0.38,0.019],[-0.401,-0.028],[-0.413,-0.021],[-0.421,-0.01],[-0.375,0.011],[-0.376,0.036],[-0.304,0.011],[-0.306,0.0]],[[-0.376,-0.004],[-0.377,-0.02],[-0.305,-0.007],[-0.306,-0.0]],[[-0.318,-0.132],[-0.321,-0.119],[-0.32,-0.106],[-0.356,-0.069],[-0.375,-0.021],[-0.364,-0.018],[-0.371,0.049],[-0.402,0.017]],[[-0.406,-0.104],[-0.405,-0.054],[-0.393,-0.057],[-0.355,0.043],[-0.402,0.012]]],"plans":{"1":{"t":0.002,"root":"module_1","targets":{"module_1":[0.0,0.0,0.0],"module_5":[0.0345,-0.0548,-1.5708],"module_2":[0.0909,-0.0,-0.0],"module_0":[0.0345,0.0548,1.5708],"module_6":[-0.0909,0.0,0.0],"module_4":[-0.1817,0.0,0.0],"module_3":[-0.2726,0.0,0.0]},"edges":[["goal_0","goal_1"],["goal_0","goal_2"],["goal_0","goal_3"],["goal_0","goal_4"],["goal_4","goal_5"],["goal_5","goal_6"]]},"3":{"t":0.752,"root":"module_1","targets":{"module_1":[0.0,0.0,0.0],"module_5":[0.0345,-0.0548,-1.5708],"module_2":[0.0909,-0.0,-0.0],"module_0":[0.0345,0.0548,1.5708],"module_6":[-0.0909,0.0,0.0],"module_4":[-0.1817,0.0,0.0],"module_3":[-0.2726,0.0,0.0]},"edges":[["goal_0","goal_1"],["goal_0","goal_2"],["goal_0","goal_3"],["goal_0","goal_4"],["goal_4","goal_5"],["goal_5","goal_6"]]},"5":{"t":67.752,"root":"module_1","targets":{"module_1":[0.0,0.0,0.0],"module_5":[0.0345,-0.0548,-1.5708],"module_2":[0.0909,-0.0,-0.0],"module_0":[0.0345,0.0548,1.5708],"module_6":[-0.0909,0.0,0.0],"module_4":[-0.1817,0.0,0.0],"module_3":[-0.2726,0.0,0.0]},"edges":[["goal_0","goal_1"],["goal_0","goal_2"],["goal_0","goal_3"],["goal_0","goal_4"],["goal_4","goal_5"],["goal_5","goal_6"]]},"6":{"t":131.002,"root":"module_1","targets":{"module_1":[0.0,0.0,0.0],"module_5":[0.0345,-0.0548,-1.5708],"module_2":[0.0909,-0.0,-0.0],"module_0":[0.0345,0.0548,1.5708],"module_6":[-0.0909,0.0,0.0],"module_4":[-0.1817,0.0,0.0],"module_3":[-0.2726,0.0,0.0]},"edges":[["goal_0","goal_1"],["goal_0","goal_2"],["goal_0","goal_3"],["goal_0","goal_4"],["goal_4","goal_5"],["goal_5","goal_6"]]},"7":{"t":203.752,"root":"module_1","targets":{"module_1":[0.0,0.0,0.0],"module_5":[0.0345,-0.0548,-1.5708],"module_2":[0.0909,-0.0,-0.0],"module_0":[0.0345,0.0548,1.5708],"module_6":[-0.0909,0.0,0.0],"module_4":[-0.1817,0.0,0.0],"module_3":[-0.2726,0.0,0.0]},"edges":[["goal_0","goal_1"],["goal_0","goal_2"],["goal_0","goal_3"],["goal_0","goal_4"],["goal_4","goal_5"],["goal_5","goal_6"]]},"8":{"t":209.002,"root":"module_1","targets":{"module_1":[0.0,0.0,0.0],"module_5":[0.0345,-0.0548,-1.5708],"module_2":[0.0909,-0.0,-0.0],"module_0":[0.0345,0.0548,1.5708],"module_6":[-0.0909,0.0,0.0],"module_4":[-0.1817,0.0,0.0],"module_3":[-0.2726,0.0,0.0]},"edges":[["goal_0","goal_1"],["goal_0","goal_2"],["goal_0","goal_3"],["goal_0","goal_4"],["goal_4","goal_5"],["goal_5","goal_6"]]},"9":{"t":230.002,"root":"module_1","targets":{"module_1":[0.0,0.0,0.0],"module_5":[0.0345,-0.0548,-1.5708],"module_2":[0.0909,-0.0,-0.0],"module_0":[0.0345,0.0548,1.5708],"module_6":[-0.0909,0.0,0.0],"module_4":[-0.1817,0.0,0.0],"module_3":[-0.2726,0.0,0.0]},"edges":[["goal_0","goal_1"],["goal_0","goal_2"],["goal_0","goal_3"],["goal_0","goal_4"],["goal_4","goal_5"],["goal_5","goal_6"]]},"10":{"t":230.502,"root":"module_1","targets":{"module_1":[0.0,0.0,0.0],"module_5":[0.0345,-0.0548,-1.5708],"module_2":[0.0909,-0.0,-0.0],"module_0":[0.0345,0.0548,1.5708],"module_6":[-0.0909,0.0,0.0],"module_4":[-0.1817,0.0,0.0],"module_3":[-0.2726,0.0,0.0]},"edges":[["goal_0","goal_1"],["goal_0","goal_2"],["goal_0","goal_3"],["goal_0","goal_4"],["goal_4","goal_5"],["goal_5","goal_6"]]},"11":{"t":261.752,"root":"module_1","targets":{"module_1":[0.0,0.0,0.0],"module_5":[0.0345,-0.0548,-1.5708],"module_2":[0.0909,-0.0,-0.0],"module_0":[0.0345,0.0548,1.5708],"module_6":[-0.0909,0.0,0.0],"module_4":[-0.1817,0.0,0.0],"module_3":[-0.2726,0.0,0.0]},"edges":[["goal_0","goal_1"],["goal_0","goal_2"],["goal_0","goal_3"],["goal_0","goal_4"],["goal_4","goal_5"],["goal_5","goal_6"]]},"12":{"t":262.002,"root":"module_1","targets":{"module_1":[0.0,0.0,0.0],"module_5":[0.0345,-0.0548,-1.5708],"module_2":[0.0909,-0.0,-0.0],"module_0":[0.0345,0.0548,1.5708],"module_6":[-0.0909,0.0,0.0],"module_4":[-0.1817,0.0,0.0],"module_3":[-0.2726,0.0,0.0]},"edges":[["goal_0","goal_1"],["goal_0","goal_2"],["goal_0","goal_3"],["goal_0","goal_4"],["goal_4","goal_5"],["goal_5","goal_6"]]},"13":{"t":275.002,"root":"module_1","targets":{"module_1":[0.0,0.0,0.0],"module_5":[0.0345,-0.0548,-1.5708],"module_2":[0.0909,-0.0,-0.0],"module_0":[0.0345,0.0548,1.5708],"module_6":[-0.0909,0.0,0.0],"module_4":[-0.1817,0.0,0.0],"module_3":[-0.2726,0.0,0.0]},"edges":[["goal_0","goal_1"],["goal_0","goal_2"],["goal_0","goal_3"],["goal_0","goal_4"],["goal_4","goal_5"],["goal_5","goal_6"]]},"14":{"t":298.252,"root":"module_1","targets":{"module_1":[0.0,0.0,0.0],"module_5":[0.0345,-0.0548,-1.5708],"module_2":[0.0909,-0.0,-0.0],"module_0":[0.0345,0.0548,1.5708],"module_6":[-0.0909,0.0,0.0],"module_4":[-0.1817,0.0,0.0],"module_3":[-0.2726,0.0,0.0]},"edges":[["goal_0","goal_1"],["goal_0","goal_2"],["goal_0","goal_3"],["goal_0","goal_4"],["goal_4","goal_5"],["goal_5","goal_6"]]},"15":{"t":298.502,"root":"module_1","targets":{"module_1":[0.0,0.0,0.0],"module_5":[0.0345,-0.0548,-1.5708],"module_2":[0.0909,-0.0,-0.0],"module_0":[0.0345,0.0548,1.5708],"module_6":[-0.0909,0.0,0.0],"module_4":[-0.1817,0.0,0.0],"module_3":[-0.2726,0.0,0.0]},"edges":[["goal_0","goal_1"],["goal_0","goal_2"],["goal_0","goal_3"],["goal_0","goal_4"],["goal_4","goal_5"],["goal_5","goal_6"]]}},"events":[[44.252,"dock",1],[67.502,"dock",2],[107.752,"dock",3],[130.502,"dock",4],[274.752,"dock",5],[328.002,"dock",6]],"footprint_half":[0.044,0.044],"footprint_cx":0.033};
+    function smoresView() {
+      const W = 900, H = 440;
+      // expand compact samples: [t, poses by id, actions (0 = unchanged), plan revision, replans, detail index]
+      let prevA = [];
+      const S = SM.samples.map(([t, P, A, rev, rp, di]) => {
+        if (A !== 0) prevA = A;
+        const p = {}; SM.ids.forEach((id, i) => (p[id] = P[i]));
+        return { t, p, a: prevA, rev, rp, d: SM.details[di] };
+      });
+      const TS = S[S.length - 1].t;
+      const PLAY = 42, RATE = TS / PLAY, END = 3;
+      const T = PLAY + END;
+      const ids = Object.keys(S[0].p).sort();
+      const color = (id) => MOD_COLORS[ids.indexOf(id) % MOD_COLORS.length];
+      const [hx, hy] = SM.footprint_half, fcx = SM.footprint_cx;
+      // bounds over every pose and goal
+      const xs = [], ys = [];
+      S.forEach((s) => Object.values(s.p).forEach((p) => { xs.push(p[0]); ys.push(p[1]); }));
+      Object.values(SM.plans).forEach((pl) => Object.values(pl.targets).forEach((p) => { xs.push(p[0]); ys.push(p[1]); }));
+      const pad = 0.09, minX = Math.min(...xs) - pad, maxX = Math.max(...xs) + pad, minY = Math.min(...ys) - pad, maxY = Math.max(...ys) + pad;
+      const sc = Math.min((W - 60) / (maxX - minX), (H - 70) / (maxY - minY));
+      const ox = (W - (maxX - minX) * sc) / 2, oy = 44 + (H - 54 - (maxY - minY) * sc) / 2;
+      const X = (x) => ox + (x - minX) * sc, Y = (y) => oy + (maxY - y) * sc;
+      // events from phase changes, dock counts and plan revisions
+      const events = [];
+      const seenPhase = {}; let seenRev = null;
+      const PH = { navigating: "following generated route", approaching: "final approach", aligning: "aligning", holding: "docked, holding", complete: "complete", retreating: "backing off to retry", waiting: "waiting", failed: "failed" };
+      S.forEach((s) => {
+        const vt = s.t / RATE;
+        if (s.rev !== null && s.rev !== seenRev) {
+          const pl = SM.plans[s.rev];
+          events.push({ t: vt, h: `<span class="p">plan r${s.rev}</span> root ${pl.root} · ${Object.keys(pl.targets).length} goal poses${seenRev !== null ? " · replanned" : ""}` });
+          seenRev = s.rev;
+        }
+        s.a.forEach(([m, parent, ph]) => {
+          if (seenPhase[m] !== ph) {
+            if (ph !== "pending" || seenPhase[m] !== undefined) events.push({ t: vt, h: `<span class="${ph === "retreating" || ph === "failed" ? "u" : "k"}">${ph}</span> ${m} → ${parent}${PH[ph] ? " · " + PH[ph] : ""}` });
+            seenPhase[m] = ph;
+          }
+        });
+      });
+      SM.events.forEach(([t, kind, n]) => events.push({ t: t / RATE, h: `<span class="${kind === "dock" ? "k" : "u"}">${kind === "dock" ? "DockCommitted" : "UndockCommitted"}</span> connections=${n}` }));
+      const last = S[S.length - 1];
+      events.push({ t: PLAY + 0.2, h: `<span class="k">complete</span> ${last.d}` });
+      events.sort((a, b) => a.t - b.t);
+
+      function sampleAt(ts) {
+        let lo = 0, hi = S.length - 1;
+        while (hi - lo > 1) { const m = (lo + hi) >> 1; if (S[m].t <= ts) lo = m; else hi = m; }
+        const a = S[lo], b = S[hi], k = b.t > a.t ? Math.max(0, Math.min(1, (ts - a.t) / (b.t - a.t))) : 0;
+        const p = {};
+        ids.forEach((id) => {
+          const A = a.p[id], B = b.p[id];
+          let dy = B[2] - A[2]; if (dy > Math.PI) dy -= 2 * Math.PI; if (dy < -Math.PI) dy += 2 * Math.PI;
+          p[id] = [A[0] + (B[0] - A[0]) * k, A[1] + (B[1] - A[1]) * k, A[2] + dy * k];
+        });
+        return { s: k < 0.5 ? a : b, p };
+      }
+      const box = (g, x, y, yaw, attrs) => {
+        const c = Math.cos(yaw), s = Math.sin(yaw);
+        const cx = x + c * fcx, cy = y + s * fcx;
+        const pts = [[hx, hy], [-hx, hy], [-hx, -hy], [hx, -hy]].map(([u, v]) => `${X(cx + c * u - s * v).toFixed(1)},${Y(cy + s * u + c * v).toFixed(1)}`).join(" ");
+        el("polygon", { points: pts, ...attrs }, g);
+        return [X(cx), Y(cy), X(cx + c * hx), Y(cy + s * hx)];
+      };
+
+      function draw(g, t) {
+        g.innerHTML = "";
+        const ts = Math.min(t * RATE, TS);
+        const { s, p } = sampleAt(ts);
+        // grid every 0.1 m
+        for (let x = Math.ceil(minX * 10) / 10; x <= maxX; x += 0.1) el("line", { x1: X(x), y1: Y(minY), x2: X(x), y2: Y(maxY), stroke: "var(--line)", "stroke-width": Math.abs(x) < 1e-6 ? 1.4 : 0.7 }, g);
+        for (let y = Math.ceil(minY * 10) / 10; y <= maxY; y += 0.1) el("line", { x1: X(minX), y1: Y(y), x2: X(maxX), y2: Y(y), stroke: "var(--line)", "stroke-width": Math.abs(y) < 1e-6 ? 1.4 : 0.7 }, g);
+        const plan = s.rev !== null ? SM.plans[s.rev] : null;
+        // goal poses
+        if (plan) Object.entries(plan.targets).forEach(([id, [x, y, yaw]]) => box(g, x, y, yaw, { fill: "none", stroke: "#7C3AED", "stroke-width": 1.4, "stroke-dasharray": "5 4", "stroke-opacity": 0.75 }));
+        // active routes
+        let active = 0, done = 0;
+        s.a.forEach(([m, parent, ph, rid]) => {
+          if (ph === "complete" || ph === "holding") done++;
+          if (["navigating", "approaching", "aligning", "retreating"].includes(ph)) {
+            active++;
+            if (rid >= 0) {
+              const pts = SM.routes[rid].map(([x, y]) => `${X(x).toFixed(1)},${Y(y).toFixed(1)}`).join(" ");
+              el("polyline", { points: pts, fill: "none", stroke: color(m), "stroke-width": 2, "stroke-dasharray": "2 4", "stroke-linecap": "round", opacity: 0.9 }, g);
+            }
+          }
+        });
+        // modules
+        ids.forEach((id) => {
+          const [x, y, yaw] = p[id];
+          const [cx, cy, fx, fy] = box(g, x, y, yaw, { fill: color(id), "fill-opacity": 0.9, stroke: "var(--surface)", "stroke-width": 1.5 });
+          el("line", { x1: cx, y1: cy, x2: fx, y2: fy, stroke: "var(--surface)", "stroke-width": 2 }, g);
+          el("text", { x: cx, y: cy - hy * sc - 6, "text-anchor": "middle", "font-family": mono, "font-size": 10.5, fill: "var(--ink)" }, g).textContent = id.replace("module_", "m");
+        });
+        el("text", { x: 14, y: 22, "font-family": "IBM Plex Sans, sans-serif", "font-weight": 600, "font-size": 13, fill: "var(--ink)" }, g).textContent = "Planning workspace · top view";
+        el("text", { x: W - 14, y: 22, "text-anchor": "end", "font-family": mono, "font-size": 11, fill: "var(--muted)" }, g).textContent = "dashed squares: goal poses · dotted: generated routes · grid 10 cm";
+        return { act: s.d, meta: `t=${ts.toFixed(1)} s sim · ${active} active · replans ${s.rp} · ${(TS / PLAY).toFixed(1)}× speed` };
+      }
+      return { T, events, W, H, draw, note: `Frames sampled every 0.25 s from a headless run of the <code>smores_online_assembly</code> demo in MuJoCo (${TS.toFixed(0)} s simulated). Goal poses and routes are the planner's own; module poses are measured.` };
+    }
+
+    const builders = { topo: topoView, lattice: latticeView, smores: smoresView };
+    const tabs = [...root.querySelectorAll(".mv-tab")];
+    let view = null, t = 0, playing = false, last = 0, shown = 0;
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    function select(name) {
+      tabs.forEach((b) => b.setAttribute("aria-selected", b.dataset.view === name));
+      view = builders[name](); svg.setAttribute("viewBox", `0 0 ${view.W} ${view.H}`);
+      svg.innerHTML = ""; view.g = el("g", {}, svg);
+      scrub.max = view.T.toFixed(2); noteEl.innerHTML = view.note;
+      t = reduce ? view.T : 0; shown = -1; render();
+    }
+    function render() {
+      const s = view.draw(view.g, t);
+      statusL.textContent = s.act; statusR.textContent = s.meta;
+      const ev = view.events.filter((e) => e.t <= t + 1e-6);
+      if (ev.length !== shown) {
+        logEl.innerHTML = ev.map((e) => `<div><span class="t">${e.t.toFixed(1).padStart(5, " ")}s</span> ${e.h}</div>`).join("");
+        logEl.scrollTop = logEl.scrollHeight; shown = ev.length;
+      }
+      scrub.value = t; timeEl.textContent = `${t.toFixed(1)} / ${view.T.toFixed(0)} s`;
+    }
+    function tick(now) {
+      if (!playing) return;
+      const dt = Math.min(0.1, (now - last) / 1000); last = now;
+      t += dt; if (t >= view.T) { t = 0; shown = -1; }
+      render(); requestAnimationFrame(tick);
+    }
+    function setPlaying(p) { playing = p; playBtn.textContent = p ? "Pause" : "Play"; if (p) { last = performance.now(); requestAnimationFrame(tick); } }
+    playBtn.addEventListener("click", () => setPlaying(!playing));
+    root.querySelector("#mvRestart").addEventListener("click", () => { t = 0; shown = -1; render(); });
+    scrub.addEventListener("input", () => { t = +scrub.value; shown = -1; render(); });
+    tabs.forEach((b) => b.addEventListener("click", () => { select(b.dataset.view); }));
+    select(tabs[0].dataset.view);
+    if (!reduce && "IntersectionObserver" in window) {
+      new IntersectionObserver((es) => es.forEach((e) => setPlaying(e.isIntersecting)), { threshold: 0.3 }).observe(root);
+    }
+  })();
+
+  /* ---------- Runtime Inspector recordings: clip switcher ---------- */
+  (function () {
+    const fig = document.getElementById("vclips"); if (!fig) return;
+    const v = fig.querySelector("video"), cap = document.getElementById("vclipsCap"), chips = [...fig.querySelectorAll(".clip")];
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    chips.forEach((c) => c.addEventListener("click", () => {
+      chips.forEach((x) => x.setAttribute("aria-pressed", x === c));
+      v.src = c.dataset.src; cap.textContent = c.dataset.cap; v.muted = true;
+      if (!reduce) { const pr = v.play(); if (pr && pr.catch) pr.catch(() => {}); }
+    }));
+  })();
+  /* ---------- interactive topology playground ---------- */
+  (function () {
+    const root = document.getElementById("tp");
+    if (!root) return;
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = root.querySelector("svg");
+    const head = root.querySelector(".tp-counts"), logEl = root.querySelector(".tp-log");
+    const el = (tag, a, parent) => { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); if (parent) parent.appendChild(e); return e; };
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const W = 900, H = 420, WS = 560, GX0 = 590, GX1 = 890, GY0 = 46, GY1 = 404;
+    const S = 56, HALF = S / 2, TOL = 12, EPS = 0.5;
+    const COLORS = ["#2F5DA8", "#C2410C", "#7C3AED", "#15803D", "#BE185D", "#0E7490"];
+    const FACES = ["right", "bottom", "left", "pan"];
+    const LOCAL = { right: [1, 0], bottom: [0, 1], left: [-1, 0], pan: [0, -1] };
+    const mono = "IBM Plex Mono, monospace", sans = "IBM Plex Sans, sans-serif";
+
+    let mods, conns, blocked, gp, nextId, stats, t0, lines;
+    const INITIAL = [
+      { x: 110, y: 120, r: 0 }, { x: 110 + S, y: 120, r: 0 }, { x: 330, y: 92, r: 1 },
+      { x: 230, y: 300, r: 0 }, { x: 440, y: 270, r: 3 },
+    ];
+
+    const rot = ([x, y], r) => { for (let i = 0; i < ((r % 4) + 4) % 4; i++) [x, y] = [-y, x]; return [x, y]; };
+    const dirOf = (i, f) => rot(LOCAL[f], mods[i].r);
+    const ptOf = (i, f) => { const d = dirOf(i, f); return [mods[i].x + d[0] * HALF, mods[i].y + d[1] * HALF]; };
+    const name = (i) => `m${i + 1}`;
+    const ckey = (a, fa, b, fb) => (a < b || (a === b && fa < fb) ? `${a}:${fa}|${b}:${fb}` : `${b}:${fb}|${a}:${fa}`);
+    const engaged = (i, f) => conns.some((c) => (c.a === i && c.fa === f) || (c.b === i && c.fb === f));
+
+    function components() {
+      const p = mods.map((_, i) => i), find = (i) => (p[i] === i ? i : (p[i] = find(p[i])));
+      conns.forEach((c) => (p[find(c.a)] = find(c.b)));
+      return mods.map((_, i) => find(i));
+    }
+    const groupOf = (i) => { const c = components(); return mods.map((_, j) => j).filter((j) => c[j] === c[i]); };
+    const nAssemblies = () => new Set(components()).size;
+
+    function push(kind, text, cls) {
+      const t = ((performance.now() - t0) / 1000).toFixed(2);
+      lines.push(`<div><span class="t">t=${t}</span>  <span class="${cls || "k"}">${kind}</span> ${text}</div>`);
+      if (lines.length > 200) lines.shift();
+      logEl.innerHTML = lines.join(""); logEl.scrollTop = logEl.scrollHeight;
+    }
+    function counts() {
+      head.innerHTML = `modules=<b>${mods.length}</b> · connections=<b>${conns.length}</b> · assemblies=<b>${nAssemblies()}</b> · docks=${stats.docks} · undocks=${stats.undocks}`;
+    }
+
+    function reset() {
+      mods = INITIAL.map((m) => ({ ...m }));
+      conns = []; blocked = new Set(); nextId = 0; stats = { docks: 0, undocks: 0 }; lines = []; t0 = performance.now();
+      gp = mods.map((_, i) => ({ x: GX0 + 60 + (i % 3) * 90, y: GY0 + 80 + Math.floor(i / 3) * 120, vx: 0, vy: 0 }));
+      push("spawn", `${mods.length} × module · kinematic backend`);
+      commit(0, "right", 1, "left");
+      drawWS(); counts();
+    }
+
+    function commit(a, fa, b, fb) {
+      const before = components();
+      const merging = before[a] !== before[b];
+      conns.push({ a, fa, b, fb, id: `c${nextId++}` });
+      stats.docks++;
+      push("DockCommitted", `${name(a)}/${fa} ↔ ${name(b)}/${fb} (fixed)`);
+      if (merging) push("AssemblyMerged", `→ ${nAssemblies()} assemblies`);
+      else push("loop closure", "both modules were already in one assembly (allowed, flagged)", "w");
+    }
+    function undock(ci) {
+      const c = conns[ci]; if (!c) return;
+      conns.splice(ci, 1); stats.undocks++;
+      blocked.add(ckey(c.a, c.fa, c.b, c.fb));
+      push("UndockCommitted", `${name(c.a)}/${c.fa} ✕ ${name(c.b)}/${c.fb}`, "u");
+      const comp = components();
+      if (comp[c.a] !== comp[c.b]) push("AssemblySplit", `→ ${nAssemblies()} assemblies · drag a module away to separate`, "u");
+      else push("note", "modules still connected through another path", "w");
+      drawWS(); counts();
+    }
+
+    /* ---- geometry checks ---- */
+    const overlaps = (ax, ay, bx, by) => Math.abs(ax - bx) < S - EPS && Math.abs(ay - by) < S - EPS;
+    function collides(group, pos) {
+      for (let k = 0; k < group.length; k++) {
+        const [x, y] = pos[k];
+        if (x < HALF + 2 || x > WS - HALF - 2 || y < HALF + 2 || y > H - HALF - 2) return true;
+        for (let j = 0; j < mods.length; j++) if (!group.includes(j) && overlaps(x, y, mods[j].x, mods[j].y)) return true;
+      }
+      return false;
+    }
+    function candidates(group) {
+      const out = [];
+      group.forEach((i) => FACES.forEach((fa) => {
+        if (engaged(i, fa)) return;
+        const da = dirOf(i, fa), pa = ptOf(i, fa);
+        mods.forEach((_, j) => {
+          if (group.includes(j)) return;
+          FACES.forEach((fb) => {
+            if (engaged(j, fb) || blocked.has(ckey(i, fa, j, fb))) return;
+            const db = dirOf(j, fb);
+            if (da[0] + db[0] !== 0 || da[1] + db[1] !== 0) return; // docking axes must be antiparallel
+            const pb = ptOf(j, fb), d = Math.hypot(pa[0] - pb[0], pa[1] - pb[1]);
+            if (d < TOL) out.push({ i, fa, j, fb, d, pa, pb });
+          });
+        });
+      }));
+      return out.sort((p, q) => p.d - q.d);
+    }
+    function clearCooldowns() {
+      [...blocked].forEach((k) => {
+        const [[a, fa], [b, fb]] = k.split("|").map((s) => { const [m, f] = s.split(":"); return [+m, f]; });
+        const pa = ptOf(a, fa), pb = ptOf(b, fb);
+        if (Math.hypot(pa[0] - pb[0], pa[1] - pb[1]) > TOL * 1.6) blocked.delete(k);
+      });
+    }
+
+    /* ---- workspace drawing ---- */
+    const wsG = el("g", {}, svg), graphG = el("g", {}, svg);
+    let drag = null, hover = -1, cands = [];
+    function drawWS() {
+      wsG.innerHTML = "";
+      for (let x = 0; x <= WS; x += 28) el("line", { x1: x, y1: 0, x2: x, y2: H, stroke: "var(--line)", "stroke-width": 0.6 }, wsG);
+      for (let y = 0; y <= H; y += 28) el("line", { x1: 0, y1: y, x2: WS, y2: y, stroke: "var(--line)", "stroke-width": 0.6 }, wsG);
+      el("rect", { x: WS, y: 0, width: W - WS, height: H, fill: "var(--surface)" }, wsG);
+      el("line", { x1: WS, y1: 0, x2: WS, y2: H, stroke: "var(--line)" }, wsG);
+      el("text", { x: 12, y: 20, "font-family": sans, "font-weight": 600, "font-size": 13, fill: "var(--ink)" }, wsG).textContent = "Workspace · top view";
+      // candidate highlights
+      cands.forEach((c) => el("circle", { cx: (c.pa[0] + c.pb[0]) / 2, cy: (c.pa[1] + c.pb[1]) / 2, r: TOL, fill: "var(--teal)", "fill-opacity": 0.15, stroke: "var(--teal)", "stroke-dasharray": "3 3" }, wsG));
+      const comp = components();
+      mods.forEach((m, i) => {
+        const g = el("g", { class: "tp-mod" + (drag && drag.group.includes(i) ? " dragging" : ""), "data-i": i, transform: `translate(${m.x} ${m.y}) rotate(${m.r * 90})` }, wsG);
+        const multi = comp.filter((c) => c === comp[i]).length > 1;
+        el("rect", { x: -HALF + 1, y: -HALF + 1, width: S - 2, height: S - 2, rx: 6, fill: COLORS[i], stroke: hover === i ? "var(--ink)" : multi ? "var(--surface)" : "none", "stroke-width": hover === i ? 2.5 : 1.5 }, g);
+        // connector faces (pan drawn heavier so rotation is visible)
+        FACES.forEach((f) => {
+          const [dx, dy] = LOCAL[f], on = engaged(i, f), w = f === "pan" ? 26 : 18, t = f === "pan" ? 6 : 4;
+          const x = dx ? dx * (HALF - t / 2 - 3) - t / 2 : -w / 2, y = dy ? dy * (HALF - t / 2 - 3) - t / 2 : -w / 2;
+          el("rect", { x, y, width: dx ? t : w, height: dy ? t : w, rx: 1.5, fill: on ? "var(--teal)" : "var(--surface)", "fill-opacity": on ? 1 : 0.85 }, g);
+        });
+        el("text", { x: 0, y: 4, "text-anchor": "middle", "font-family": mono, "font-size": 12, fill: "var(--surface)", transform: `rotate(${-m.r * 90})` }, g).textContent = name(i);
+      });
+      // joints (click to undock)
+      conns.forEach((c, ci) => {
+        const pa = ptOf(c.a, c.fa);
+        const j = el("g", { class: "tp-joint", "data-c": ci, tabindex: 0, role: "button", "aria-label": `Undock ${name(c.a)} ${c.fa} from ${name(c.b)} ${c.fb}` }, wsG);
+        el("circle", { cx: pa[0], cy: pa[1], r: 7, fill: "var(--surface)", stroke: "var(--teal)", "stroke-width": 2 }, j);
+        el("path", { d: `M${pa[0] - 3} ${pa[1] - 3}L${pa[0] + 3} ${pa[1] + 3}M${pa[0] + 3} ${pa[1] - 3}L${pa[0] - 3} ${pa[1] + 3}`, stroke: "var(--teal)", "stroke-width": 1.6 }, j);
+      });
+    }
+
+    /* ---- live topology graph (spring layout, stepped every frame) ---- */
+    function stepGraph() {
+      const L = 70, cx = (GX0 + GX1) / 2, cy = (GY0 + GY1) / 2 + 10;
+      for (let it = 0; it < 2; it++) {
+        const f = gp.map(() => [0, 0]);
+        for (let i = 0; i < gp.length; i++) for (let j = i + 1; j < gp.length; j++) {
+          let dx = gp[i].x - gp[j].x, dy = gp[i].y - gp[j].y; const d2 = dx * dx + dy * dy + 0.01, d = Math.sqrt(d2), r = 2600 / d2;
+          f[i][0] += dx / d * r; f[i][1] += dy / d * r; f[j][0] -= dx / d * r; f[j][1] -= dy / d * r;
+        }
+        conns.forEach((c) => {
+          const A = gp[c.a], B = gp[c.b], dx = B.x - A.x, dy = B.y - A.y, d = Math.hypot(dx, dy) + 1e-6, s = (d - L) * 0.05;
+          f[c.a][0] += dx / d * s; f[c.a][1] += dy / d * s; f[c.b][0] -= dx / d * s; f[c.b][1] -= dy / d * s;
+        });
+        gp.forEach((p, i) => {
+          p.vx = (p.vx + f[i][0] + (cx - p.x) * 0.002) * 0.8; p.vy = (p.vy + f[i][1] + (cy - p.y) * 0.002) * 0.8;
+          p.x = Math.max(GX0 + 24, Math.min(GX1 - 24, p.x + p.vx)); p.y = Math.max(GY0 + 24, Math.min(GY1 - 24, p.y + p.vy));
+        });
+      }
+    }
+    function drawGraph() {
+      graphG.innerHTML = "";
+      el("text", { x: GX0 - 16, y: 20, "font-family": sans, "font-weight": 600, "font-size": 13, fill: "var(--ink)" }, graphG).textContent = `Live topology · ${nAssemblies()} assemblies`;
+      conns.forEach((c, ci) => {
+        const A = gp[c.a], B = gp[c.b];
+        const e = el("g", { class: "tp-edge", "data-c": ci }, graphG);
+        el("line", { x1: A.x, y1: A.y, x2: B.x, y2: B.y, stroke: "transparent", "stroke-width": 14 }, e);
+        el("line", { x1: A.x, y1: A.y, x2: B.x, y2: B.y, stroke: "var(--ink)", "stroke-opacity": 0.6, "stroke-width": 2 }, e);
+        el("text", { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 - 6, "text-anchor": "middle", "font-family": mono, "font-size": 9.5, fill: "var(--muted)" }, e).textContent = `${c.fa}·${c.fb}`;
+      });
+      gp.forEach((p, i) => {
+        if (hover === i) el("circle", { cx: p.x, cy: p.y, r: 19, fill: "none", stroke: "var(--ink)", "stroke-width": 1.5, "stroke-dasharray": "3 3" }, graphG);
+        el("circle", { cx: p.x, cy: p.y, r: 13, fill: COLORS[i], stroke: "var(--surface)", "stroke-width": 2 }, graphG);
+        el("text", { x: p.x, y: p.y + 4, "text-anchor": "middle", "font-family": mono, "font-size": 10.5, fill: "#fff" }, graphG).textContent = name(i);
+      });
+      el("text", { x: GX1, y: H - 10, "text-anchor": "end", "font-family": mono, "font-size": 10, fill: "var(--muted)" }, graphG).textContent = "click an edge to undock";
+    }
+    let running = false;
+    function frame() { stepGraph(); drawGraph(); if (running) requestAnimationFrame(frame); }
+
+    /* ---- interaction ---- */
+    const toSvg = (e) => { const p = svg.createSVGPoint(); p.x = e.clientX; p.y = e.clientY; return p.matrixTransform(svg.getScreenCTM().inverse()); };
+    let lastDown = { i: -1, t: 0 };
+    svg.addEventListener("pointerdown", (e) => {
+      const joint = e.target.closest(".tp-joint, .tp-edge");
+      if (joint) { e.preventDefault(); undock(+joint.dataset.c); return; }
+      const mg = e.target.closest(".tp-mod"); if (!mg) return;
+      e.preventDefault();
+      const i = +mg.dataset.i, now = performance.now();
+      if (lastDown.i === i && now - lastDown.t < 350) { rotateGroup(i); lastDown = { i: -1, t: 0 }; return; }
+      lastDown = { i, t: now };
+      const p = toSvg(e), group = groupOf(i);
+      drag = { group, start: group.map((k) => [mods[k].x, mods[k].y]), px: p.x, py: p.y, dx: 0, dy: 0, moved: false };
+      svg.setPointerCapture(e.pointerId); drawWS();
+    });
+    svg.addEventListener("pointermove", (e) => {
+      const p = toSvg(e);
+      if (!drag) {
+        const mg = e.target.closest && e.target.closest(".tp-mod"); const h = mg ? +mg.dataset.i : -1;
+        if (h !== hover) { hover = h; drawWS(); }
+        return;
+      }
+      const tx = p.x - drag.px, ty = p.y - drag.py;
+      const at = (dx, dy) => drag.start.map(([x, y]) => [x + dx, y + dy]);
+      const free = (dx, dy) => !collides(drag.group, at(dx, dy));
+      const reach = (fx, fy, gx, gy) => {
+        if (free(gx, gy)) return [gx, gy];
+        let lo = 0, hi = 1; for (let k = 0; k < 14; k++) { const m = (lo + hi) / 2; free(fx + (gx - fx) * m, fy + (gy - fy) * m) ? (lo = m) : (hi = m); }
+        return [fx + (gx - fx) * lo, fy + (gy - fy) * lo];
+      };
+      let [dx, dy] = [drag.dx, drag.dy];
+      if (free(tx, ty)) [dx, dy] = [tx, ty];
+      else { [dx, dy] = reach(dx, dy, dx, ty); [dx, dy] = reach(dx, dy, tx, dy); [dx, dy] = reach(dx, dy, dx, ty); }
+      drag.dx = dx; drag.dy = dy; if (Math.hypot(dx, dy) > 2) drag.moved = true;
+      drag.group.forEach((k, n) => { mods[k].x = drag.start[n][0] + dx; mods[k].y = drag.start[n][1] + dy; });
+      clearCooldowns(); cands = candidates(drag.group); drawWS();
+    });
+    const endDrag = () => {
+      if (!drag) return;
+      const group = drag.group; drag = null;
+      const c = candidates(group)[0];
+      if (c) {
+        // nominal alignment: snap so the two connector frames coincide, then commit every face pair that now meets
+        const sx = c.pb[0] - c.pa[0], sy = c.pb[1] - c.pa[1];
+        const pos = group.map((k) => [mods[k].x + sx, mods[k].y + sy]);
+        if (!collides(group, pos)) {
+          group.forEach((k, n) => { mods[k].x = pos[n][0]; mods[k].y = pos[n][1]; });
+          candidates(group).filter((q) => q.d < 1).forEach((q) => { if (!engaged(q.i, q.fa) && !engaged(q.j, q.fb)) commit(q.i, q.fa, q.j, q.fb); });
+        }
+      }
+      cands = []; drawWS(); counts();
+    };
+    svg.addEventListener("pointerup", endDrag); svg.addEventListener("pointercancel", endDrag);
+    svg.addEventListener("pointerleave", () => { if (!drag && hover !== -1) { hover = -1; drawWS(); } });
+    svg.addEventListener("keydown", (e) => { const j = e.target.closest && e.target.closest(".tp-joint"); if (j && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); undock(+j.dataset.c); } });
+
+    function rotateGroup(i) {
+      const group = groupOf(i), c = mods[i];
+      const pos = group.map((k) => { const dx = mods[k].x - c.x, dy = mods[k].y - c.y; return [c.x - dy, c.y + dx]; });
+      if (collides(group, pos)) { push("blocked", `${name(i)}: no room to rotate here`, "w"); return; }
+      group.forEach((k, n) => { mods[k].x = pos[n][0]; mods[k].y = pos[n][1]; mods[k].r = (mods[k].r + 1) % 4; });
+      drawWS();
+    }
+
+    root.querySelector("#tpReset").addEventListener("click", reset);
+    root.querySelector("#tpUndockAll").addEventListener("click", () => { while (conns.length) undock(conns.length - 1); });
+    reset();
+    if (reduce) { for (let k = 0; k < 400; k++) stepGraph(); drawGraph(); }
+    else if ("IntersectionObserver" in window) {
+      new IntersectionObserver((es) => es.forEach((en) => { const was = running; running = en.isIntersecting; if (running && !was) requestAnimationFrame(frame); }), { threshold: 0.1 }).observe(root);
+    } else { running = true; requestAnimationFrame(frame); }
+    drawGraph();
+  })();
 
   /* ---------- docking widget ---------- */
   const NS = "http://www.w3.org/2000/svg";
