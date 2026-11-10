@@ -676,32 +676,42 @@ modsim run --gui examples/robot_packs/generic_cube \
         stages.push(prev.concat([a.dock]));
       });
       const ids = TOPO.modules;
-      // deterministic spring layout, seeded from the previous stage
+      // Deterministic spring layout per stage. Each stage is anchored to the previous one, rotated to
+      // match it (2D Kabsch, no reflection) and drawn with one shared scale, so connection changes
+      // move only the nodes they affect instead of re-orienting the whole graph.
       function layout(edges, seed) {
         const p = {}; ids.forEach((id, i) => (p[id] = seed ? { ...seed[id] } : { x: Math.cos(i * 0.9) * 0.3, y: Math.sin(i * 0.9) * 0.3 }));
-        const L = 0.22;
-        for (let it = 0; it < 900; it++) {
+        const L = 0.22, N = 900;
+        for (let it = 0; it < N; it++) {
           const f = {}; ids.forEach((id) => (f[id] = { x: 0, y: 0 }));
           for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) {
-            const a = p[ids[i]], b = p[ids[j]]; let dx = a.x - b.x, dy = a.y - b.y; const d2 = dx * dx + dy * dy + 1e-4, d = Math.sqrt(d2);
+            const a = p[ids[i]], b = p[ids[j]]; const dx = a.x - b.x, dy = a.y - b.y; const d2 = dx * dx + dy * dy + 1e-4, d = Math.sqrt(d2);
             const r = (L * L) / d2 * 0.6; f[ids[i]].x += dx / d * r; f[ids[i]].y += dy / d * r; f[ids[j]].x -= dx / d * r; f[ids[j]].y -= dy / d * r;
           }
           edges.forEach(([a0, b0]) => {
             const a = a0.split("/")[0], b = b0.split("/")[0], A = p[a], B = p[b]; const dx = B.x - A.x, dy = B.y - A.y, d = Math.hypot(dx, dy) + 1e-6;
             const s = (d - L) * 0.5; f[a].x += dx / d * s; f[a].y += dy / d * s; f[b].x -= dx / d * s; f[b].y -= dy / d * s;
           });
-          const step = 0.12 * (1 - it / 900) + 0.01;
-          ids.forEach((id) => { p[id].x += f[id].x * step - p[id].x * 0.004; p[id].y += f[id].y * step - p[id].y * 0.004; });
+          if (seed) ids.forEach((id) => { f[id].x += (seed[id].x - p[id].x) * 0.08; f[id].y += (seed[id].y - p[id].y) * 0.08; });
+          const step = 0.12 * (1 - it / N) + 0.01;
+          ids.forEach((id) => { p[id].x += f[id].x * step - p[id].x * 0.002; p[id].y += f[id].y * step - p[id].y * 0.002; });
         }
-        // fit to box
-        const xs = ids.map((i) => p[i].x), ys = ids.map((i) => p[i].y);
-        const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
-        const span = Math.max(Math.max(...xs) - Math.min(...xs), (Math.max(...ys) - Math.min(...ys)) * 1.4, 0.4);
-        const out = {}; ids.forEach((i) => (out[i] = { x: LIVE_W / 2 + (p[i].x - cx) / span * 440, y: H / 2 + 10 + (p[i].y - cy) / span * 440 }));
-        out._raw = p; return out;
+        if (seed) { // rotate/translate onto the previous stage to remove any global spin
+          const mean = (P) => { let x = 0, y = 0; ids.forEach((id) => { x += P[id].x; y += P[id].y; }); return { x: x / ids.length, y: y / ids.length }; };
+          const ma = mean(p), mb = mean(seed); let sxx = 0, sxy = 0;
+          ids.forEach((id) => { const ax = p[id].x - ma.x, ay = p[id].y - ma.y, bx = seed[id].x - mb.x, by = seed[id].y - mb.y; sxx += ax * bx + ay * by; sxy += ax * by - ay * bx; });
+          const th = Math.atan2(sxy, sxx), c = Math.cos(th), s = Math.sin(th);
+          ids.forEach((id) => { const ax = p[id].x - ma.x, ay = p[id].y - ma.y; p[id] = { x: mb.x + ax * c - ay * s, y: mb.y + ax * s + ay * c }; });
+        }
+        return p;
       }
-      const lay = []; let seed = null;
-      stages.forEach((edges) => { const l = layout(edges, seed); seed = l._raw; lay.push(l); });
+      const raw = []; let seed = null;
+      stages.forEach((edges) => { const l = layout(edges, seed); seed = l; raw.push(l); });
+      // one shared fit for every stage
+      const allX = raw.flatMap((l) => ids.map((i) => l[i].x)), allY = raw.flatMap((l) => ids.map((i) => l[i].y));
+      const cxR = (Math.min(...allX) + Math.max(...allX)) / 2, cyR = (Math.min(...allY) + Math.max(...allY)) / 2;
+      const spanR = Math.max(Math.max(...allX) - Math.min(...allX), (Math.max(...allY) - Math.min(...allY)) * 1.45, 0.4);
+      const lay = raw.map((l) => { const o = {}; ids.forEach((i) => (o[i] = { x: LIVE_W / 2 + (l[i].x - cxR) / spanR * 470, y: H / 2 + 14 + (l[i].y - cyR) / spanR * 470 })); return o; });
 
       const INTRO = 1.2, ACT = 4.4, END = 2.8;
       const T = INTRO + TOPO.actions.length * ACT + END;
@@ -826,6 +836,8 @@ modsim run --gui examples/robot_packs/generic_cube \
         const cells = { ...MB.initial };
         for (let i = 0; i < Math.min(Math.max(k, 0), acts.length); i++) cells[acts[i][0]] = acts[i][3];
         const a = k >= 0 && k < acts.length ? acts[k] : null;
+        const ROT_END = 1.25; // rotation eases from u=0.25 to u=1.25; after that the cube rests at its destination
+        if (a && u >= ROT_END) cells[a[0]] = a[3];
         // grid
         for (let x = minX; x <= maxX; x++) for (let y = minY; y <= maxY; y++) {
           const [cx, cy] = scr(x, y);
@@ -838,7 +850,7 @@ modsim run --gui examples/robot_packs/generic_cube \
         // blocks
         let filled = 0;
         ids.forEach((id) => {
-          const isMover = a && a[0] === id && u < 1.35, isSupport = a && a[1] === id && u < 1.35;
+          const isMover = a && a[0] === id && u < ROT_END, isSupport = a && a[1] === id && u < 1.35;
           const c = cells[id]; const [cx, cy] = scr(c[0], c[1]);
           const grp = el("g", {}, g);
           if (isMover) {
@@ -1064,9 +1076,11 @@ modsim run --gui examples/robot_packs/generic_cube \
     function reset() {
       mods = INITIAL.map((m) => ({ ...m }));
       conns = []; blocked = new Set(); nextId = 0; stats = { docks: 0, undocks: 0 }; lines = []; t0 = performance.now();
-      gp = mods.map((_, i) => ({ x: GX0 + 60 + (i % 3) * 90, y: GY0 + 80 + Math.floor(i / 3) * 120, vx: 0, vy: 0 }));
+      gp = mods.map((_, i) => ({ x: GX0 + 60 + (i % 3) * 90, y: GY0 + 80 + Math.floor(i / 3) * 120 }));
+      tgt = null;
       push("spawn", `${mods.length} × module · kinematic backend`);
       commit(0, "right", 1, "left");
+      relayout(); stepGraph(true);
       drawWS(); counts();
     }
 
@@ -1078,6 +1092,7 @@ modsim run --gui examples/robot_packs/generic_cube \
       push("DockCommitted", `${name(a)}/${fa} ↔ ${name(b)}/${fb} (fixed)`);
       if (merging) push("AssemblyMerged", `→ ${nAssemblies()} assemblies`);
       else push("loop closure", "both modules were already in one assembly (allowed, flagged)", "w");
+      if (tgt) relayout();
     }
     function undock(ci) {
       const c = conns[ci]; if (!c) return;
@@ -1087,7 +1102,7 @@ modsim run --gui examples/robot_packs/generic_cube \
       const comp = components();
       if (comp[c.a] !== comp[c.b]) push("AssemblySplit", `→ ${nAssemblies()} assemblies · drag a module away to separate`, "u");
       else push("note", "modules still connected through another path", "w");
-      drawWS(); counts();
+      relayout(); drawWS(); counts();
     }
 
     /* ---- geometry checks ---- */
@@ -1161,23 +1176,40 @@ modsim run --gui examples/robot_packs/generic_cube \
     }
 
     /* ---- live topology graph (spring layout, stepped every frame) ---- */
-    function stepGraph() {
+    /* Layout is recomputed only when the topology changes: a damped relaxation anchored to the
+       current target positions (so unaffected nodes barely move), then nodes glide to the new
+       targets with exponential easing, which cannot overshoot or bounce. */
+    let tgt = null;
+    function relayout() {
       const L = 70, cx = (GX0 + GX1) / 2, cy = (GY0 + GY1) / 2 + 10;
-      for (let it = 0; it < 2; it++) {
-        const f = gp.map(() => [0, 0]);
-        for (let i = 0; i < gp.length; i++) for (let j = i + 1; j < gp.length; j++) {
-          let dx = gp[i].x - gp[j].x, dy = gp[i].y - gp[j].y; const d2 = dx * dx + dy * dy + 0.01, d = Math.sqrt(d2), r = 2600 / d2;
+      const anchor = (tgt || gp).map((p) => ({ x: p.x, y: p.y }));
+      const q = anchor.map((p) => ({ x: p.x, y: p.y }));
+      const N = 500;
+      for (let it = 0; it < N; it++) {
+        const f = q.map(() => [0, 0]);
+        for (let i = 0; i < q.length; i++) for (let j = i + 1; j < q.length; j++) {
+          const dx = q[i].x - q[j].x, dy = q[i].y - q[j].y, d2 = dx * dx + dy * dy + 1, d = Math.sqrt(d2);
+          if (d > 160) continue;
+          const r = Math.min(6, 2400 / d2);
           f[i][0] += dx / d * r; f[i][1] += dy / d * r; f[j][0] -= dx / d * r; f[j][1] -= dy / d * r;
         }
         conns.forEach((c) => {
-          const A = gp[c.a], B = gp[c.b], dx = B.x - A.x, dy = B.y - A.y, d = Math.hypot(dx, dy) + 1e-6, s = (d - L) * 0.05;
+          const A = q[c.a], B = q[c.b], dx = B.x - A.x, dy = B.y - A.y, d = Math.hypot(dx, dy) + 1e-6, s = (d - L) * 0.12;
           f[c.a][0] += dx / d * s; f[c.a][1] += dy / d * s; f[c.b][0] -= dx / d * s; f[c.b][1] -= dy / d * s;
         });
-        gp.forEach((p, i) => {
-          p.vx = (p.vx + f[i][0] + (cx - p.x) * 0.002) * 0.8; p.vy = (p.vy + f[i][1] + (cy - p.y) * 0.002) * 0.8;
-          p.x = Math.max(GX0 + 24, Math.min(GX1 - 24, p.x + p.vx)); p.y = Math.max(GY0 + 24, Math.min(GY1 - 24, p.y + p.vy));
+        const step = 0.5 * (1 - it / N) + 0.05;
+        q.forEach((p, i) => {
+          f[i][0] += (anchor[i].x - p.x) * 0.015 + (cx - p.x) * 0.0015;
+          f[i][1] += (anchor[i].y - p.y) * 0.015 + (cy - p.y) * 0.0015;
+          p.x = Math.max(GX0 + 24, Math.min(GX1 - 24, p.x + f[i][0] * step));
+          p.y = Math.max(GY0 + 30, Math.min(GY1 - 24, p.y + f[i][1] * step));
         });
       }
+      tgt = q;
+    }
+    function stepGraph(snap) {
+      if (!tgt) relayout();
+      gp.forEach((p, i) => { const k = snap ? 1 : 0.14; p.x += (tgt[i].x - p.x) * k; p.y += (tgt[i].y - p.y) * k; });
     }
     function drawGraph() {
       graphG.innerHTML = "";
@@ -1266,7 +1298,7 @@ modsim run --gui examples/robot_packs/generic_cube \
     root.querySelector("#tpReset").addEventListener("click", reset);
     root.querySelector("#tpUndockAll").addEventListener("click", () => { while (conns.length) undock(conns.length - 1); });
     reset();
-    if (reduce) { for (let k = 0; k < 400; k++) stepGraph(); drawGraph(); }
+    if (reduce) { stepGraph(true); drawGraph(); }
     else if ("IntersectionObserver" in window) {
       new IntersectionObserver((es) => es.forEach((en) => { const was = running; running = en.isIntersecting; if (running && !was) requestAnimationFrame(frame); }), { threshold: 0.1 }).observe(root);
     } else { running = true; requestAnimationFrame(frame); }
