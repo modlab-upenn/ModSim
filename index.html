@@ -351,7 +351,7 @@ footer { margin-top: 72px; border-top: 1px solid var(--line); padding-block: 28p
     <h2>What decides whether two modules dock?</h2>
     <p>Every connector type declares an acceptance region. Two connectors dock only when they are close enough, their docking axes point at each other, and they are closing slowly enough. Then ModSim asks the backend for the constraint and records the connection only after the backend confirms it. Try it: drag the teal module toward the blue one.</p>
     <div class="widget" id="widget">
-      <div class="w-head"><span>connector type <b>fixed_face</b> · auto_latch: true · alignment: nominal · 6 mm · 8° · 50 mm/s</span><span>state: <span class="state" id="wState" data-s="free">free</span></span></div>
+      <div class="w-head"><span>connector type <b>fixed_face</b> · auto_latch: true · alignment: nominal · 6 mm · 15° · 50 mm/s</span><span>state: <span class="state" id="wState" data-s="free">free</span></span></div>
       <div class="w-stage">
         <svg id="wSvg" viewBox="0 0 640 280" role="img" aria-label="Drag the moving module to its target connector. Acceptance criteria update live.">
           <defs>
@@ -367,7 +367,7 @@ footer { margin-top: 72px; border-top: 1px solid var(--line); padding-block: 28p
         </svg>
       </div>
       <div class="w-ctl">
-        <label for="yaw">Rotate moving module <input id="yaw" type="range" min="-30" max="30" step="1" value="12"><output id="yawOut">12°</output></label>
+        <label for="yaw">Rotate moving module <input id="yaw" type="range" min="-30" max="30" step="1" value="10"><output id="yawOut">10°</output></label>
         <span class="sp"></span>
         <button class="btn primary" id="wAnimate" type="button">Animate</button>
         <button class="btn" id="wUndock" type="button" disabled>Undock</button>
@@ -379,7 +379,7 @@ footer { margin-top: 72px; border-top: 1px solid var(--line); padding-block: 28p
             <thead><tr><th>Criterion</th><th>Measured</th><th>Limit</th><th></th></tr></thead>
             <tbody>
               <tr><td>Position</td><td class="m" id="cPos">–</td><td class="m">≤ 6 mm</td><td id="okPos">–</td></tr>
-              <tr><td>Axis alignment</td><td class="m" id="cAx">–</td><td class="m">≤ 8°</td><td id="okAx">–</td></tr>
+              <tr><td>Axis alignment</td><td class="m" id="cAx">–</td><td class="m">≤ 15°</td><td id="okAx">–</td></tr>
               <tr><td>Relative velocity</td><td class="m" id="cVel">–</td><td class="m">≤ 50 mm/s</td><td id="okVel">–</td></tr>
             </tbody>
           </table>
@@ -387,7 +387,7 @@ footer { margin-top: 72px; border-top: 1px solid var(--line); padding-block: 28p
         <div class="w-log" id="wLog" aria-live="polite"></div>
       </div>
     </div>
-    <p class="w-hint">Drag too fast and the velocity check fails. Rotate past 8° and alignment fails. The full rules, including roll orientation and policy guards, are in <a href="https://github.com/modlab-upenn/ModSim/blob/main/docs/docking_semantics.md">docking semantics</a>.</p>
+    <p class="w-hint">Drag too fast and the velocity check fails. Rotate past 15° and alignment fails. The full rules, including roll orientation and policy guards, are in <a href="https://github.com/modlab-upenn/ModSim/blob/main/docs/docking_semantics.md">docking semantics</a>.</p>
   </section>
 
   <!-- ================= METHOD ================= -->
@@ -1471,10 +1471,10 @@ modsim run --gui examples/robot_packs/generic_cube \
   const svg = document.getElementById("wSvg");
   const PX = 1.8;                 // px per mm
   const HALF = 25 * PX;           // 50 mm cube
-  const TOL = { pos: 6, ax: 8, vel: 50 }, DETECT = 30;
+  const TOL = { pos: 6, ax: 15, vel: 50 }, DETECT = 30;
   const A = { x: 175 + HALF, y: 130 };   // fixed module's front connector
   const fixedC = { x: 175, y: 130 };
-  const START = { x: 470, y: 150, yaw: 12 };
+  const START = { x: 470, y: 150, yaw: 10 };
   const st = { x: START.x, y: START.y, yaw: START.yaw, docked: false, anim: null, drag: null, samples: [], t0: performance.now() };
   const el = (tag, a, parent) => { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); parent && parent.appendChild(e); return e; };
 
