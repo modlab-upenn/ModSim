@@ -58,6 +58,47 @@ cover/
 MJMODEL.TXT
 MJDATA.TXT
 
+# Local AI agent instructions, settings, memory, and session history
+# Unanchored names also cover agent files in nested workspaces.
+AGENTS.md
+AGENTS.override.md
+AGENTS.local.md
+CLAUDE.md
+CLAUDE.local.md
+GEMINI.md
+GEMINI.local.md
+QWEN.md
+.agents/
+.codex/
+.claude/
+.gemini/
+.copilot/
+.cursor/
+.cursorrules
+.windsurf/
+.windsurfrules
+.aider*
+.clinerules
+.roo/
+.roorules
+.roorules-*
+.roomodes
+.continue/
+.opencode/
+opencode.json
+opencode.jsonc
+.mcp.json
+.junie/
+.kiro/
+.amazonq/
+.kilocode/
+.kilocoderules
+.kilocoderules-*
+.github/copilot-instructions.md
+.github/instructions/
+.github/prompts/
+.github/agents/
+
 # Translations
 *.mo
 *.pot

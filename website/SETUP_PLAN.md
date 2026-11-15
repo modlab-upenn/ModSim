@@ -627,8 +627,8 @@ Readability and contributor requirements within S5:
   retaining existing reStructuredText docstrings.
 - [x] Use one `website/api/scope.py` registry for generation and policy checks;
   derive Sphinx's temporary toctree from it automatically.
-- [x] Document mandatory public API source contracts and add a PR checklist and
-  the repository's agent instructions.
+- [x] Document mandatory public API source contracts in the contribution guides
+  and add a PR checklist.
 - [x] Add `docs:check` before local API generation, preview, and production
   builds; preserve the standalone check command.
 - [x] Add documentation CI validation for pull requests, `main` pushes, and the

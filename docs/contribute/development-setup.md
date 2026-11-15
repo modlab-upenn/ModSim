@@ -27,7 +27,13 @@ git switch -c feature/my-change upstream/refactor
 ```
 
 When these changes reach the default branch, base new work on that branch. Read
-the current contracts listed in `AGENTS.md` before changing their behavior.
+the [current architecture contracts](index.md#current-architecture-contracts)
+before changing their behavior.
+
+Keep your AI agent's instructions, settings, memory, and session history local.
+Common agent files and directories are excluded by `.gitignore`, including
+personal `AGENTS.md` files. Shared project guidance belongs in these contributor
+pages and the architecture contracts so it is available with any development tool.
 
 ## Install the development environment
 

@@ -5,9 +5,9 @@ physics engines without importing an adapter class. Resolution order is
 explicit argument, then the ``MODSIM_BACKEND`` environment variable, then the
 default.
 
-Every entry loads its adapter lazily. That is what keeps the rule in
-``docs/AGENTS.md`` true — importing ``modsim_robotics`` never imports ``mujoco``, VTK, or
-any other optional engine dependency.
+Every entry loads its adapter lazily, preserving the boundary documented in
+``docs/backends.md``: importing ``modsim_robotics`` never imports ``mujoco``,
+VTK, or any other optional engine dependency.
 """
 
 from __future__ import annotations
