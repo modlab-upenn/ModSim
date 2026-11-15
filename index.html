@@ -338,7 +338,7 @@ footer { margin-top: 72px; border-top: 1px solid var(--line); padding-block: 28p
   <!-- ================= ABSTRACT ================= -->
   <section class="s" id="abstract">
     <div class="abstract">
-      <p><b>Abstract.</b> Physics engines such as MuJoCo, Isaac Sim and Gazebo treat a robot's structure as fixed, with no concept of modules, connectors, or the docking events that change which bodies are joined. Researchers simulating modular and self-reconfigurable robots therefore rebuild these concepts by hand for each platform and each engine, typically as one-off scripts that toggle constraints with no guarantee that the logical connection graph matches what the physics actually enforces. ModSim is a Python framework that makes modular-robot semantics a first-class, engine-independent layer. Robots are described once in a validated Robot Pack that adds modules, connector types, compatibility rules and acceptance tolerances to a standard URDF. At runtime, ModSim decides when connectors may dock, asks the physics engine to create the constraint, and commits the connection only after the engine confirms it, recording every change in a replayable event log. Physics engines plug in through a small adapter interface; a kinematic mock backend and a MuJoCo backend are available today.</p>
+      <p><b>Abstract.</b> Physics engines such as MuJoCo, Isaac Sim and Gazebo treat a robot's structure as fixed, with no concept of modules, connectors, or the docking events that change which bodies are joined. Researchers simulating modular and self-reconfigurable robots therefore rebuild these concepts by hand for each platform and each engine, typically as one-off scripts that toggle constraints with no guarantee that the logical connection graph matches what the physics actually enforces. ModSim is a Python framework that makes modular-robot semantics a first-class, engine-independent layer. Robots are described once in a validated Robot Pack that adds modules, connector types, compatibility rules and acceptance tolerances to a standard URDF. At runtime, ModSim decides when connectors may dock, asks the physics engine to create the constraint, and commits the connection only after the engine confirms it, recording every change in a replayable event log. Physics engines plug in through a small adapter interface; a kinematics-only backend and a MuJoCo backend are available today.</p>
     </div>
   </section>
 
@@ -425,7 +425,7 @@ footer { margin-top: 72px; border-top: 1px solid var(--line); padding-block: 28p
             <!-- Backend -->
             <rect x="560" y="20" width="250" height="90" rx="8" fill="var(--bg)" stroke="var(--line)"/>
             <text x="576" y="46" font-weight="700" font-size="13">Backend adapter</text>
-            <text x="576" y="70" fill="var(--muted)">mock · MuJoCo · Isaac Sim (planned)</text>
+            <text x="576" y="70" fill="var(--muted)">kinematic · MuJoCo · Isaac Sim (planned)</text>
             <text x="576" y="92" fill="var(--muted)">owns bodies, contact, constraints</text>
             <!-- Views -->
             <rect x="560" y="130" width="250" height="80" rx="8" fill="var(--bg)" stroke="var(--line)"/>
@@ -471,7 +471,7 @@ footer { margin-top: 72px; border-top: 1px solid var(--line); padding-block: 28p
     <p class="runin"><b>Backends and Inspection.</b> A unified simulation interface comprising:</p>
     <ul>
       <li><b>Backend adapters</b> implementing a minimal seven-method interface.</li>
-      <li><b>Mock backend</b> providing kinematic simulation and reference semantics.</li>
+      <li><b>kinematics-only backend</b> providing kinematic simulation and reference semantics.</li>
       <li><b>MuJoCo backend</b> supporting contact, gravity, effort-controlled joints, and runtime welds and hinges from reserved pools.</li>
       <li><b>Runtime Inspector</b> displaying live topology, events, and planner decisions alongside the native viewer.</li>
     </ul>
@@ -556,7 +556,7 @@ footer { margin-top: 72px; border-top: 1px solid var(--line); padding-block: 28p
       <li><b>Semantics and physics never disagreed.</b> The event sequence was exact: six initial dock/merge pairs, then four cycles of undock, split, dock, merge.</li>
       <li><b>Physics owns all motion.</b> After the initial placement, root pose, velocity and wrench writes are forbidden. Every movement comes from wheel effort and contact.</li>
       <li><b>Capture is precise.</b> In the two-module cycle, the weld formed with connector translation of about 1 mm or less at latch.</li>
-      <li><b>One pack, two backends.</b> The same Robot Packs run on the mock and MuJoCo backends under one docking contract, checked by 537 passing tests with 86% branch coverage of the core.</li>
+      <li><b>One pack, two backends.</b> The same Robot Packs run on the kinematics-only and MuJoCo backends under one docking contract, checked by 537 passing tests with 86% branch coverage of the core.</li>
     </ul>
   </section>
 
@@ -1239,7 +1239,7 @@ modsim run --gui examples/robot_packs/generic_cube \
       conns = []; blocked = new Set(); nextId = 0; stats = { docks: 0, undocks: 0 }; lines = []; t0 = performance.now();
       gp = mods.map((_, i) => ({ x: GX0 + 60 + (i % 3) * 90, y: GY0 + 80 + Math.floor(i / 3) * 120 }));
       tgt = null;
-      push("spawn", `${mods.length} × module · kinematic backend`);
+      push("spawn", `${mods.length} × module · kinematics-only backend`);
       commit(0, "right", 1, "left");
       relayout(); stepGraph(true);
       drawWS(); counts();
@@ -1728,11 +1728,11 @@ modsim run --gui examples/robot_packs/generic_cube \
     Object.assign(st, { x: START.x, y: START.y, yaw: START.yaw, docked: false, anim: null, drag: null, samples: [] });
     body.firstChild.setAttribute("fill", "var(--teal)"); [fConn, mConn].forEach((c) => c.setAttribute("fill", "var(--bg)"));
     showArrows(true); mover.classList.remove("locked"); $("wUndock").disabled = true; yaw.value = START.yaw; yawOut.textContent = START.yaw + "°";
-    lines = []; st.t0 = performance.now(); lastState = "x"; setState("free"); push("spawn", "2 × generic_cube, mock backend"); place();
+    lines = []; st.t0 = performance.now(); lastState = "x"; setState("free"); push("spawn", "2 × generic_cube, kinematis-only backend"); place();
     st.rot = false;
   });
 
-  place(); push("spawn", "2 × generic_cube, mock backend");
+  place(); push("spawn", "2 × generic_cube, kinematics-only backend");
   requestAnimationFrame(frame);
 })();
 </script>
