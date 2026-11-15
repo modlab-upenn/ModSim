@@ -8,8 +8,10 @@ validation cost on every step.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from enum import StrEnum
+from typing import Generic, TypeVar
 
 from modsim.core.ids import (
     ConnectionId,
@@ -69,37 +71,288 @@ ENGAGED_STATES = frozenset(
 """States in which a connector holds or is releasing a logical connection."""
 
 
-@dataclass(slots=True)
 class ModuleInstance:
-    """One module instance and its most recently ingested backend state."""
+    """One module instance and its most recently ingested backend state.
 
-    id: ModuleInstanceId
-    module_type_id: str
-    pose: Transform = field(default_factory=Transform.identity)
-    linear_velocity_m_s: Vec3 = ZERO_VEC3
-    angular_velocity_rad_s: Vec3 = ZERO_VEC3
-    link_poses: dict[str, Transform] = field(default_factory=dict[str, Transform])
-    joint_states: dict[str, JointState] = field(default_factory=dict[str, JointState])
+    ``pose``, ``linear_velocity_m_s`` and ``angular_velocity_rad_s`` describe
+    the root link and are read from the latest ingested sample on first access,
+    then cached until the next sample; values match an eager per-step copy
+    exactly. ``link_poses`` and ``joint_states`` may be read-only views over the
+    latest backend snapshot rather than dictionaries; treat both as immutable.
+    """
+
+    __slots__ = (
+        "_angular_velocity_rad_s",
+        "_clock",
+        "_linear_velocity_m_s",
+        "_pose",
+        "_stamp",
+        "id",
+        "joint_states",
+        "link_poses",
+        "module_type_id",
+    )
+
+    def __init__(
+        self,
+        id: ModuleInstanceId,
+        module_type_id: str,
+        pose: Transform | None = None,
+        linear_velocity_m_s: Vec3 = ZERO_VEC3,
+        angular_velocity_rad_s: Vec3 = ZERO_VEC3,
+        link_poses: Mapping[str, Transform] | None = None,
+        joint_states: Mapping[str, JointState] | None = None,
+    ) -> None:
+        self.id = id
+        self.module_type_id = module_type_id
+        self.link_poses: Mapping[str, Transform] = {} if link_poses is None else link_poses
+        self.joint_states: Mapping[str, JointState] = {} if joint_states is None else joint_states
+        self._pose = pose if pose is not None else Transform.identity()
+        self._linear_velocity_m_s = linear_velocity_m_s
+        self._angular_velocity_rad_s = angular_velocity_rad_s
+        self._clock: SampleClock[ModuleInstance] | None = None
+        self._stamp = _UNSET_STAMP
+
+    def __repr__(self) -> str:
+        return f"ModuleInstance(id={self.id!r}, module_type_id={self.module_type_id!r})"
+
+    def bind_sample_clock(self, clock: SampleClock[ModuleInstance] | None) -> None:
+        """Attach the owning world's clock; ``None`` freezes the current values."""
+        self._clock = clock
+        self._stamp = _UNSET_STAMP
+
+    def store_root_state(
+        self,
+        pose: Transform | None = None,
+        linear_velocity_m_s: Vec3 | None = None,
+        angular_velocity_rad_s: Vec3 | None = None,
+    ) -> None:
+        """Record the root state for the current sample (owner only).
+
+        ``None`` keeps the previous value, matching a sample that omits the root.
+        """
+        if pose is not None:
+            self._pose = pose
+        if linear_velocity_m_s is not None:
+            self._linear_velocity_m_s = linear_velocity_m_s
+        if angular_velocity_rad_s is not None:
+            self._angular_velocity_rad_s = angular_velocity_rad_s
+        if self._clock is not None:
+            self._stamp = self._clock.stamp
+
+    def settle(self) -> None:
+        """Resolve against the current sample now, before a new one replaces it."""
+        clock = self._clock
+        if clock is not None and self._stamp != clock.stamp:
+            clock.resolve(self)
+
+    @property
+    def pose(self) -> Transform:
+        self.settle()
+        return self._pose
+
+    @pose.setter
+    def pose(self, value: Transform) -> None:
+        self.settle()
+        self._pose = value
+
+    @property
+    def linear_velocity_m_s(self) -> Vec3:
+        self.settle()
+        return self._linear_velocity_m_s
+
+    @linear_velocity_m_s.setter
+    def linear_velocity_m_s(self, value: Vec3) -> None:
+        self.settle()
+        self._linear_velocity_m_s = value
+
+    @property
+    def angular_velocity_rad_s(self) -> Vec3:
+        self.settle()
+        return self._angular_velocity_rad_s
+
+    @angular_velocity_rad_s.setter
+    def angular_velocity_rad_s(self, value: Vec3) -> None:
+        self.settle()
+        self._angular_velocity_rad_s = value
 
 
-@dataclass(slots=True)
+_E = TypeVar("_E")
+
+
+class SampleClock(Generic[_E]):
+    """Shared stamp that tells lazily derived entities when they are stale.
+
+    ``WorldState`` advances ``stamp`` whenever it ingests a new kinematic
+    sample. An entity (module root state, connector frame) recomputes its
+    derived values only when one of them is read after the stamp has moved, so
+    ingesting a sample costs O(1) per entity instead of rebuilding every value.
+    """
+
+    __slots__ = ("resolve", "stamp")
+
+    def __init__(self, resolve: Callable[[_E], None]) -> None:
+        self.stamp = 0
+        self.resolve = resolve
+
+
+_UNSET_STAMP = -1
+
+
 class ConnectorInstance:
-    """One connector instance, its lifecycle state, and its resolved world frame."""
+    """One connector instance, its lifecycle state, and its resolved world frame.
 
-    id: ConnectorInstanceId
-    module_id: ModuleInstanceId
-    connector_id: str
-    connector_type_id: str
-    parent_link: str
-    lifecycle_state: ConnectorLifecycleState = ConnectorLifecycleState.FREE
-    connection_id: ConnectionId | None = None
-    world_pose: Transform = field(default_factory=Transform.identity)
-    world_docking_axis: Vec3 = (1.0, 0.0, 0.0)
-    world_approach_axis: Vec3 = (1.0, 0.0, 0.0)
-    world_velocity_m_s: Vec3 = ZERO_VEC3
-    local_pose: Transform = field(default_factory=Transform.identity)
-    resolved: bool = False
-    available_at_s: float = 0.0
+    The world-frame fields (``world_pose``, ``world_docking_axis``,
+    ``world_approach_axis``, ``world_velocity_m_s``, ``resolved``) are derived
+    from the latest ingested sample on first read, then cached until the next
+    sample. Reading them always returns the same values an eager per-step
+    refresh would have produced. Assigning one first brings the whole frame
+    up to date and then overrides that field until the next sample.
+    """
+
+    __slots__ = (
+        "_clock",
+        "_resolved",
+        "_stamp",
+        "_world_approach_axis",
+        "_world_docking_axis",
+        "_world_pose",
+        "_world_velocity_m_s",
+        "available_at_s",
+        "connection_id",
+        "connector_id",
+        "connector_type_id",
+        "id",
+        "lifecycle_state",
+        "local_pose",
+        "module_id",
+        "parent_link",
+    )
+
+    def __init__(
+        self,
+        id: ConnectorInstanceId,
+        module_id: ModuleInstanceId,
+        connector_id: str,
+        connector_type_id: str,
+        parent_link: str,
+        lifecycle_state: ConnectorLifecycleState = ConnectorLifecycleState.FREE,
+        connection_id: ConnectionId | None = None,
+        world_pose: Transform | None = None,
+        world_docking_axis: Vec3 = (1.0, 0.0, 0.0),
+        world_approach_axis: Vec3 = (1.0, 0.0, 0.0),
+        world_velocity_m_s: Vec3 = ZERO_VEC3,
+        local_pose: Transform | None = None,
+        resolved: bool = False,
+        available_at_s: float = 0.0,
+    ) -> None:
+        self.id = id
+        self.module_id = module_id
+        self.connector_id = connector_id
+        self.connector_type_id = connector_type_id
+        self.parent_link = parent_link
+        self.lifecycle_state = lifecycle_state
+        self.connection_id = connection_id
+        self.local_pose = local_pose if local_pose is not None else Transform.identity()
+        self.available_at_s = available_at_s
+        self._world_pose = world_pose if world_pose is not None else Transform.identity()
+        self._world_docking_axis = world_docking_axis
+        self._world_approach_axis = world_approach_axis
+        self._world_velocity_m_s = world_velocity_m_s
+        self._resolved = resolved
+        self._clock: SampleClock[ConnectorInstance] | None = None
+        self._stamp = _UNSET_STAMP
+
+    def __repr__(self) -> str:
+        return (
+            f"ConnectorInstance(id={self.id!r}, lifecycle_state={self.lifecycle_state!r}, "
+            f"connection_id={self.connection_id!r}, resolved={self.resolved!r})"
+        )
+
+    # -- lazy world frame ---------------------------------------------------
+
+    def bind_frame_clock(self, clock: SampleClock[ConnectorInstance] | None) -> None:
+        """Attach the owning world's clock; ``None`` freezes the current values."""
+        self._clock = clock
+        self._stamp = _UNSET_STAMP
+
+    def store_frame(
+        self,
+        *,
+        resolved: bool,
+        world_pose: Transform | None = None,
+        world_docking_axis: Vec3 | None = None,
+        world_approach_axis: Vec3 | None = None,
+        world_velocity_m_s: Vec3 | None = None,
+    ) -> None:
+        """Record a freshly derived frame for the current sample (owner only)."""
+        if world_pose is not None:
+            self._world_pose = world_pose
+        if world_docking_axis is not None:
+            self._world_docking_axis = world_docking_axis
+        if world_approach_axis is not None:
+            self._world_approach_axis = world_approach_axis
+        if world_velocity_m_s is not None:
+            self._world_velocity_m_s = world_velocity_m_s
+        self._resolved = resolved
+        if self._clock is not None:
+            self._stamp = self._clock.stamp
+
+    def settle(self) -> None:
+        """Resolve against the current sample now, before a new one replaces it."""
+        clock = self._clock
+        if clock is not None and self._stamp != clock.stamp:
+            clock.resolve(self)
+
+    @property
+    def world_pose(self) -> Transform:
+        self.settle()
+        return self._world_pose
+
+    @world_pose.setter
+    def world_pose(self, value: Transform) -> None:
+        self.settle()
+        self._world_pose = value
+
+    @property
+    def world_docking_axis(self) -> Vec3:
+        self.settle()
+        return self._world_docking_axis
+
+    @world_docking_axis.setter
+    def world_docking_axis(self, value: Vec3) -> None:
+        self.settle()
+        self._world_docking_axis = value
+
+    @property
+    def world_approach_axis(self) -> Vec3:
+        self.settle()
+        return self._world_approach_axis
+
+    @world_approach_axis.setter
+    def world_approach_axis(self, value: Vec3) -> None:
+        self.settle()
+        self._world_approach_axis = value
+
+    @property
+    def world_velocity_m_s(self) -> Vec3:
+        self.settle()
+        return self._world_velocity_m_s
+
+    @world_velocity_m_s.setter
+    def world_velocity_m_s(self, value: Vec3) -> None:
+        self.settle()
+        self._world_velocity_m_s = value
+
+    @property
+    def resolved(self) -> bool:
+        self.settle()
+        return self._resolved
+
+    @resolved.setter
+    def resolved(self, value: bool) -> None:
+        self.settle()
+        self._resolved = value
 
     @property
     def is_engaged(self) -> bool:

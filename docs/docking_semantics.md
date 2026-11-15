@@ -38,7 +38,7 @@ semantics identical across the mock backend, MuJoCo, and anything later.
 ```text
 1. adapter.step(dt)                 backend advances physics
 2. adapter.snapshot()               backend reports link poses, twists, forces
-3. world.ingest(snapshot)           resolve connector world frames
+3. world.ingest(snapshot)           adopt the sample; module roots and connector frames go stale
 4. overload evaluation              release connections past their break force
 5. docking.run(world, adapter)      releases, then detection, then commits
 ```
@@ -72,6 +72,16 @@ what a backend uses to populate that field.
 Docking and approach axes are authored in the **parent-link** frame, not the
 connector frame, so they are rotated by the link's world rotation rather than by
 the connector pose.
+
+Resolution is lazy, and so is each module's root `pose`, `linear_velocity_m_s`
+and `angular_velocity_rad_s`. Ingesting a sample only marks every connector frame stale;
+a connector derives its world pose, docking and approach axes, point velocity,
+and `resolved` flag the first time one of them is read, from the sample that
+was current at ingest, and caches them until the next sample. The values are
+exactly those an eager per-step refresh would produce, so a step in which no
+one inspects a connector (for example `process_connectors=False` transit) pays
+nothing per connector. Assigning one of these fields first brings the whole
+frame up to date, then overrides that field until the next sample.
 
 This convention does not apply to `physical_connection.hinge.axis`. A hinge
 axis is expressed in **each connector's own frame**, because it describes a

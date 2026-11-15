@@ -8,11 +8,46 @@ state, because ModSim does not reason about those.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
+from typing import TypeVar
 
 from modsim.core.ids import ConstraintHandle, ModuleInstanceId
 from modsim.core.transforms import ZERO_VEC3, Transform, Vec3, vec_add, vec_cross, vec_sub
+
+_K = TypeVar("_K")
+_V = TypeVar("_V")
+
+
+class FrozenMapping(Mapping[_K, _V]):
+    """Marker base for read-only mappings that a backend promises never to mutate.
+
+    A backend may return lazy, array-backed views instead of plain dictionaries
+    so that a snapshot costs one bulk copy of engine arrays rather than one
+    Python object per body, joint, and connector. ``WorldState`` keeps such
+    mappings by reference instead of copying them. Values must still be the
+    immutable types declared below, and must be the same on every lookup.
+    """
+
+    __slots__ = ()
+
+
+class LinkPoseView(FrozenMapping[str, Transform]):
+    """Link name to pose, read lazily from one module's ``BodyState`` mapping."""
+
+    __slots__ = ("_links",)
+
+    def __init__(self, links: Mapping[str, BodyState]) -> None:
+        self._links = links
+
+    def __getitem__(self, link: str) -> Transform:
+        return self._links[link].pose
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._links)
+
+    def __len__(self) -> int:
+        return len(self._links)
 
 
 @dataclass(frozen=True, slots=True)

@@ -74,6 +74,26 @@ materialises connector frames natively should report them in
 parent link pose with the authored offset, which removes any chance of ModSim
 and the engine disagreeing about where a connector is.
 
+**Snapshots may be lazy, but must be frozen.** The mappings in a
+`BackendStateSnapshot` may be plain dictionaries or `FrozenMapping` views
+(`modsim.core.snapshot`). A `FrozenMapping` promises that its contents never
+change after `snapshot()` returns and that each lookup returns the same
+immutable value; `WorldState` then keeps it by reference instead of copying
+every body and joint. Plain dictionaries are still copied on ingest.
+
+The MuJoCo adapter takes one bulk copy of the needed `MjData` rows per
+snapshot (body positions and quaternions, inertial-frame positions `xipos`,
+`cvel`, root `subtree_com`, site frames, `qpos`, `qvel`, actuator forces), gathered through index arrays built once at
+`load`. `BodyState`, `JointState`, and connector `Transform` values are built
+on first lookup with the same MuJoCo routines the eager code used, so they are
+bit-identical to it. As before, a `BodyState` pose is the body frame (`xpos`,
+`xquat`) while its twist is that of the body's inertial frame, matching
+`mj_objectVelocity(mjOBJ_BODY)` (`tests/test_lazy_kinematic_sampling.py`). Because the rows
+are copied, later steps and dock commits cannot change an issued snapshot.
+Constraint forces stay eager, since overload evaluation reads each active one
+every step; their solver rows are grouped by equality in one pass per snapshot
+rather than rescanned per connection.
+
 ## The two backends today
 
 | | `mock` | `mujoco` |

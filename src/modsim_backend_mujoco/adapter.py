@@ -32,7 +32,7 @@ from modsim.core.ids import (
     split_joint_instance_id,
 )
 from modsim.core.scene import SceneSpec
-from modsim.core.snapshot import BackendStateSnapshot, BodyState, JointState
+from modsim.core.snapshot import BackendStateSnapshot
 from modsim.core.transforms import (
     ZERO_VEC3,
     Quat,
@@ -49,6 +49,7 @@ from modsim_backend_mujoco.hinges import (
     HingePoolExhaustedError,
     hinge_anchor_pairs,
 )
+from modsim_backend_mujoco.sampling import MujocoSample, SampleLayout
 from modsim_backend_mujoco.scene import DEFAULT_GRAVITY, GROUND_GEOM, CompiledScene, build_scene
 from modsim_backend_mujoco.welds import (
     ANCHOR,
@@ -79,6 +80,7 @@ class MuJoCoBackendAdapter:
         "_ground_height_m",
         "_hinge_pool_size",
         "_hinges",
+        "_sample_layout",
         "_scene",
         "_timestep_s",
         "_weld_pool_size",
@@ -108,6 +110,7 @@ class MuJoCoBackendAdapter:
         self._ground = ground
         self._ground_height_m = ground_height_m
         self._compiled: CompiledScene | None = None
+        self._sample_layout: SampleLayout | None = None
         self._data: mujoco.MjData | None = None
         self._scene: SceneSpec | None = None
         self._welds = WeldPool()
@@ -161,6 +164,13 @@ class MuJoCoBackendAdapter:
             ground_height_m=self._ground_height_m,
         )
         self._compiled = compiled
+        self._sample_layout = SampleLayout.build(
+            compiled.model,
+            compiled.body_ids,
+            compiled.site_ids,
+            compiled.joint_ids,
+            compiled.actuator_ids,
+        )
         if self._constraint_time_constant_s is not None:
             if self._constraint_time_constant_s < 2 * compiled.model.opt.timestep:
                 raise BackendError("constraint_time_constant_s must be at least twice the timestep")
@@ -205,51 +215,23 @@ class MuJoCoBackendAdapter:
                 mujoco.mj_step(model, data)
 
     def snapshot(self) -> BackendStateSnapshot:
-        """Read link poses, world twists, and connector site frames."""
-        model, data = self._require_loaded()
-        compiled = self._require_compiled()
+        """Report link poses, world twists, joint states, and connector site frames.
 
-        link_states: dict[ModuleInstanceId, dict[str, BodyState]] = {}
-        velocity = np.zeros(6)
-        for (module_id, link), body_id in compiled.body_ids.items():
-            mujoco.mj_objectVelocity(model, data, mujoco.mjtObj.mjOBJ_BODY, body_id, velocity, 0)
-            link_states.setdefault(module_id, {})[link] = BodyState(
-                pose=Transform(
-                    translation=_vec3(data.xpos[body_id]),
-                    rotation=_quat(data.xquat[body_id]),
-                ),
-                # mj_objectVelocity with flg_local=0 reports world-frame motion
-                # at the body's own origin, which is what BodyState.velocity_at
-                # expects before it adds the connector lever arm.
-                angular_velocity_rad_s=_vec3(velocity[0:3]),
-                linear_velocity_m_s=_vec3(velocity[3:6]),
-            )
-
-        connector_frames: dict[ModuleInstanceId, dict[str, Transform]] = {}
-        for instance, site_id in compiled.site_ids.items():
-            module_id, connector_id = _split(instance)
-            connector_frames.setdefault(module_id, {})[connector_id] = Transform(
-                translation=_vec3(data.site_xpos[site_id]),
-                rotation=_mat_to_quat(data.site_xmat[site_id]),
-            )
-
-        joint_states: dict[ModuleInstanceId, dict[str, JointState]] = {}
-        for (module_id, joint_id), native_joint_id in compiled.joint_ids.items():
-            qpos_address = int(model.jnt_qposadr[native_joint_id])
-            dof_address = int(model.jnt_dofadr[native_joint_id])
-            actuator_id = compiled.actuator_ids.get((module_id, joint_id))
-            effort = 0.0 if actuator_id is None else float(data.actuator_force[actuator_id])
-            joint_states.setdefault(module_id, {})[joint_id] = JointState(
-                position=float(data.qpos[qpos_address]),
-                velocity=float(data.qvel[dof_address]),
-                effort=effort,
-            )
-
+        The snapshot holds one bulk copy of the needed ``MjData`` rows; per-body
+        and per-site values are materialised lazily on lookup (see
+        ``modsim_backend_mujoco.sampling``). Constraint forces stay eager because
+        overload evaluation reads every active one each step.
+        """
+        _, data = self._require_loaded()
+        layout = self._sample_layout
+        if layout is None:  # pragma: no cover - set together with _compiled in load()
+            raise BackendError("the MuJoCo backend has no sample layout; call load() first")
+        sample = MujocoSample(layout, data)
         return BackendStateSnapshot(
             time_s=float(data.time),
-            link_states=link_states,
-            joint_states=joint_states,
-            connector_frames=connector_frames,
+            link_states=sample.link_states(),
+            joint_states=sample.joint_states(),
+            connector_frames=sample.connector_frames(),
             constraint_forces_n=self._constraint_forces(data),
         )
 
@@ -447,6 +429,7 @@ class MuJoCoBackendAdapter:
         self._hinges.clear()
         self._contact_exclusions.clear()
         self._compiled = None
+        self._sample_layout = None
         self._data = None
         self._scene = None
 
@@ -587,14 +570,15 @@ class MuJoCoBackendAdapter:
     ) -> dict[ConstraintHandle, float]:
         """Return equality-row force magnitudes for every active connection."""
         forces: dict[ConstraintHandle, float] = {}
+        rows = _EqualityForceRows(data)
         for slot in self._welds.slots:
             if slot.handle is not None and data.eq_active[slot.equality_id]:
-                forces[slot.handle] = _weld_force_magnitude(data, slot.equality_id)
+                forces[slot.handle] = _weld_force_magnitude(rows, slot.equality_id)
         for slot in self._hinges.slots:
             if slot.handle is not None and all(
                 data.eq_active[equality] for equality in slot.equality_ids
             ):
-                forces[slot.handle] = _hinge_force_magnitude(data, slot.equality_ids)
+                forces[slot.handle] = _hinge_force_magnitude(rows, slot.equality_ids)
         return forces
 
     def _snap_to_nominal(
@@ -735,37 +719,60 @@ def _mat_to_quat(matrix: object) -> Quat:
     return _quat(result)
 
 
-def _equality_force_rows(
-    data: mujoco.MjData,
-    equality_id: int,
-) -> np.ndarray:
-    """Return solver rows belonging to one equality, in constraint order.
+class _EqualityForceRows:
+    """Solver rows of every equality constraint, grouped once per snapshot.
 
     ``efc_id`` identifies the equality that produced each scalar solver row;
     filtering by both constraint kind and equality id avoids mixing in contact,
-    friction, or limit forces.
+    friction, or limit forces. Grouping all rows in one pass (a stable sort, so
+    each group keeps constraint order) replaces a full scan per connection,
+    which grew quadratically with the number of active welds. The rows, and so
+    the magnitudes computed from them, are unchanged.
     """
-    if data.nefc == 0:
-        return np.empty(0)
-    kinds = np.asarray(data.efc_type[: data.nefc])
-    identifiers = np.asarray(data.efc_id[: data.nefc])
-    mask = (kinds == int(mujoco.mjtConstraint.mjCNSTR_EQUALITY)) & (identifiers == equality_id)
-    return np.asarray(data.efc_force[: data.nefc])[mask]
+
+    __slots__ = ("_bounds", "_forces")
+
+    def __init__(self, data: mujoco.MjData) -> None:
+        count = data.nefc
+        self._bounds: dict[int, tuple[int, int]] = {}
+        if count == 0:
+            self._forces = np.empty(0)
+            return
+        kinds = np.asarray(data.efc_type[:count])
+        equality = kinds == int(mujoco.mjtConstraint.mjCNSTR_EQUALITY)
+        identifiers = np.asarray(data.efc_id[:count])[equality]
+        forces = np.asarray(data.efc_force[:count])[equality]
+        order = np.argsort(identifiers, kind="stable")
+        identifiers = identifiers[order]
+        self._forces = forces[order]
+        if len(identifiers) == 0:
+            return
+        unique, starts = np.unique(identifiers, return_index=True)
+        ends = [*starts[1:].tolist(), len(identifiers)]
+        for equality_id, start, end in zip(unique.tolist(), starts.tolist(), ends, strict=True):
+            self._bounds[equality_id] = (start, end)
+
+    def __call__(self, equality_id: int) -> np.ndarray:
+        """Return solver rows belonging to one equality, in constraint order."""
+        bounds = self._bounds.get(equality_id)
+        if bounds is None:
+            return np.empty(0)
+        return self._forces[bounds[0] : bounds[1]]
 
 
-def _weld_force_magnitude(data: mujoco.MjData, equality_id: int) -> float:
+def _weld_force_magnitude(rows_of: _EqualityForceRows, equality_id: int) -> float:
     """Return the weld's translational force magnitude in newtons.
 
     A weld contributes three translational rows followed by three rotational
     rows.  The latter encode moments through MuJoCo's weld torque scale and
     cannot be mixed into a value whose public unit is newtons.
     """
-    rows = _equality_force_rows(data, equality_id)
+    rows = rows_of(equality_id)
     return float(np.linalg.norm(rows[:3])) if len(rows) >= 3 else 0.0
 
 
 def _hinge_force_magnitude(
-    data: mujoco.MjData,
+    rows_of: _EqualityForceRows,
     equality_ids: tuple[int, int],
 ) -> float:
     """Return the net translational force transmitted by a two-point hinge.
@@ -775,7 +782,7 @@ def _hinge_force_magnitude(
     moment, which belongs in future moment telemetry rather than this scalar
     force field.
     """
-    point_forces = [_equality_force_rows(data, equality) for equality in equality_ids]
+    point_forces = [rows_of(equality) for equality in equality_ids]
     if any(len(rows) < 3 for rows in point_forces):
         return 0.0
     resultant = point_forces[0][:3] + point_forces[1][:3]

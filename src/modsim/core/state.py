@@ -16,6 +16,7 @@ from modsim.core.entities import (
     ConnectorInstance,
     ConnectorLifecycleState,
     ModuleInstance,
+    SampleClock,
 )
 from modsim.core.events import (
     AssemblyMerged,
@@ -36,7 +37,7 @@ from modsim.core.ids import (
     split_joint_instance_id,
 )
 from modsim.core.scene import SceneSpec
-from modsim.core.snapshot import BackendStateSnapshot, JointState
+from modsim.core.snapshot import BackendStateSnapshot, FrozenMapping, JointState, LinkPoseView
 from modsim.core.transforms import Transform, quat_rotate
 from modsim.robot_packs.schema import ConnectorSpec, ConnectorTypeSpec, JointSpec, RobotPack
 
@@ -68,9 +69,13 @@ class WorldState:
         "_connectors",
         "_connectors_by_module",
         "_event_log",
+        "_frame_clock",
+        "_module_clock",
         "_modules",
         "_pack",
+        "_parent_links_by_type",
         "_revision",
+        "_sample_snapshot",
         "_time_s",
     )
 
@@ -84,6 +89,12 @@ class WorldState:
         self._assemblies = AssemblyIndex()
         self._event_log = EventLog()
         self._revision = WorldStateRevision()
+        # Module root states and connector world frames are derived lazily
+        # from the latest ingested sample (see ``ingest``).
+        self._sample_snapshot: BackendStateSnapshot | None = None
+        self._parent_links_by_type: dict[str, tuple[str, ...]] = {}
+        self._module_clock = SampleClock[ModuleInstance](self._resolve_module_root)
+        self._frame_clock = SampleClock[ConnectorInstance](self._resolve_connector_frame)
 
     # ------------------------------------------------------------------
     # construction
@@ -102,10 +113,12 @@ class WorldState:
                 pose=placement.pose,
                 link_poses={module_type.root_link: placement.pose},
             )
+            module.bind_sample_clock(world._module_clock)
             world._modules[module.id] = module
             connector_ids: list[ConnectorInstanceId] = []
             for connector_spec in module_type.connectors:
                 instance = world._build_connector(module.id, connector_spec)
+                instance.bind_frame_clock(world._frame_clock)
                 world._connectors[instance.id] = instance
                 connector_ids.append(instance.id)
             world._connectors_by_module[module.id] = tuple(connector_ids)
@@ -239,62 +252,116 @@ class WorldState:
     # ------------------------------------------------------------------
 
     def ingest(self, snapshot: BackendStateSnapshot) -> None:
-        """Update module and connector kinematics from a backend observation."""
+        """Adopt a backend observation as the current kinematic sample.
+
+        Joint states and link poses are taken by reference when the backend
+        returns ``FrozenMapping`` views, and copied otherwise. Module root
+        state and connector frames are not recomputed here: they are derived
+        from this sample the first time they are read, and the values are the
+        same as an eager copy would produce.
+        """
         self._time_s = snapshot.time_s
+        module_types = self._pack.hardware_catalog.module_types
         for module_id, module in self._modules.items():
             joints = snapshot.joint_states.get(module_id)
             if joints is not None:
-                module.joint_states = dict(joints)
+                # A FrozenMapping is an immutable, possibly lazy backend view:
+                # keep it by reference instead of materialising every joint.
+                module.joint_states = joints if isinstance(joints, FrozenMapping) else dict(joints)
             links = snapshot.link_states.get(module_id)
+            if links is None or module_types[module.module_type_id].root_link not in links:
+                # This sample does not report the root, so the module keeps its
+                # current root state: resolve it against the outgoing sample now.
+                module.settle()
             if links is None:
                 continue
-            module.link_poses = {name: body.pose for name, body in links.items()}
-            module_type = self._pack.hardware_catalog.module_types[module.module_type_id]
-            root = links.get(module_type.root_link)
-            if root is not None:
-                module.pose = root.pose
-                module.linear_velocity_m_s = root.linear_velocity_m_s
-                module.angular_velocity_rad_s = root.angular_velocity_rad_s
-        self._refresh_connector_frames(snapshot)
+            parent_links = self._connector_parent_links(module.module_type_id)
+            if any(link not in links for link in parent_links):
+                # A frame whose parent link vanishes keeps its last derived
+                # values; derive them from the outgoing sample first.
+                for connector_id in self._connectors_by_module[module_id]:
+                    connector = self._connectors[connector_id]
+                    if connector.parent_link not in links:
+                        connector.settle()
+            module.link_poses = (
+                LinkPoseView(links)
+                if isinstance(links, FrozenMapping)
+                else {name: body.pose for name, body in links.items()}
+            )
+        self._sample_snapshot = snapshot
+        self._module_clock.stamp += 1
+        self._frame_clock.stamp += 1
         self._clear_transient_states()
         self._advance_revision(sample=True)
 
-    def _refresh_connector_frames(self, snapshot: BackendStateSnapshot | None = None) -> None:
-        for connector in self._connectors.values():
-            module = self._modules[connector.module_id]
-            module_type = self._pack.hardware_catalog.module_types[module.module_type_id]
-            spec = self._connector_spec(module_type.connectors, connector.connector_id)
-            link_pose = module.link_poses.get(connector.parent_link)
-            if link_pose is None:
-                connector.resolved = False
-                continue
+    def _connector_parent_links(self, module_type_id: str) -> tuple[str, ...]:
+        cached = self._parent_links_by_type.get(module_type_id)
+        if cached is None:
+            connectors = self._pack.hardware_catalog.module_types[module_type_id].connectors
+            cached = tuple(dict.fromkeys(spec.parent_link for spec in connectors))
+            self._parent_links_by_type[module_type_id] = cached
+        return cached
 
-            measured = None
-            if snapshot is not None:
-                measured = snapshot.connector_frames.get(connector.module_id, {}).get(
-                    connector.connector_id
+    def _refresh_connector_frames(self) -> None:
+        """Mark every connector frame stale against the current sample."""
+        self._frame_clock.stamp += 1
+
+    def _resolve_module_root(self, module: ModuleInstance) -> None:
+        snapshot = self._sample_snapshot
+        root = None
+        if snapshot is not None:
+            links = snapshot.link_states.get(module.id)
+            if links is not None:
+                root = links.get(
+                    self._pack.hardware_catalog.module_types[module.module_type_id].root_link
                 )
-            connector.world_pose = (
-                measured if measured is not None else link_pose.compose(connector.local_pose)
-            )
+        if root is None:
+            module.store_root_state()
+            return
+        module.store_root_state(root.pose, root.linear_velocity_m_s, root.angular_velocity_rad_s)
 
-            # Docking and approach axes are authored in the parent-link frame,
-            # not the connector frame, so they rotate with the link.
-            if spec.docking_axis is not None:
-                connector.world_docking_axis = quat_rotate(link_pose.rotation, spec.docking_axis)
-            approach = spec.approach_axis or spec.docking_axis
-            if approach is not None:
-                connector.world_approach_axis = quat_rotate(link_pose.rotation, approach)
+    def _resolve_connector_frame(self, connector: ConnectorInstance) -> None:
+        snapshot = self._sample_snapshot
+        module = self._modules[connector.module_id]
+        link_pose = module.link_poses.get(connector.parent_link)
+        if link_pose is None:
+            connector.store_frame(resolved=False)
+            return
+        module_type = self._pack.hardware_catalog.module_types[module.module_type_id]
+        spec = self._connector_spec(module_type.connectors, connector.connector_id)
 
-            body = None
-            if snapshot is not None:
-                body = snapshot.body(connector.module_id, connector.parent_link)
-            connector.world_velocity_m_s = (
-                body.velocity_at(connector.world_pose.translation)
-                if body is not None
-                else module.linear_velocity_m_s
+        measured = None
+        if snapshot is not None:
+            measured = snapshot.connector_frames.get(connector.module_id, {}).get(
+                connector.connector_id
             )
-            connector.resolved = True
+        world_pose = measured if measured is not None else link_pose.compose(connector.local_pose)
+
+        # Docking and approach axes are authored in the parent-link frame,
+        # not the connector frame, so they rotate with the link.
+        docking_axis = None
+        if spec.docking_axis is not None:
+            docking_axis = quat_rotate(link_pose.rotation, spec.docking_axis)
+        approach_axis = None
+        approach = spec.approach_axis or spec.docking_axis
+        if approach is not None:
+            approach_axis = quat_rotate(link_pose.rotation, approach)
+
+        body = None
+        if snapshot is not None:
+            body = snapshot.body(connector.module_id, connector.parent_link)
+        velocity = (
+            body.velocity_at(world_pose.translation)
+            if body is not None
+            else module.linear_velocity_m_s
+        )
+        connector.store_frame(
+            resolved=True,
+            world_pose=world_pose,
+            world_docking_axis=docking_axis,
+            world_approach_axis=approach_axis,
+            world_velocity_m_s=velocity,
+        )
 
     def _clear_transient_states(self) -> None:
         """Reset per-step lifecycle states so a stale detection cannot persist.
