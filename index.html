@@ -159,6 +159,9 @@ figure { margin: 0; display: flex; flex-direction: column; gap: 10px; }
 #mover { cursor: grab; }
 #mover.dragging { cursor: grabbing; }
 #mover.locked { cursor: default; }
+#mover .rot-handle { cursor: alias; }
+#mover.locked .rot-handle { display: none; }
+.w-ctl .rotbtn { font: 600 0.95rem var(--font-body); width: 34px; height: 30px; padding: 0; border-radius: 8px; }
 .w-body { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); border-top: 1px solid var(--line); }
 @media (max-width: 720px) { .w-body { grid-template-columns: minmax(0, 1fr); } }
 .w-crit { padding: 12px 16px; border-right: 1px solid var(--line); min-width: 0; }
@@ -341,15 +344,15 @@ footer { margin-top: 72px; border-top: 1px solid var(--line); padding-block: 28p
 
   <!-- ================= MOTIVATION ================= -->
   <section class="s" id="problem">
-    <h2>Modular robots change shape while they run</h2>
-    <p>Modular robots get their usefulness from changing topology at runtime: modules dock into assemblies, undock and rearrange. Engines like MuJoCo, Isaac Sim and Gazebo simulate a <em>fixed</em> assembly very well. A dock is different. It changes the mechanism mid-run, and the claim that two modules are now one assembly has to stay consistent with the constraint the engine actually enforces.</p>
-    <p>General-purpose engines don't represent that second half. MuJoCo can't add a joint on contact, so welds must come from a reserved pool. A logical connection must only count once the physical constraint exists. Docking rules are written between connector frames, while physics constraints are written between bodies. ModSim handles all of this once, in one place, for every robot and every backend.</p>
+    <h2>Modular robots change shape during runtime</h2>
+    <p>Simulating modular robots requires coordinating changes to their logical topology and physical constraints as modules dock and undock. General-purpose physics engines lack a unified mechanism for keeping these representations consistent during runtime. ModSim provides backend-independent docking semantics to manage this coordination.</p>
   </section>
 
   <!-- ================= DOCKING WIDGET ================= -->
   <section class="s" id="docking">
     <h2>What decides whether two modules dock?</h2>
-    <p>Every connector type declares an acceptance region. Two connectors dock only when they are close enough, their docking axes point at each other, and they are closing slowly enough. Then ModSim asks the backend for the constraint and records the connection only after the backend confirms it. Try it: drag the teal module toward the blue one.</p>
+    <p>Different modular robots may impose different conditions for docking, from geometric alignment to velocity and other connector-specific requirements. ModSim supports these rules while coordinating connection formation with the underlying physics engine.</p>
+    <p>The demo below uses a simple rule based on distance, orientation, and approach velocity. Try it: drag the teal module toward the blue one.</p>
     <div class="widget" id="widget">
       <div class="w-head"><span>connector type <b>fixed_face</b> · auto_latch: true · alignment: nominal · 6 mm · 15° · 50 mm/s</span><span>state: <span class="state" id="wState" data-s="free">free</span></span></div>
       <div class="w-stage">
@@ -363,11 +366,15 @@ footer { margin-top: 72px; border-top: 1px solid var(--line); padding-block: 28p
           <rect id="region" width="22" height="22" rx="2" fill="var(--teal)" fill-opacity="0.08" stroke="var(--teal)" stroke-dasharray="3 3"/>
           <g id="fixedMod"></g>
           <g id="mover"></g>
-          <text x="14" y="268" font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--muted)">dashed circle: detection radius · dashed square: 6 mm acceptance region · grid 10 mm</text>
+          <text x="14" y="268" font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--muted)">dashed circle: detection radius · dashed square: 6 mm acceptance region · wedge: ±15° alignment · grid 10 mm</text>
         </svg>
       </div>
       <div class="w-ctl">
-        <label for="yaw">Rotate moving module <input id="yaw" type="range" min="-30" max="30" step="1" value="10"><output id="yawOut">10°</output></label>
+        <label for="yaw">Rotate moving module</label>
+        <button class="btn rotbtn" id="wRotL" type="button" aria-label="Rotate 5° counter-clockwise">⟲</button>
+        <input id="yaw" type="range" min="-30" max="30" step="1" value="10" aria-label="Moving module angle">
+        <button class="btn rotbtn" id="wRotR" type="button" aria-label="Rotate 5° clockwise">⟳</button>
+        <output id="yawOut">10°</output>
         <span class="sp"></span>
         <button class="btn primary" id="wAnimate" type="button">Animate</button>
         <button class="btn" id="wUndock" type="button" disabled>Undock</button>
@@ -441,14 +448,35 @@ footer { margin-top: 72px; border-top: 1px solid var(--line); padding-block: 28p
       </div>
       <figcaption class="caption">ModSim owns what a connection means. The backend only answers whether a requested constraint physically exists.</figcaption>
     </figure>
-    <p class="runin"><b>Robot Packs.</b> A self-contained folder: your URDF for geometry and kinematics, plus strict split-YAML for modules, connectors, compatibility, acceptance regions and docking policy. Packs are imported from URDF and edited in a desktop Studio, and validated before they ever reach a simulator.</p>
+    
+    <p class="runin"><b>Robot Packs.</b> Self-contained robot definitions comprising:</p>
+    <ul>
+      <li><b>URDF</b> for geometry and kinematics.</li>
+      <li><b>YAML</b> for modules, connectors, compatibility, acceptance regions, and docking policies.</li>
+      <li><b>Studio tooling</b> with a GUI for creating and editing Robot Pack YAML, importing URDFs, and validating packs before simulation.</li>
+    </ul>
+
     <figure class="realvid">
       <video src="media/studio_walkthrough_2x.mp4" autoplay muted loop playsinline controls preload="metadata" aria-label="ModSim Studio walkthrough, 2x speed"></video>
       <figcaption class="caption">ModSim Studio with the SMORES-EP pack, 2× speed: toggling visual and collision geometry, frames, joint axes and connectors, and reading the YAML behind each module, connector and mapping.</figcaption>
     </figure>
-    <p class="runin"><b>Runtime and docking.</b> Each step, the backend advances physics and reports poses, then ModSim resolves connector frames, releases overloaded or requested connections, and evaluates new docks. A connection is committed only after the backend confirms its constraint. State changes only through events, so the log fully explains every connection.</p>
-    <p class="runin"><b>Backends and inspection.</b> Adapters implement seven methods. The mock backend is kinematic and serves as the reference semantics. MuJoCo adds contact, gravity, effort-controlled joints, and runtime welds and hinges drawn from reserved pools. The Runtime Inspector shows live topology, events and planner decisions next to the native viewer.</p>
-    <p class="runin"><b>Model views and planning.</b> ModSim never stores a picture of the robot. Model views are immutable projections generated from the canonical state on demand: a topology graph of modules and connections, or a cubic lattice for systems like M-Blocks. Online planners publish their goals, routes and action progress alongside them, so you can see what the planner intends next to what the physics actually did. Try the playground below, then see the real Runtime Inspector recordings and step-by-step replays of real ModSim plans and runs.</p>
+    
+    <p class="runin"><b>Runtime and Docking.</b> Event-driven simulation and connection management comprising:</p>
+    <ul>
+      <li><b>Physics updates</b> from the backend, followed by connector-frame resolution.</li>
+      <li><b>Docking and undocking</b> based on connector rules, overloads, and requested disconnections.</li>
+      <li><b>Constraint confirmation</b> before committing connections, with all topology changes recorded as events.</li>
+    </ul>
+
+    <p class="runin"><b>Backends and Inspection.</b> A unified simulation interface comprising:</p>
+    <ul>
+      <li><b>Backend adapters</b> implementing a minimal seven-method interface.</li>
+      <li><b>Mock backend</b> providing kinematic simulation and reference semantics.</li>
+      <li><b>MuJoCo backend</b> supporting contact, gravity, effort-controlled joints, and runtime welds and hinges from reserved pools.</li>
+      <li><b>Runtime Inspector</b> displaying live topology, events, and planner decisions alongside the native viewer.</li>
+    </ul>
+
+    <p class="runin"><b>Model views and planning.</b> ModSim never stores a picture of the robot. Model views are immutable projections generated from the canonical state on demand: a topology graph of modules and connections, or a cubic lattice for systems like M-Blocks. Online planners publish their goals, routes and action progress alongside them, so you can see what the planner intends next to what the physics actually did. Try the playground below, then see step-by-step replays of real ModSim plans and runs.</p>
     <figure class="tp" id="tp" aria-label="Interactive topology playground">
       <div class="tp-head"><span><b>Try it</b> · drag modules to dock them and watch the topology graph</span><span class="tp-counts"></span></div>
       <div class="tp-stage"><svg viewBox="0 0 900 420" role="application" aria-label="Workspace with draggable modules beside a live topology graph"></svg></div>
@@ -460,20 +488,11 @@ footer { margin-top: 72px; border-top: 1px solid var(--line); padding-block: 28p
       </div>
       <div class="tp-log" aria-live="polite"></div>
     </figure>
-    <figure class="realvid vclips" id="vclips">
-      <video src="media/inspector_lattice.mp4" autoplay muted loop playsinline controls preload="metadata" aria-label="Runtime Inspector recording"></video>
-      <div class="clips" role="group" aria-label="Runtime Inspector recordings">
-        <button class="clip" type="button" aria-pressed="true" data-src="media/inspector_lattice.mp4" data-cap="Cubic-lattice view, M-Blocks rectangle to line: live lattice beside the target lattice as cubes pivot into place.">Lattice view</button>
-        <button class="clip" type="button" aria-pressed="false" data-src="media/inspector_smores_planning.mp4" data-cap="Planning tab, SMORES-EP online self-assembly: goal poses, generated routes, action states and the action history.">SMORES planner</button>
-        <button class="clip" type="button" aria-pressed="false" data-src="media/inspector_mblocks_planning.mp4" data-cap="Planning tab, M-Blocks online planner: generated pivots, clearance checks and action progress.">M-Blocks planner</button>
-      </div>
-      <figcaption class="caption" id="vclipsCap">Cubic-lattice view, M-Blocks rectangle to line: live lattice beside the target lattice as cubes pivot into place.</figcaption>
-    </figure>
     <figure class="mv" id="mv" aria-label="Animated model views and planner output">
       <div class="mv-tabs" role="tablist" aria-label="Model view">
-        <button class="mv-tab" role="tab" type="button" data-view="topo" aria-selected="true">Topology graph · SMORES-EP</button>
+        <button class="mv-tab" role="tab" type="button" data-view="smores" aria-selected="true">Online planner · SMORES-EP</button>
+        <button class="mv-tab" role="tab" type="button" data-view="topo" aria-selected="false">Topology graph · SMORES-EP</button>
         <button class="mv-tab" role="tab" type="button" data-view="lattice" aria-selected="false">Lattice + planner · M-Blocks</button>
-        <button class="mv-tab" role="tab" type="button" data-view="smores" aria-selected="false">Online planner · SMORES-EP</button>
       </div>
       <div class="mv-status"><span class="mv-act"></span><span class="mv-meta"></span></div>
       <div class="mv-stage"><svg role="img" aria-label="Animated model view"></svg></div>
@@ -492,12 +511,6 @@ footer { margin-top: 72px; border-top: 1px solid var(--line); padding-block: 28p
   <section class="s" id="experiments">
     <h2>Experiments</h2>
     <p>Every experiment ships with the repository and runs from one command. Videos are real-time unless marked.</p>
-
-    <div class="exp">
-      <h3>SMORES-EP dock and undock</h3>
-      <p>One module drives its pan face into a second module's rear face using differential wheel effort. The weld forms only once the measured face separation is under 1 mm, holds, releases after 80 ms, and the module reverses away.</p>
-      <div class="player" data-clips='[["MuJoCo viewer","wheel-driven approach, weld, release, reverse"],["Runtime Inspector","topology 0 → 1 → 0 with event log"],["Close-up","connector faces at latch, 1 mm gate"]]' data-dur="12"></div>
-    </div>
 
     <div class="exp">
       <h3>SMORES-EP online self-assembly</h3>
@@ -1490,12 +1503,31 @@ modsim run --gui examples/robot_packs/generic_cube \
   const fArr = el("line", { x1: HALF + 6, y1: 0, x2: HALF + 30, y2: 0, stroke: "var(--muted)", "stroke-width": 1.4, "marker-end": "url(#arr)" }, fixedG);
   el("text", { x: HALF - 10, y: 30, "text-anchor": "end", "fill-opacity": 0.85, "font-family": "IBM Plex Mono, monospace", "font-size": 10, fill: "var(--surface)" }, fixedG).textContent = "front";
 
+  // ±15° alignment wedge on the fixed connector: the moving module's docking axis must point into it
+  const WL = 92, wa = TOL.ax * Math.PI / 180;
+  const wedge = el("path", { d: `M${A.x} ${A.y} L${A.x + WL * Math.cos(wa)} ${A.y - WL * Math.sin(wa)} A${WL} ${WL} 0 0 1 ${A.x + WL * Math.cos(wa)} ${A.y + WL * Math.sin(wa)} Z`, fill: "var(--teal)", "fill-opacity": 0.07, stroke: "var(--teal)", "stroke-opacity": 0.45, "stroke-dasharray": "3 3" });
+  svg.insertBefore(wedge, document.getElementById("fixedMod"));
+  const wedgeLbl = el("text", { x: A.x + WL + 6, y: A.y + 4, "font-family": "IBM Plex Mono, monospace", "font-size": 10, fill: "var(--teal)" });
+  wedgeLbl.textContent = `±${TOL.ax}°`; svg.insertBefore(wedgeLbl, document.getElementById("fixedMod"));
+
   const mover = document.getElementById("mover");
   const body = el("g", {}, mover);
   drawCube(body, "var(--teal)", "module_1");
   const mConn = el("rect", { x: -HALF + 1, y: -14, width: 8, height: 28, rx: 2, fill: "var(--bg)", stroke: "var(--ink)", "stroke-opacity": 0.5 }, body);
   const mArr = el("line", { x1: -HALF - 6, y1: 0, x2: -HALF - 30, y2: 0, stroke: "var(--muted)", "stroke-width": 1.4, "marker-end": "url(#arr)" }, body);
   el("text", { x: -HALF + 10, y: 30, "text-anchor": "start", "fill-opacity": 0.85, "font-family": "IBM Plex Mono, monospace", "font-size": 10, fill: "var(--surface)" }, body).textContent = "rear";
+  // rotation handle: a knob on a stem above the module (rotates with it)
+  const handle = el("g", { class: "rot-handle", role: "img", "aria-label": "Rotation handle" }, body);
+  el("line", { x1: 0, y1: -HALF, x2: 0, y2: -HALF - 17, stroke: "var(--teal)", "stroke-width": 2 }, handle);
+  el("circle", { cx: 0, cy: -HALF - 27, r: 11, fill: "var(--surface)", stroke: "var(--teal)", "stroke-width": 2 }, handle);
+  el("path", { d: `M-5 ${-HALF - 30} A6 6 0 1 1 -4 ${-HALF - 22}`, fill: "none", stroke: "var(--teal)", "stroke-width": 1.8 }, handle);
+  el("path", { d: `M-8.5 ${-HALF - 31} L-5 ${-HALF - 30} L-4.6 ${-HALF - 34}`, fill: "none", stroke: "var(--teal)", "stroke-width": 1.8, "stroke-linecap": "round" }, handle);
+  el("circle", { cx: 0, cy: -HALF - 27, r: 16, fill: "transparent" }, handle); // larger hit area
+  // upright readouts that follow the module
+  const badge = el("text", { "text-anchor": "middle", "font-family": "IBM Plex Mono, monospace", "font-size": 11, "font-weight": 600, stroke: "var(--bg)", "stroke-width": 3, "paint-order": "stroke" }, svg);
+  const hintTxt = el("text", { "font-family": "IBM Plex Sans, sans-serif", "font-size": 11.5, "font-weight": 600, fill: "var(--teal)", stroke: "var(--bg)", "stroke-width": 3, "paint-order": "stroke" }, svg);
+  hintTxt.textContent = "↻ drag to rotate";
+  let rotatedOnce = false;
 
   const showArrows = (on) => [fArr, mArr].forEach((l) => (l.style.display = on ? "" : "none"));
   const region = document.getElementById("region"), detect = document.getElementById("detect");
@@ -1516,7 +1548,17 @@ modsim run --gui examples/robot_packs/generic_cube \
     const a = st.yaw * Math.PI / 180;
     return { x: st.x - HALF * Math.cos(a), y: st.y - HALF * Math.sin(a) };
   }
-  function place() { mover.setAttribute("transform", `translate(${st.x},${st.y}) rotate(${st.yaw})`); }
+  function place() {
+    mover.setAttribute("transform", `translate(${st.x},${st.y}) rotate(${st.yaw})`);
+    const ok = Math.abs(st.yaw) <= TOL.ax, deg = Math.round(st.yaw);
+    badge.setAttribute("x", st.x); badge.setAttribute("y", st.y + HALF + 20);
+    badge.setAttribute("fill", st.docked ? "var(--accent)" : ok ? "var(--pass)" : "var(--fail)");
+    badge.textContent = st.docked ? "docked · snapped to 0°" : `${deg}° ${ok ? "✓ within" : "✗ outside"} ±${TOL.ax}°`;
+    const a = st.yaw * Math.PI / 180, kx = st.x + (HALF + 27) * Math.sin(a), ky = st.y - (HALF + 27) * Math.cos(a);
+    hintTxt.setAttribute("x", kx + 18); hintTxt.setAttribute("y", ky + 4);
+    hintTxt.style.display = rotatedOnce || st.docked ? "none" : "";
+    wedge.setAttribute("fill-opacity", ok && !st.docked ? 0.13 : 0.05);
+  }
 
   /* Collision: separating-axis test between the fixed square and the rotated mover.
      Touching (flush faces) is allowed; any interpenetration deeper than EPS is a collision. */
@@ -1533,7 +1575,7 @@ modsim run --gui examples/robot_packs/generic_cube \
     return true;
   }
   const clampX = (x) => Math.max(HALF, Math.min(W - HALF, x));
-  const clampY = (y) => Math.max(HALF, Math.min(H - HALF, y));
+  const clampY = (y) => Math.max(HALF + 40, Math.min(H - HALF - 28, y));
   // furthest collision-free point on the segment from a free start to a target
   function reach(fx, fy, tx, ty, yawDeg) {
     if (!hits(tx, ty, yawDeg)) return [tx, ty];
@@ -1560,7 +1602,11 @@ modsim run --gui examples/robot_packs/generic_cube \
       const s0 = st.samples[0], s1 = st.samples[st.samples.length - 1], dt = (s1.t - s0.t) / 1000;
       if (dt > 0.02) vel = Math.hypot(s1.x - s0.x, s1.y - s0.y) / PX / dt;
     }
-    const pos = Math.hypot(b.x - A.x, b.y - A.y) / PX;
+    // connectors are pads, not points: distance from the fixed connector's centre to the nearest point
+    // of the moving connector pad (28 px ≈ 15.5 mm long, along the rear face)
+    const ra = st.yaw * Math.PI / 180, ux = -Math.sin(ra), uy = Math.cos(ra), PADH = 14;
+    const along = Math.max(-PADH, Math.min(PADH, (A.x - b.x) * ux + (A.y - b.y) * uy));
+    const pos = Math.hypot(b.x + ux * along - A.x, b.y + uy * along - A.y) / PX;
     return { pos, ax: Math.abs(st.yaw), vel };
   }
   function mark(id, ok) { const c = $(id); c.textContent = ok ? "✓" : "✗"; c.className = ok ? "ok" : "no"; }
@@ -1615,18 +1661,22 @@ modsim run --gui examples/robot_packs/generic_cube \
   }
 
   function toSvg(e) { const p = svg.createSVGPoint(); p.x = e.clientX; p.y = e.clientY; return p.matrixTransform(svg.getScreenCTM().inverse()); }
+  function setYaw(v) { yaw.value = Math.max(-30, Math.min(30, Math.round(v))); yaw.dispatchEvent(new Event("input")); }
   mover.addEventListener("pointerdown", (e) => {
     if (st.docked) return;
-    st.anim = null; const p = toSvg(e); st.drag = { dx: st.x - p.x, dy: st.y - p.y };
+    st.anim = null;
+    if (e.target.closest(".rot-handle")) { st.rot = true; rotatedOnce = true; mover.setPointerCapture(e.pointerId); place(); return; }
+    const p = toSvg(e); st.drag = { dx: st.x - p.x, dy: st.y - p.y };
     mover.setPointerCapture(e.pointerId); mover.classList.add("dragging");
   });
   mover.addEventListener("pointermove", (e) => {
+    if (st.rot) { const p = toSvg(e); setYaw(Math.atan2(p.y - st.y, p.x - st.x) * 180 / Math.PI + 90); return; }
     if (!st.drag) return;
     const p = toSvg(e);
     moveTo(p.x + st.drag.dx, p.y + st.drag.dy);
     place();
   });
-  const endDrag = () => { st.drag = null; mover.classList.remove("dragging"); };
+  const endDrag = () => { st.drag = null; st.rot = false; mover.classList.remove("dragging"); };
   mover.addEventListener("pointerup", endDrag); mover.addEventListener("pointercancel", endDrag);
 
   yaw.addEventListener("input", () => { if (st.docked) { yaw.value = Math.round(st.yaw); return; } st.anim = null;
@@ -1638,6 +1688,24 @@ modsim run --gui examples/robot_packs/generic_cube \
       st.x = pushed;
     }
     st.yaw = ny; yawOut.textContent = yaw.value + "°"; place(); });
+  $("wRotL").addEventListener("click", () => { rotatedOnce = true; setYaw(st.yaw - 5); });
+  $("wRotR").addEventListener("click", () => { rotatedOnce = true; setYaw(st.yaw + 5); });
+  yaw.addEventListener("pointerdown", () => { rotatedOnce = true; });
+  // one-time wiggle the first time the widget is on screen, so rotation is discoverable
+  if (!reduce && "IntersectionObserver" in window) {
+    const io = new IntersectionObserver((es) => {
+      if (!es.some((x) => x.isIntersecting)) return; io.disconnect();
+      const base = st.yaw, t0w = performance.now(), D = 1700;
+      const step = (now) => {
+        if (st.docked || st.drag || st.rot || rotatedOnce) return;
+        const k = Math.min(1, (now - t0w) / D);
+        st.yaw = base + Math.sin(k * Math.PI * 3) * 9 * (1 - k); yaw.value = Math.round(st.yaw); yawOut.textContent = yaw.value + "°"; place();
+        if (k < 1) requestAnimationFrame(step); else { st.yaw = base; yaw.value = base; yawOut.textContent = base + "°"; place(); }
+      };
+      setTimeout(() => requestAnimationFrame(step), 500);
+    }, { threshold: 0.6 });
+    io.observe(document.getElementById("widget"));
+  }
 
   $("wAnimate").addEventListener("click", () => {
     if (st.docked) return;
@@ -1661,6 +1729,7 @@ modsim run --gui examples/robot_packs/generic_cube \
     body.firstChild.setAttribute("fill", "var(--teal)"); [fConn, mConn].forEach((c) => c.setAttribute("fill", "var(--bg)"));
     showArrows(true); mover.classList.remove("locked"); $("wUndock").disabled = true; yaw.value = START.yaw; yawOut.textContent = START.yaw + "°";
     lines = []; st.t0 = performance.now(); lastState = "x"; setState("free"); push("spawn", "2 × generic_cube, mock backend"); place();
+    st.rot = false;
   });
 
   place(); push("spawn", "2 × generic_cube, mock backend");
