@@ -14,21 +14,21 @@ pytest.importorskip("pyqtgraph")
 
 from PySide6.QtWidgets import QApplication
 
-from modsim.core.ids import ModuleInstanceId
-from modsim.core.scene import ModulePlacement, SceneSpec
-from modsim.core.transforms import Transform
-from modsim.model_views import ModelViewFactory
-from modsim.planning import plan_assembly
-from modsim.planning.models import ActionInterval, ActionObservation, PlanningSnapshot
-from modsim.planning.smores import mobile_manipulator_goal, paper_initial_poses
-from modsim.robot_packs import RobotPackLoader
-from modsim.runtime import RuntimeSession
-from modsim.runtime.inspection import RuntimeInspectorFrame, build_runtime_inspector_frame
-from modsim.runtime.inspector_runner import RuntimeInspectorConfig, resolve_runtime_recipe
-from modsim.runtime.reconfiguration import ReconfigurationPhase, ReconfigurationStatus
-from modsim_studio.appearance import THEMES, theme_manager
-from modsim_studio.runtime_planning import PlanningWorkspace
-from modsim_studio.runtime_window import RuntimeInspectorWindow
+from modsim_robotics.core.ids import ModuleInstanceId
+from modsim_robotics.core.scene import ModulePlacement, SceneSpec
+from modsim_robotics.core.transforms import Transform
+from modsim_robotics.model_views import ModelViewFactory
+from modsim_robotics.planning import plan_assembly
+from modsim_robotics.planning.models import ActionInterval, ActionObservation, PlanningSnapshot
+from modsim_robotics.planning.smores import mobile_manipulator_goal, paper_initial_poses
+from modsim_robotics.robot_packs import RobotPackLoader
+from modsim_robotics.runtime import RuntimeSession
+from modsim_robotics.runtime.inspection import RuntimeInspectorFrame, build_runtime_inspector_frame
+from modsim_robotics.runtime.inspector_runner import RuntimeInspectorConfig, resolve_runtime_recipe
+from modsim_robotics.runtime.reconfiguration import ReconfigurationPhase, ReconfigurationStatus
+from modsim_robotics_studio.appearance import THEMES, theme_manager
+from modsim_robotics_studio.runtime_planning import PlanningWorkspace
+from modsim_robotics_studio.runtime_window import RuntimeInspectorWindow
 
 
 @pytest.fixture

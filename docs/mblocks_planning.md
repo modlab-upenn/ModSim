@@ -12,14 +12,14 @@ is used.
 From an editable checkout with the `studio` and `mujoco` extras installed:
 
 ```bash
-.venv/bin/modsim runtime examples/robot_packs/mblocks_3d \
+.venv/bin/modsim-robotics runtime examples/robot_packs/mblocks_3d \
   --demo mblocks_online_lattice
 ```
 
 For the longer six-cube run:
 
 ```bash
-.venv/bin/modsim runtime examples/robot_packs/mblocks_3d \
+.venv/bin/modsim-robotics runtime examples/robot_packs/mblocks_3d \
   --demo mblocks_online_lattice_large
 ```
 
@@ -74,13 +74,13 @@ Unknown goal fields are rejected. Example goal:
 ```
 
 For a larger stress fixture, create an initial input with
-`rectangle_state(3, 2).model_dump_json()` from `modsim.runtime.mblocks_lattice`.
+`rectangle_state(3, 2).model_dump_json()` from `modsim_robotics.runtime.mblocks_lattice`.
 Pass it with `--initial-file`, which overrides the preset; the default line
 target adapts to the initial state. The large preset uses `rectangle_state(2, 3)`.
 
 ## Geometric algorithm and scope
 
-`modsim.planning.mblocks` is a simulator-independent, original implementation
+`modsim_robotics.planning.mblocks` is a simulator-independent, original implementation
 based on Sung, Bern, Romanishin and Rus,
 [Reconfiguration Planning for Pivoting Cube Modular Robots, ICRA 2015](https://doi.org/10.1109/ICRA.2015.7139451).
 It implements the planar forbidden patterns, boundary traversal toward a common

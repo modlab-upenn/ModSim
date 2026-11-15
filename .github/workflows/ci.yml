@@ -2,6 +2,7 @@ name: CI
 
 on:
   pull_request:
+  workflow_call:
   push:
     branches:
       - main
@@ -140,9 +141,9 @@ jobs:
           from pathlib import Path
           from PySide6.QtCore import QTimer
           from PySide6.QtWidgets import QApplication
-          from modsim_studio.appearance import THEMES, theme_manager
-          from modsim_studio.main_window import MainWindow
-          from modsim_studio.session_logging import (
+          from modsim_robotics_studio.appearance import THEMES, theme_manager
+          from modsim_robotics_studio.main_window import MainWindow
+          from modsim_robotics_studio.session_logging import (
               configure_session_logging,
               resolve_session_log_path,
               shutdown_session_logging,
@@ -182,12 +183,56 @@ jobs:
           raise SystemExit(app.exec())
           PY
 
+  documentation:
+    name: Documentation
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.11.31"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: website/.nvmrc
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install Graphviz
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y graphviz
+
+      - name: Install locked documentation dependencies
+        run: |
+          uv sync --locked --group docs --python 3.12
+          npm --prefix website ci
+
+      - name: Test API documentation checks
+        run: uv run --no-sync python -m unittest discover -s tools/docs/tests -p 'test_*.py'
+
+      - name: Check contributor API documentation contracts
+        run: npm --prefix website run docs:check
+
+      - name: Check documentation types
+        run: npm --prefix website run typecheck
+
+      - name: Generate API and UML and build documentation
+        run: npm --prefix website run docs:build
+
   package:
     name: Build and smoke-test distributions
     needs:
       - checks
       - mujoco
       - studio
+      - documentation
     runs-on: ubuntu-latest
 
     steps:
@@ -203,8 +248,30 @@ jobs:
       - name: Build wheel and source distribution
         run: uv build
 
+      - name: Validate distribution metadata and contents
+        run: |
+          uvx --python 3.12 --from twine==7.0.0 twine check --strict dist/*.whl dist/*.tar.gz
+          uv run --isolated --no-project --python 3.12 python tools/release/verify_artifacts.py dist/*.whl dist/*.tar.gz
+
       - name: Smoke-test wheel
-        run: uv run --isolated --no-project --with dist/*.whl modsim --help
+        run: >-
+          uv run --isolated --no-project --python 3.12 python
+          tools/release/smoke_install.py dist/*.whl
 
       - name: Smoke-test source distribution
-        run: uv run --isolated --no-project --with dist/*.tar.gz modsim --help
+        run: >-
+          uv run --isolated --no-project --python 3.12 python
+          tools/release/smoke_install.py dist/*.tar.gz
+
+      - name: Calculate distribution checksums
+        working-directory: dist
+        run: sha256sum *.whl *.tar.gz > SHA256SUMS
+
+      - name: Retain tested distributions
+        uses: actions/upload-artifact@v7
+        with:
+          name: modsim-distributions-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14

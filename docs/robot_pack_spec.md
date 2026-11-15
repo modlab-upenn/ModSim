@@ -2,7 +2,7 @@
 
 This document is the implemented format 0.1 contract for Robot Packs. The broader
 architecture in `archive/HANDOFF.md` is a roadmap; when examples differ, this document
-and the typed models in `src/modsim/robot_packs/schema.py` describe the code that
+and the typed models in `src/modsim_robotics/robot_packs/schema.py` describe the code that
 currently runs.
 
 Format 0.1 covers structural authoring, persistence, validation, and the
@@ -65,6 +65,73 @@ symlinks.
 
 Identifiers use lower snake case, begin with a letter, and are at most 64
 characters. Pack versions use semantic version syntax such as `0.1.0`.
+
+## Local user library
+
+The wheel bundles the small Generic Cube example. `modsim-robotics setup` materializes
+it as an ordinary self-contained pack in the user library, with this layout:
+
+```text
+~/.modsim/
+  config.toml
+  robot_packs/modlab/generic_cube/0.1.0/
+  catalog/
+  cache/downloads/
+  workspaces/
+```
+
+Home resolution uses this order: an explicit `--home PATH`, `MODSIM_PATH`, the
+legacy `MODSIM_HOME` setting, then `.modsim` in the user's home directory.
+`MODSIM_PATH` names the ModSim data home; it is separate from the executable
+search `PATH`. Importing ModSim, displaying command help, and installing the
+Python package do not create this directory. Setup is explicit and needs no
+network or simulator dependency.
+
+A newly created `config.toml` locates the installed RobotPack library:
+
+```toml
+schema_version = 1
+
+[paths]
+robot_packs = "robot_packs"
+```
+
+The configured library directory resolves relative to the selected ModSim home
+or can be an absolute directory. Setup seeds Generic Cube under
+`<library>/modlab/generic_cube/0.1.0/`. Configuration locates the library; it does
+not select a robot for launch. Repeated setup preserves existing configuration
+bytes. A legacy configuration without `[paths].robot_packs` uses the standard
+`robot_packs` library directory; a legacy `[defaults].robot_pack` is ignored.
+
+Setup validates the starter with the simulation profile before placing it in
+the library. Repeating setup preserves an existing valid starter, extra files,
+and configuration. An invalid existing pack causes an error and remains
+untouched. The library path does not change the Robot Pack schema: loaders and
+backends still receive a pack directory. Copy packs into a workspace when
+developing a variant that should have its own identity or version.
+
+Use `modsim-robotics pack list` to list installed pack IDs, versions, and paths.
+The CLI commands `studio`, `runtime`, `run`, `dock`, `views`, `pack inspect`, and
+`pack validate` require an explicit pack selector, supplied positionally or with
+`--pack`. A name such as `generic_cube` resolves in the configured library;
+`generic_cube@0.1.0` requests a specific version. Multiple matches cause an
+ambiguity error rather than selecting the newest version automatically. Use a
+version-qualified name or an explicit path to disambiguate.
+
+An absolute path or a relative path such as `./my_robot_pack` bypasses library
+configuration. `--home PATH` selects the home for library lookup. The standalone
+`modsim-robotics-studio` launcher accepts the same selectors and home selection.
+Omitting a selector reports an error even when only the starter is installed.
+There is no implicit default robot, and these commands never run setup implicitly.
+
+Setup prints shell configuration guidance but does not edit a shell profile or
+persist environment variables. Users can export `MODSIM_PATH` in their shell's
+startup file, or set a Windows user environment variable. The Python pack loader
+and runtime APIs continue to receive explicit pack data and filesystem context.
+
+`catalog/` and `cache/downloads/` reserve locations for future library tooling;
+there is no remote catalog or pack download command yet. The installed package
+contains application code, while this user directory contains local data.
 
 ## Custom metadata
 
@@ -433,10 +500,10 @@ and connector that relies only on a named frame.
 ## Validation profiles
 
 ```bash
-modsim pack inspect path/to/pack
-modsim pack validate path/to/pack
-modsim pack validate path/to/pack --profile simulation
-modsim pack validate path/to/pack --output json
+modsim-robotics pack inspect path/to/pack
+modsim-robotics pack validate path/to/pack
+modsim-robotics pack validate path/to/pack --profile simulation
+modsim-robotics pack validate path/to/pack --output json
 ```
 
 `authoring` is the default. It reports incomplete docking, joint, and mapping
@@ -458,7 +525,7 @@ CLI exit status 1; valid packs produce 0.
 ```python
 from pathlib import Path
 
-from modsim.robot_packs import (
+from modsim_robotics.robot_packs import (
     RobotPackLoader,
     RobotPackValidator,
     RobotPackWriter,
@@ -510,7 +577,7 @@ pack directory.
 Create the initial draft directly from a local URDF:
 
 ```bash
-modsim pack init \
+modsim-robotics pack init \
   --from-urdf path/to/smores_ep.urdf \
   --out path/to/smores_ep_pack
 ```

@@ -8,20 +8,20 @@ from typing import Any
 
 import pytest
 
-from modsim.backends.base import BackendCapabilities, BackendError
-from modsim.backends.mock import MockBackendAdapter
-from modsim.core.entities import JointCommand
-from modsim.core.ids import (
+from modsim_robotics.backends.base import BackendCapabilities, BackendError
+from modsim_robotics.backends.mock import MockBackendAdapter
+from modsim_robotics.core.entities import JointCommand
+from modsim_robotics.core.ids import (
     JointInstanceId,
     ModuleInstanceId,
     joint_instance_id,
     split_joint_instance_id,
 )
-from modsim.core.scene import SceneSpec
-from modsim.core.snapshot import BackendStateSnapshot, JointState
-from modsim.core.state import WorldState
-from modsim.robot_packs.schema import ControlMode, RobotPack
-from modsim.runtime.session import JointCommandError, RuntimeSession
+from modsim_robotics.core.scene import SceneSpec
+from modsim_robotics.core.snapshot import BackendStateSnapshot, JointState
+from modsim_robotics.core.state import WorldState
+from modsim_robotics.robot_packs.schema import ControlMode, RobotPack
+from modsim_robotics.runtime.session import JointCommandError, RuntimeSession
 
 MODULE = ModuleInstanceId("generic_cube_0")
 TILT = JointInstanceId(f"{MODULE}/tilt")

@@ -7,22 +7,22 @@ from pathlib import Path
 
 import pytest
 
-from modsim.core.ids import ModuleInstanceId
-from modsim.core.scene import ModulePlacement, SceneSpec
-from modsim.core.state import WorldState
-from modsim.core.transforms import Transform
-from modsim.model_views import CubicLatticeView, ModelViewContext, ModelViewFactory
-from modsim.robot_packs import RobotPack, RobotPackLoader
-from modsim.runtime.inspection import RuntimeEventRow, RuntimeInspectorFrame
-from modsim.runtime.metrics import collect_metrics
-from modsim_studio.runtime_lattice_presenter import (
+from modsim_robotics.core.ids import ModuleInstanceId
+from modsim_robotics.core.scene import ModulePlacement, SceneSpec
+from modsim_robotics.core.state import WorldState
+from modsim_robotics.core.transforms import Transform
+from modsim_robotics.model_views import CubicLatticeView, ModelViewContext, ModelViewFactory
+from modsim_robotics.robot_packs import RobotPack, RobotPackLoader
+from modsim_robotics.runtime.inspection import RuntimeEventRow, RuntimeInspectorFrame
+from modsim_robotics.runtime.metrics import collect_metrics
+from modsim_robotics_studio.runtime_lattice_presenter import (
     DEFAULT_LATTICE_CAMERA,
     CubicLatticeProjector,
     LatticeCamera,
     LatticeProjection,
     project_lattice_point,
 )
-from modsim_studio.runtime_presenter import (
+from modsim_robotics_studio.runtime_presenter import (
     CubicLatticePresentation,
     GraphSelection,
     RuntimeInspectorPresenter,

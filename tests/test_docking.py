@@ -7,10 +7,10 @@ import math
 import pytest
 
 from conftest import with_connector_field, with_connector_policy
-from modsim.backends.base import BackendAdapter, BackendError
-from modsim.backends.mock import MockBackendAdapter
-from modsim.core.entities import ConnectorLifecycleState
-from modsim.core.events import (
+from modsim_robotics.backends.base import BackendAdapter, BackendError
+from modsim_robotics.backends.mock import MockBackendAdapter
+from modsim_robotics.core.entities import ConnectorLifecycleState
+from modsim_robotics.core.events import (
     AssemblyMerged,
     AssemblySplit,
     ConnectorOverloaded,
@@ -22,12 +22,17 @@ from modsim.core.events import (
     UndockCommitted,
     UndockFailed,
 )
-from modsim.core.ids import ConnectionId, ConnectorInstanceId, ConstraintHandle, ModuleInstanceId
-from modsim.core.scene import SceneError, SceneSpec
-from modsim.core.state import WorldState, WorldStateError
-from modsim.core.transforms import Transform, vec_norm, vec_sub
-from modsim.robot_packs.schema import AlignmentMode, RobotPack
-from modsim.runtime.session import RuntimeSession
+from modsim_robotics.core.ids import (
+    ConnectionId,
+    ConnectorInstanceId,
+    ConstraintHandle,
+    ModuleInstanceId,
+)
+from modsim_robotics.core.scene import SceneError, SceneSpec
+from modsim_robotics.core.state import WorldState, WorldStateError
+from modsim_robotics.core.transforms import Transform, vec_norm, vec_sub
+from modsim_robotics.robot_packs.schema import AlignmentMode, RobotPack
+from modsim_robotics.runtime.session import RuntimeSession
 
 CONNECTOR_TYPE = "fixed_face"
 MODULE_TYPE = "generic_cube"

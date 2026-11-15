@@ -7,23 +7,23 @@ from typing import Any, cast
 
 import pytest
 
-from modsim.backends.mock import MockBackendAdapter
-from modsim.core.events import DockCommitted, UndockCommitted
-from modsim.core.ids import (
+from modsim_robotics.backends.mock import MockBackendAdapter
+from modsim_robotics.core.events import DockCommitted, UndockCommitted
+from modsim_robotics.core.ids import (
     ConnectionId,
     ConnectorInstanceId,
     ModuleInstanceId,
     connection_id,
 )
-from modsim.core.scene import ModulePlacement, SceneSpec
-from modsim.core.transforms import Transform
-from modsim.model_views import (
+from modsim_robotics.core.scene import ModulePlacement, SceneSpec
+from modsim_robotics.core.transforms import Transform
+from modsim_robotics.model_views import (
     ModelViewContext,
     ModelViewFactory,
     ModuleTopologyGraphView,
 )
-from modsim.robot_packs import RobotPack
-from modsim.runtime.reconfiguration import (
+from modsim_robotics.robot_packs import RobotPack
+from modsim_robotics.runtime.reconfiguration import (
     ConnectorPairRef,
     ReconfigurationAction,
     ReconfigurationPhase,
@@ -33,7 +33,7 @@ from modsim.runtime.reconfiguration import (
     ScriptedReconfigurationScenario,
     stage_docking_assembly_pair,
 )
-from modsim.runtime.session import RuntimeSession
+from modsim_robotics.runtime.session import RuntimeSession
 
 _SOURCE_URL = (
     "https://www.modlabupenn.org/wp-content/uploads/2019/08/chao_smores_reconfiguration_2019.pdf"

@@ -4,27 +4,27 @@ from __future__ import annotations
 
 import pytest
 
-from modsim.model_views import (
+from modsim_robotics.model_views import (
     DockedConnectionEdge,
     ModelViewSourceStamp,
     ModuleGraphNode,
     ModuleTopologyGraphView,
 )
-from modsim.planning import AssemblyGoal, GoalEdge, Pose2, plan_assembly
-from modsim.planning.models import PlanningSnapshot
-from modsim.runtime.inspection import (
+from modsim_robotics.planning import AssemblyGoal, GoalEdge, Pose2, plan_assembly
+from modsim_robotics.planning.models import PlanningSnapshot
+from modsim_robotics.runtime.inspection import (
     RuntimeEventRow,
     RuntimeInspectorFrame,
     RuntimeScenarioStatus,
 )
-from modsim.runtime.inspection_protocol import (
+from modsim_robotics.runtime.inspection_protocol import (
     RuntimeFrame,
     decode_runtime_message,
     encode_runtime_message,
 )
-from modsim.runtime.metrics import DockingMetrics
-from modsim.runtime.reconfiguration import ReconfigurationPhase, ReconfigurationStatus
-from modsim_studio.runtime_presenter import (
+from modsim_robotics.runtime.metrics import DockingMetrics
+from modsim_robotics.runtime.reconfiguration import ReconfigurationPhase, ReconfigurationStatus
+from modsim_robotics_studio.runtime_presenter import (
     RuntimeEventSequenceError,
     RuntimeInspectorPresenter,
     RuntimePresentation,

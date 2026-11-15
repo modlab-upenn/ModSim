@@ -17,30 +17,30 @@ import pytest
 pytest.importorskip("mujoco", reason="the MuJoCo backend extra is not installed")
 
 from conftest import with_connector_policy
-from modsim.core.events import (
+from modsim_robotics.core.events import (
     DockCommitted,
     DockFailed,
     Event,
     UndockCommitted,
 )
-from modsim.core.ids import ConnectorInstanceId, ModuleInstanceId
-from modsim.core.scene import ModulePlacement, SceneSpec
-from modsim.core.transforms import (
+from modsim_robotics.core.ids import ConnectorInstanceId, ModuleInstanceId
+from modsim_robotics.core.scene import ModulePlacement, SceneSpec
+from modsim_robotics.core.transforms import (
     Transform,
     quat_from_axis_angle,
     vec_norm,
     vec_sub,
 )
-from modsim.model_views import ModelViewFactory
-from modsim.robot_packs import LoadedRobotPack, RobotPackLoader
-from modsim.runtime.inspection import build_runtime_inspector_frame
-from modsim.runtime.reconfiguration import (
+from modsim_robotics.model_views import ModelViewFactory
+from modsim_robotics.robot_packs import LoadedRobotPack, RobotPackLoader
+from modsim_robotics.runtime.inspection import build_runtime_inspector_frame
+from modsim_robotics.runtime.reconfiguration import (
     ScriptedReconfigurationConfig,
     ScriptedReconfigurationScenario,
     connector_pair_plan,
 )
-from modsim.runtime.session import RuntimeSession
-from modsim_backend_mujoco.adapter import MuJoCoBackendAdapter
+from modsim_robotics.runtime.session import RuntimeSession
+from modsim_robotics_backend_mujoco.adapter import MuJoCoBackendAdapter
 
 pytestmark = pytest.mark.mujoco
 

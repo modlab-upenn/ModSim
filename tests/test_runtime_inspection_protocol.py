@@ -7,15 +7,15 @@ from pathlib import Path
 
 import pytest
 
-from modsim.model_views import CubicLatticeView
-from modsim.runtime import (
+from modsim_robotics.model_views import CubicLatticeView
+from modsim_robotics.runtime import (
     ReconfigurationPhase,
     ReconfigurationStatus,
     RuntimeDemo,
     RuntimeInspectorConfig,
     RuntimeInspectorRunner,
 )
-from modsim.runtime.inspection_protocol import (
+from modsim_robotics.runtime.inspection_protocol import (
     MAX_RUNTIME_MESSAGE_BYTES,
     RUNTIME_PROTOCOL_PREFIX,
     RuntimeError,

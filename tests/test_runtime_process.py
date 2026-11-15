@@ -15,15 +15,15 @@ pytest.importorskip("PySide6")
 from PySide6.QtCore import QEventLoop, QTimer
 from PySide6.QtWidgets import QApplication
 
-from modsim.runtime import RuntimeInspectorConfig, RuntimeInspectorRunner
-from modsim.runtime.inspection_protocol import (
+from modsim_robotics.runtime import RuntimeInspectorConfig, RuntimeInspectorRunner
+from modsim_robotics.runtime.inspection_protocol import (
     RuntimeFrame,
     RuntimeHello,
     RuntimePlaybackState,
     RuntimeSetPaused,
     encode_runtime_message,
 )
-from modsim_studio.runtime_process import (
+from modsim_robotics_studio.runtime_process import (
     RuntimeInspectorProcessController,
     RuntimeInspectorThreadController,
     RuntimeViewerLaunchError,
@@ -168,7 +168,7 @@ def test_process_controller_launches_without_shell_and_stops_cooperatively(
     child_code = "\n".join(
         (
             "import sys",
-            "from modsim.runtime.inspection_protocol import (",
+            "from modsim_robotics.runtime.inspection_protocol import (",
             "    RuntimeFinished, RuntimeFinishedReason, RuntimeHello, RuntimeInitialize,",
             "    RuntimePlaybackState, RuntimeSetPaused, RuntimeStatus, RuntimeStop,",
             "    decode_runtime_message, encode_runtime_message,",

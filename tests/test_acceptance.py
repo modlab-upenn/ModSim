@@ -6,7 +6,7 @@ import math
 
 import pytest
 
-from modsim.connectors.acceptance import (
+from modsim_robotics.connectors.acceptance import (
     AXIS_ALIGNMENT,
     ORIENTATION,
     POSITION,
@@ -15,10 +15,10 @@ from modsim.connectors.acceptance import (
     evaluate_acceptance,
     nominal_relative_transform,
 )
-from modsim.connectors.compatibility import evaluate_compatibility, genders_match
-from modsim.core.entities import ConnectorInstance
-from modsim.core.ids import ConnectorInstanceId, ModuleInstanceId
-from modsim.core.transforms import (
+from modsim_robotics.connectors.compatibility import evaluate_compatibility, genders_match
+from modsim_robotics.core.entities import ConnectorInstance
+from modsim_robotics.core.ids import ConnectorInstanceId, ModuleInstanceId
+from modsim_robotics.core.transforms import (
     IDENTITY_QUAT,
     Quat,
     Transform,
@@ -27,7 +27,7 @@ from modsim.core.transforms import (
     quat_from_axis_angle,
     quat_rotate,
 )
-from modsim.robot_packs.schema import (
+from modsim_robotics.robot_packs.schema import (
     AcceptanceRegion,
     AcceptanceShape,
     AllowedOrientations,

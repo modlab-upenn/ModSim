@@ -6,7 +6,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from modsim.core import (
+from modsim_robotics.core import (
     AssemblyId,
     AssemblyMerged,
     AssemblySplit,
@@ -25,7 +25,7 @@ from modsim.core import (
     WorldState,
     WorldStateRevision,
 )
-from modsim.robot_packs.schema import RobotPack
+from modsim_robotics.robot_packs.schema import RobotPack
 
 MODULE_TYPE = "generic_cube"
 FRONT_0 = ConnectorInstanceId("generic_cube_0/front")

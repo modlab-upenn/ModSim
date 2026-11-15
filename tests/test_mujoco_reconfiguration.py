@@ -16,20 +16,26 @@ import pytest
 
 pytest.importorskip("mujoco", reason="the MuJoCo backend extra is not installed")
 
-from modsim.backends.base import BackendAdapter, SupportsModuleKinematics
-from modsim.core.events import DockCommitted, DockFailed, Event, UndockCommitted, UndockFailed
-from modsim.core.ids import ConnectorInstanceId, ModuleInstanceId
-from modsim.core.scene import ModulePlacement, SceneSpec
-from modsim.core.transforms import Transform, vec_norm
-from modsim.robot_packs import LoadedRobotPack, RobotPack, RobotPackLoader
-from modsim.runtime.reconfiguration import (
+from modsim_robotics.backends.base import BackendAdapter, SupportsModuleKinematics
+from modsim_robotics.core.events import (
+    DockCommitted,
+    DockFailed,
+    Event,
+    UndockCommitted,
+    UndockFailed,
+)
+from modsim_robotics.core.ids import ConnectorInstanceId, ModuleInstanceId
+from modsim_robotics.core.scene import ModulePlacement, SceneSpec
+from modsim_robotics.core.transforms import Transform, vec_norm
+from modsim_robotics.robot_packs import LoadedRobotPack, RobotPack, RobotPackLoader
+from modsim_robotics.runtime.reconfiguration import (
     ReconfigurationPhase,
     ReconfigurationPlan,
     ScriptedReconfigurationConfig,
     ScriptedReconfigurationScenario,
     stage_docking_assembly_pair,
 )
-from modsim.runtime.session import RuntimeSession
+from modsim_robotics.runtime.session import RuntimeSession
 
 
 def _example_plan() -> ReconfigurationPlan:

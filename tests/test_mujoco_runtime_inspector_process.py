@@ -16,7 +16,7 @@ import pytest
 
 pytest.importorskip("mujoco", reason="the MuJoCo backend extra is not installed")
 
-from modsim.runtime.inspection_protocol import (
+from modsim_robotics.runtime.inspection_protocol import (
     RuntimeError,
     RuntimeFinished,
     RuntimeFinishedReason,
@@ -30,8 +30,8 @@ from modsim.runtime.inspection_protocol import (
     RuntimeStop,
     encode_runtime_message,
 )
-from modsim.runtime.inspector_runner import RuntimeInspectorConfig
-from modsim_backend_mujoco import runtime_inspector_process as runtime_process
+from modsim_robotics.runtime.inspector_runner import RuntimeInspectorConfig
+from modsim_robotics_backend_mujoco import runtime_inspector_process as runtime_process
 
 pytestmark = pytest.mark.mujoco
 

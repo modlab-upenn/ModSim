@@ -5,9 +5,9 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from modsim.runtime.demos import RuntimeDemo
-from modsim.runtime.inspector_runner import RuntimeInspectorConfig, RuntimeInspectorRunner
-from modsim.runtime.reconfiguration import ReconfigurationPhase
+from modsim_robotics.runtime.demos import RuntimeDemo
+from modsim_robotics.runtime.inspector_runner import RuntimeInspectorConfig, RuntimeInspectorRunner
+from modsim_robotics.runtime.reconfiguration import ReconfigurationPhase
 
 
 def main() -> int:

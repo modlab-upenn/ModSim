@@ -12,10 +12,10 @@ mujoco = pytest.importorskip("mujoco", reason="the MuJoCo backend extra is not i
 
 import numpy as np
 
-from modsim.core.events import DockCommitted, DockFailed, UndockCommitted
-from modsim.core.ids import ConnectorInstanceId, ConstraintHandle, ModuleInstanceId
-from modsim.core.scene import SceneSpec
-from modsim.core.transforms import (
+from modsim_robotics.core.events import DockCommitted, DockFailed, UndockCommitted
+from modsim_robotics.core.ids import ConnectorInstanceId, ConstraintHandle, ModuleInstanceId
+from modsim_robotics.core.scene import SceneSpec
+from modsim_robotics.core.transforms import (
     Transform,
     angle_between,
     quat_angle,
@@ -25,15 +25,15 @@ from modsim.core.transforms import (
     vec_scale,
     vec_sub,
 )
-from modsim.robot_packs import LoadedRobotPack, RobotPack, RobotPackLoader
-from modsim.runtime.session import RuntimeSession
-from modsim_backend_mujoco.adapter import MuJoCoBackendAdapter
-from modsim_backend_mujoco.hinges import (
+from modsim_robotics.robot_packs import LoadedRobotPack, RobotPack, RobotPackLoader
+from modsim_robotics.runtime.session import RuntimeSession
+from modsim_robotics_backend_mujoco.adapter import MuJoCoBackendAdapter
+from modsim_robotics_backend_mujoco.hinges import (
     HingePool,
     HingePoolExhaustedError,
     hinge_anchor_pairs,
 )
-from modsim_backend_mujoco.scene import MuJoCoSceneError, build_scene
+from modsim_robotics_backend_mujoco.scene import MuJoCoSceneError, build_scene
 
 pytestmark = pytest.mark.mujoco
 
@@ -114,12 +114,11 @@ def test_anchor_pairs_follow_oppositely_oriented_connector_axes() -> None:
         0.08,
     )
 
-    assert [anchor.body_a for anchor in anchors] == pytest.approx(
-        [(0.05, -0.04, 0.05), (0.05, 0.04, 0.05)]
-    )
-    assert [anchor.body_b for anchor in anchors] == pytest.approx(
-        [(-0.05, -0.04, 0.05), (-0.05, 0.04, 0.05)]
-    )
+    assert len(anchors) == 2
+    assert anchors[0].body_a == pytest.approx((0.05, -0.04, 0.05))
+    assert anchors[1].body_a == pytest.approx((0.05, 0.04, 0.05))
+    assert anchors[0].body_b == pytest.approx((-0.05, -0.04, 0.05))
+    assert anchors[1].body_b == pytest.approx((-0.05, 0.04, 0.05))
 
 
 def test_scene_reserves_two_inactive_connect_equalities_per_hinge(

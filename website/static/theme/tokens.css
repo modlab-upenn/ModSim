@@ -1,0 +1,58 @@
+@import './fonts.css';
+
+/* Shared ModSim brand values, adapted from the existing project website.
+   This file has no Docusaurus selectors and can also style the future homepage. */
+:root {
+  color-scheme: light;
+  --modsim-bg: #f7f6f2;
+  --modsim-surface: #ffffff;
+  --modsim-surface-2: #ece9e1;
+  --modsim-border: #d8d3c6;
+  --modsim-ink: #142030;
+  --modsim-muted: #5a6574;
+  --modsim-accent: #1f4e8c;
+  --modsim-accent-ink: #ffffff;
+  --modsim-teal: #0b7a70;
+  --modsim-success: #11795f;
+  --modsim-danger: #b4382b;
+  --modsim-warning: #9a5b05;
+  --modsim-warning-bg: #fbefd9;
+  --modsim-code-bg: #0f1a27;
+  --modsim-code-ink: #d9e3ec;
+  --modsim-code-comment: #91a1b3;
+  --modsim-code-string: #6fd6c5;
+  --modsim-code-keyword: #cfbafa;
+  --modsim-code-number: #f2c17b;
+  --modsim-code-function: #9bc7f5;
+  --modsim-reading-bg: var(--modsim-surface);
+  --modsim-navigation-bg: var(--modsim-bg);
+  --modsim-accent-soft: color-mix(in srgb, var(--modsim-accent) 8%, var(--modsim-surface));
+  --modsim-font-display: 'Archivo', 'Helvetica Neue', Arial, sans-serif;
+  --modsim-font-body: 'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif;
+  --modsim-font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  --modsim-radius: 0.5rem;
+  --modsim-radius-panel: 0.75rem;
+  --modsim-reading-width: 52rem;
+  --modsim-sidebar-width: 18.75rem;
+  --modsim-navbar-height: 5rem;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --modsim-bg: #0b1521;
+  --modsim-surface: #102030;
+  --modsim-surface-2: #16293c;
+  --modsim-border: #24394f;
+  --modsim-ink: #e5ecf2;
+  --modsim-muted: #93a3b5;
+  --modsim-accent: #79aeea;
+  --modsim-accent-ink: #0b1521;
+  --modsim-teal: #3ccfba;
+  --modsim-success: #4fd1a5;
+  --modsim-danger: #f0806f;
+  --modsim-warning: #f0b455;
+  --modsim-warning-bg: #3a2a10;
+  --modsim-code-bg: #07101a;
+  --modsim-reading-bg: var(--modsim-bg);
+  --modsim-navigation-bg: var(--modsim-surface);
+}

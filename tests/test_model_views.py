@@ -8,19 +8,24 @@ from collections.abc import Sequence
 import pytest
 from pydantic import ValidationError
 
-from modsim.core.events import DockCandidateDetected, DockCommitted, UndockCommitted
-from modsim.core.ids import (
+from modsim_robotics.core.events import DockCandidateDetected, DockCommitted, UndockCommitted
+from modsim_robotics.core.ids import (
     ConnectionId,
     ConnectorInstanceId,
     ConstraintHandle,
     ModuleInstanceId,
     connection_id,
 )
-from modsim.core.scene import ModulePlacement, SceneSpec
-from modsim.core.snapshot import BackendStateSnapshot, BodyState
-from modsim.core.state import WorldState
-from modsim.core.transforms import Transform, quat_from_axis_angle, quat_multiply, quat_rotate
-from modsim.model_views import (
+from modsim_robotics.core.scene import ModulePlacement, SceneSpec
+from modsim_robotics.core.snapshot import BackendStateSnapshot, BodyState
+from modsim_robotics.core.state import WorldState
+from modsim_robotics.core.transforms import (
+    Transform,
+    quat_from_axis_angle,
+    quat_multiply,
+    quat_rotate,
+)
+from modsim_robotics.model_views import (
     CubicLatticeView,
     DuplicateModelViewBuilderError,
     ModelViewBuildError,
@@ -31,7 +36,7 @@ from modsim.model_views import (
     ModuleTopologyGraphBuilder,
     ModuleTopologyGraphView,
 )
-from modsim.robot_packs.schema import ModelViewMode, ModelViewSpec, RobotPack
+from modsim_robotics.robot_packs.schema import ModelViewMode, ModelViewSpec, RobotPack
 
 MODULE_TYPE = "generic_cube"
 ROOT_LINK = "base_link"

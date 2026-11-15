@@ -9,14 +9,27 @@ that ship today differ.
 Resolution order is explicit argument, then `MODSIM_BACKEND`, then `mock`.
 
 ```bash
-modsim backends                                   # what is registered and installed
-modsim dock path/to/pack --backend mujoco
-MODSIM_BACKEND=mujoco modsim dock path/to/pack    # applies to the whole run
+modsim-robotics backends                                   # what is registered and installed
+modsim-robotics dock path/to/pack --backend mujoco
+MODSIM_BACKEND=mujoco modsim-robotics dock path/to/pack    # applies to the whole run
 ```
 
+Pack selection is separate from backend selection. After `modsim-robotics setup`,
+`modsim-robotics dock generic_cube --backend mujoco` selects Generic Cube by ID
+from the configured library. `pack list` shows installed IDs, versions, and paths.
+Use `generic_cube@0.1.0` to specify a version or `--pack generic_cube` to supply
+the selector as an option. Ambiguous names report an error; a missing selector
+does not choose a default robot.
+
+`--home PATH` selects the home explicitly; otherwise `MODSIM_PATH`, legacy
+`MODSIM_HOME`, and `~/.modsim` are tried in that order. `[paths].robot_packs`
+locates the library relative to that home or by an absolute directory. An
+absolute pack path or one beginning with `./` bypasses library configuration.
+Commands do not run setup implicitly.
+
 ```python
-from modsim import RuntimeSession, SceneSpec
-from modsim.backends import create_backend
+from modsim_robotics import RuntimeSession, SceneSpec
+from modsim_robotics.backends import create_backend
 
 session = RuntimeSession.create(loaded_pack, scene, "mujoco", gravity=(0.0, 0.0, 0.0))
 adapter = create_backend()  # honours MODSIM_BACKEND
@@ -30,7 +43,7 @@ the shared interface.
 Registration is open, so a new engine does not require changing ModSim:
 
 ```python
-from modsim.backends import BackendEntry, register_backend
+from modsim_robotics.backends import BackendEntry, register_backend
 
 register_backend(
     BackendEntry(
@@ -42,7 +55,7 @@ register_backend(
 )
 ```
 
-Entries load lazily. Importing `modsim` never imports `mujoco`, which is what
+Entries load lazily. Importing `modsim_robotics` never imports `mujoco`, which is what
 keeps the core dependency-light and what lets a core-only environment run the
 full test suite.
 
@@ -166,7 +179,7 @@ it preserves previous defaults and authored equalities are never altered. The
 stiffness setting is not a magnetic-force or breakaway parameter.
 
 ModSim commits a relative pose between *connector frames*; a weld constrains
-*bodies*. `modsim_backend_mujoco.welds.body_relative_transform` performs the
+*bodies*. `modsim_robotics_backend_mujoco.welds.body_relative_transform` performs the
 conversion:
 
 ```text
@@ -201,7 +214,7 @@ a named `frame` is refused until that mapping is implemented; use a numeric
 
 #### The viewer
 
-`modsim run --view` opens MuJoCo's passive viewer, paced to wall clock, and
+`modsim-robotics run --view` opens MuJoCo's passive viewer, paced to wall clock, and
 holds the window open when the scenario ends so the final configuration can be
 inspected. Runtime Inspector launches additionally accept `--speed FACTOR`
 (`--real-time-factor` is an alias): the viewer targets simulated elapsed time
@@ -210,7 +223,7 @@ limits, controller targets, simulated duration, and event timestamps remain
 unchanged. A high requested factor is best-effort when physics or rendering
 throughput cannot keep up.
 
-For `modsim runtime`, MuJoCo's built-in **Run/Pause** item remains disabled by
+For `modsim-robotics runtime`, MuJoCo's built-in **Run/Pause** item remains disabled by
 design. ModSim uses the passive viewer and retains ownership of physics steps,
 scenario progression, `WorldState`, and events; handing control to a
 viewer-owned simulation loop would bypass that boundary. ModSim instead adds a
@@ -240,13 +253,13 @@ the main thread, so `python` raises. The MuJoCo wheel installs `mjpython`
 alongside `python` in the same environment:
 
 ```bash
-mjpython -m modsim run path/to/pack --backend mujoco --view
+mjpython -m modsim_robotics run path/to/pack --backend mujoco --view
 ```
 
 The adapter translates MuJoCo's error into that instruction rather than letting
 a raw traceback through.
 
-`modsim runtime PACK` launches the complementary views together. Qt owns the
+`modsim-robotics runtime PACK` launches the complementary views together. Qt owns the
 main process and renders ModSim's selected 2-D semantic model view and event
 log. The built-in choices are a logical topology graph and a cubic-lattice
 projection. A companion process owns the one authoritative MuJoCo session,
@@ -268,8 +281,8 @@ default for MuJoCo; use `--no-viewer` to keep the existing headless-worker
 arrangement when the native 3D window is not wanted:
 
 ```bash
-modsim runtime path/to/pack --backend mujoco
-modsim runtime path/to/pack --backend mujoco --no-viewer
+modsim-robotics runtime path/to/pack --backend mujoco
+modsim-robotics runtime path/to/pack --backend mujoco --no-viewer
 ```
 
 The first command opens separate MuJoCo and Runtime Inspector windows. It does
@@ -277,7 +290,7 @@ not embed MuJoCo in Qt. Closing the Runtime Inspector shuts down its companion;
 closing the native viewer first stops the runtime while leaving the final
 semantic view and events available for inspection. The `--no-viewer` path still
 opens the Qt semantic window and therefore requires a display or Xvfb; use
-`modsim run` without `--view` for a completely non-GUI process.
+`modsim-robotics run` without `--view` for a completely non-GUI process.
 
 #### Driving modules
 
@@ -302,7 +315,7 @@ or cleared. Snapshots report every semantic joint's position, velocity, and
 actuator effort. Other modes and actuator/transmission catalogs remain later
 work; the command boundary does not infer motors from arbitrary URDF tags.
 
-`modsim run --fixed-connector ID --moving-connector ID` uses the measured root
+`modsim-robotics run --fixed-connector ID --moving-connector ID` uses the measured root
 and connector frames to arrange exactly two modules, then drives along the
 fixed connector's docking axis. This is preferred over the legacy row layout
 for robot packs whose connectors are not aligned with world X.
@@ -314,7 +327,7 @@ and endpoint face welds while a backend-neutral scenario writes the released
 assembly along authored edge arcs:
 
 ```bash
-modsim runtime examples/robot_packs/mblocks_3d \
+modsim-robotics runtime examples/robot_packs/mblocks_3d \
   --backend mujoco \
   --demo mblocks_five_module_pivot
 ```
@@ -335,7 +348,7 @@ The physical two-module M-Blocks path uses the new hinge pool, internal-joint
 effort, ground contact, and gravity:
 
 ```bash
-modsim runtime examples/robot_packs/mblocks_3d \
+modsim-robotics runtime examples/robot_packs/mblocks_3d \
   --demo mblocks_momentum_pivot
 ```
 
@@ -351,7 +364,7 @@ The larger kinematic visualization benchmark remains available as a fast
 reference:
 
 ```bash
-modsim runtime examples/robot_packs/mblocks_3d \
+modsim-robotics runtime examples/robot_packs/mblocks_3d \
   --backend mujoco \
   --demo mblocks_twelve_module_line
 ```
@@ -364,7 +377,7 @@ move trace, and it is not physical or autonomous.
 The corresponding one-plane physics route has its own demo ID:
 
 ```bash
-modsim runtime examples/robot_packs/mblocks_3d \
+modsim-robotics runtime examples/robot_packs/mblocks_3d \
   --demo mblocks_physical_twelve_module_line \
   --speed 4
 ```
@@ -394,12 +407,12 @@ The mat-to-staircase benchmark exercises a cyclic topology and coordinated
 two-module motion through matched reference and physics entries:
 
 ```bash
-modsim runtime examples/robot_packs/mblocks_3d \
+modsim-robotics runtime examples/robot_packs/mblocks_3d \
   --backend mock \
   --demo mblocks_twelve_module_staircase \
   --no-viewer
 
-modsim runtime examples/robot_packs/mblocks_3d \
+modsim-robotics runtime examples/robot_packs/mblocks_3d \
   --demo mblocks_physical_twelve_module_staircase \
   --speed 4
 ```
@@ -423,7 +436,7 @@ The physical SMORES-EP cycle enables real gravity/contact and drives the wheel
 joints rather than a module root:
 
 ```bash
-modsim runtime examples/robot_packs/smores_ep \
+modsim-robotics runtime examples/robot_packs/smores_ep \
   --demo smores_diff_drive_dock_undock
 ```
 
@@ -449,7 +462,7 @@ The Runtime Inspector exposes the two-module dock/release lifecycle as a named
 demonstration:
 
 ```bash
-modsim runtime examples/robot_packs/smores_ep \
+modsim-robotics runtime examples/robot_packs/smores_ep \
   --backend mujoco \
   --demo dock_undock \
   --fixed-connector pan \
@@ -461,7 +474,7 @@ modsim runtime examples/robot_packs/smores_ep \
 The SMORES-EP pack also supports a seven-module topology demonstration:
 
 ```bash
-modsim runtime examples/robot_packs/smores_ep \
+modsim-robotics runtime examples/robot_packs/smores_ep \
   --backend mujoco \
   --demo smores_driver_to_snake \
   --duration 14.0 \
@@ -484,7 +497,7 @@ The companion physics realization uses the same connector plan but drives the
 left/right wheel joints of each moving component:
 
 ```bash
-modsim runtime examples/robot_packs/smores_ep \
+modsim-robotics runtime examples/robot_packs/smores_ep \
   --backend mujoco \
   --demo smores_physical_driver_to_snake \
   --speed 4
@@ -525,7 +538,7 @@ installed, and conformance skips when fewer than two backends are available.
 ## Type checking
 
 MuJoCo does not publish complete static declarations for its generated Python
-API, so `src/modsim_backend_mujoco` is excluded from the strict core Pyright
+API, so `src/modsim_robotics_backend_mujoco` is excluded from the strict core Pyright
 configuration and checked separately by `pyright-mujoco.json`. That checker
 uses standard mode and suppresses missing generated-attribute reports while
 retaining ordinary Python type checking. This mirrors the separate handling of

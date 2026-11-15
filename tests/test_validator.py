@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from modsim.robot_packs import (
+from modsim_robotics.robot_packs import (
     RobotPackLoader,
     RobotPackValidationError,
     RobotPackValidator,

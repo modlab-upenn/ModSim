@@ -4,12 +4,18 @@ import math
 
 import pytest
 
-from modsim.backends.mock import MockBackendAdapter
-from modsim.core.events import AssemblyMerged, AssemblySplit, DockCommitted, Event, UndockCommitted
-from modsim.core.ids import ConnectorInstanceId, connection_id
-from modsim.core.scene import SceneSpec
-from modsim.robot_packs import RobotPack
-from modsim.runtime.reconfiguration import (
+from modsim_robotics.backends.mock import MockBackendAdapter
+from modsim_robotics.core.events import (
+    AssemblyMerged,
+    AssemblySplit,
+    DockCommitted,
+    Event,
+    UndockCommitted,
+)
+from modsim_robotics.core.ids import ConnectorInstanceId, connection_id
+from modsim_robotics.core.scene import SceneSpec
+from modsim_robotics.robot_packs import RobotPack
+from modsim_robotics.runtime.reconfiguration import (
     ReconfigurationPhase,
     ReconfigurationPlanError,
     ScriptedReconfigurationConfig,
@@ -17,7 +23,7 @@ from modsim.runtime.reconfiguration import (
     connector_pair_plan,
     stage_docking_assembly_pair,
 )
-from modsim.runtime.session import RuntimeSession
+from modsim_robotics.runtime.session import RuntimeSession
 
 FIXED = ConnectorInstanceId("generic_cube_0/front")
 MOVING = ConnectorInstanceId("generic_cube_1/front")

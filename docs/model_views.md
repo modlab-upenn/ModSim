@@ -127,18 +127,30 @@ List recipes and builders, then generate the initial three-module runtime
 snapshot from the command line:
 
 ```bash
-modsim views examples/robot_packs/generic_cube
-modsim views examples/robot_packs/generic_cube \
+modsim-robotics views examples/robot_packs/generic_cube
+modsim-robotics views examples/robot_packs/generic_cube \
   --view module_topology \
   --count 3 \
   --output json
 ```
 
+After setup, select the installed pack by name instead of repeating its path:
+
+```bash
+modsim-robotics views generic_cube --view module_topology --count 3 --output json
+```
+
+Use `pack list` to inspect installed pack names and versions. A version-qualified
+name such as `generic_cube@0.1.0` or an explicit path disambiguates multiple
+matches. The selector can be positional or supplied with `--pack`. `--home PATH`
+selects another home for library lookup. View generation requires a selector and
+does not initialize the home or choose a robot implicitly.
+
 The command creates canonical in-memory state but does not launch a physics
 backend. A runtime client uses the same API with its live world:
 
 ```python
-from modsim import ModelViewContext, ModelViewFactory
+from modsim_robotics import ModelViewContext, ModelViewFactory
 
 factory = ModelViewFactory()
 context = ModelViewContext(pack=session.world.pack, world=session.world)
@@ -174,7 +186,7 @@ distinguishable in generated topology and lattice DTOs.
 
 ## Runtime Inspector consumer
 
-`modsim runtime PACK` is the first live consumer of generated model views. In
+`modsim-robotics runtime PACK` is the first live consumer of generated model views. In
 semantic-only mode a dedicated worker thread owns `RuntimeSession`, the
 backend, and `ModelViewFactory`; with the native MuJoCo viewer enabled, one
 companion process owns the same responsibilities. After stepping, either owner

@@ -1,0 +1,533 @@
+@import '../../static/theme/tokens.css';
+
+/* Docusaurus adapter. Brand values live in the framework-independent tokens. */
+:root,
+:root[data-theme='dark'] {
+  --ifm-color-primary: var(--modsim-accent);
+  --ifm-color-primary-dark: color-mix(in srgb, var(--modsim-accent), black 10%);
+  --ifm-color-primary-darker: color-mix(in srgb, var(--modsim-accent), black 15%);
+  --ifm-color-primary-darkest: color-mix(in srgb, var(--modsim-accent), black 30%);
+  --ifm-color-primary-light: color-mix(in srgb, var(--modsim-accent), white 10%);
+  --ifm-color-primary-lighter: color-mix(in srgb, var(--modsim-accent), white 15%);
+  --ifm-color-primary-lightest: color-mix(in srgb, var(--modsim-accent), white 30%);
+  --ifm-background-color: var(--modsim-reading-bg);
+  --ifm-background-surface-color: var(--modsim-surface);
+  --ifm-color-info: var(--modsim-accent);
+  --ifm-color-success: var(--modsim-success);
+  --ifm-color-warning: var(--modsim-warning);
+  --ifm-color-danger: var(--modsim-danger);
+  --ifm-font-color-base: var(--modsim-ink);
+  --ifm-font-color-secondary: var(--modsim-muted);
+  --ifm-heading-color: var(--modsim-ink);
+  --ifm-font-family-base: var(--modsim-font-body);
+  --ifm-font-family-monospace: var(--modsim-font-mono);
+  --ifm-heading-font-family: var(--modsim-font-display);
+  --ifm-font-size-base: 16px;
+  --ifm-line-height-base: 1.8;
+  --ifm-font-weight-semibold: 600;
+  --ifm-heading-font-weight: 700;
+  --ifm-link-color: var(--modsim-accent);
+  --ifm-link-hover-color: var(--modsim-accent);
+  --ifm-code-font-size: 86%;
+  --ifm-code-background: var(--modsim-surface-2);
+  --ifm-global-radius: var(--modsim-radius);
+  --ifm-global-shadow-lw: none;
+  --ifm-color-emphasis-200: var(--modsim-border);
+  --ifm-color-emphasis-300: var(--modsim-border);
+  --ifm-color-emphasis-600: var(--modsim-muted);
+  --ifm-menu-color: var(--modsim-muted);
+  --ifm-menu-color-active: var(--modsim-accent);
+  --ifm-menu-color-background-active: var(--modsim-accent-soft);
+  --ifm-menu-color-background-hover: var(--modsim-surface-2);
+  --ifm-menu-link-padding-horizontal: 0.875rem;
+  --ifm-menu-link-padding-vertical: 0.625rem;
+  --ifm-navbar-height: var(--modsim-navbar-height);
+  --ifm-navbar-background-color: var(--modsim-surface);
+  --ifm-navbar-link-color: var(--modsim-muted);
+  --ifm-navbar-link-hover-color: var(--modsim-accent);
+  --ifm-navbar-shadow: none;
+  --ifm-navbar-padding-horizontal: 1.75rem;
+  --ifm-toc-border-color: var(--modsim-border);
+  --ifm-breadcrumb-color-active: var(--modsim-accent);
+  --ifm-breadcrumb-item-background-active: var(--modsim-accent-soft);
+  --ifm-table-border-color: var(--modsim-border);
+  --ifm-table-head-background: var(--modsim-navigation-bg);
+  --ifm-table-stripe-background: var(--modsim-reading-bg);
+  --doc-sidebar-width: var(--modsim-sidebar-width);
+  --docusaurus-highlighted-code-line-bg: rgb(121 174 234 / 12%);
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--modsim-accent);
+  outline-offset: 3px;
+}
+
+.navbar {
+  border-bottom: 1px solid var(--modsim-border);
+}
+
+.navbar__brand {
+  color: var(--modsim-ink);
+  gap: 0.65rem;
+  margin-right: 3rem;
+}
+
+.navbar__logo {
+  height: 2rem;
+  margin-right: 0;
+}
+
+.navbar__title {
+  font-family: var(--modsim-font-display);
+  font-size: 1.375rem;
+  font-stretch: 112%;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+}
+
+.navbar__link {
+  font-size: 0.9375rem;
+  font-weight: 500;
+}
+
+.navbar__link--active {
+  color: var(--modsim-accent);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.75rem;
+}
+
+.modsim-github-link {
+  border: 1px solid var(--modsim-border);
+  border-radius: var(--modsim-radius);
+  margin-left: 0.5rem;
+  padding: 0.35rem 0.75rem;
+}
+
+.theme-doc-sidebar-container,
+.navbar-sidebar {
+  background: var(--modsim-navigation-bg);
+  border-color: var(--modsim-border);
+}
+
+.theme-doc-sidebar-menu {
+  padding: 1.75rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+.theme-doc-sidebar-item-category > .menu__list-item-collapsible > .menu__link {
+  color: var(--modsim-muted);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  padding-bottom: 0.75rem;
+  text-transform: uppercase;
+}
+
+.menu__list-item:not(:first-child) {
+  margin-top: 0.25rem;
+}
+
+.menu__link {
+  border-radius: var(--modsim-radius);
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.menu__link--active:not(.menu__link--sublist) {
+  box-shadow: inset 2px 0 var(--modsim-accent);
+}
+
+.theme-doc-markdown {
+  max-width: var(--modsim-reading-width);
+  overflow-wrap: anywhere;
+}
+
+.modsim-diagram {
+  background: var(--modsim-surface);
+  border: 1px solid var(--modsim-border);
+  border-radius: var(--modsim-radius-panel);
+  margin: 1.75rem 0;
+  overflow: hidden;
+}
+
+.modsim-diagram-toolbar {
+  align-items: center;
+  background: var(--modsim-navigation-bg);
+  border-bottom: 1px solid var(--modsim-border);
+  color: var(--modsim-muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  gap: 0.75rem;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+}
+
+.modsim-diagram-toolbar > div {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.modsim-diagram-toolbar button {
+  background: var(--modsim-surface);
+  border: 1px solid var(--modsim-border);
+  border-radius: var(--modsim-radius);
+  color: var(--modsim-accent);
+  cursor: pointer;
+  font: inherit;
+  padding: 0.25rem 0.65rem;
+}
+
+.modsim-diagram-toolbar button:disabled {
+  cursor: wait;
+  opacity: 0.5;
+}
+
+.modsim-diagram-canvas {
+  overflow: auto;
+  padding: 1.25rem;
+  text-align: center;
+}
+
+.modsim-diagram-canvas > svg {
+  height: auto;
+  max-width: none;
+  vertical-align: middle;
+}
+
+.modsim-diagram-canvas.modsim-diagram-fit > svg {
+  max-width: 100%;
+}
+
+.modsim-diagram-loading {
+  color: var(--modsim-muted);
+  margin: 0;
+  padding: 1.25rem;
+}
+
+.modsim-diagram-dialog {
+  background: var(--modsim-surface);
+  border: 1px solid var(--modsim-border);
+  border-radius: var(--modsim-radius-panel);
+  color: var(--modsim-ink);
+  max-height: 92dvh;
+  max-width: 96vw;
+  padding: 0;
+  width: 96vw;
+}
+
+.modsim-diagram-dialog::backdrop {
+  background: rgb(4 12 22 / 75%);
+}
+
+.modsim-diagram-dialog .modsim-diagram-canvas {
+  max-height: calc(92dvh - 4rem);
+}
+
+body:has(.modsim-diagram-dialog[open]) {
+  overflow: hidden;
+}
+
+.theme-doc-markdown h1,
+.theme-doc-markdown h2,
+.theme-doc-markdown h3,
+.theme-doc-markdown h4 {
+  font-stretch: 112%;
+  letter-spacing: -0.025em;
+  line-height: 1.25;
+}
+
+.theme-doc-markdown h1 {
+  font-size: clamp(2rem, 3vw, 2.75rem);
+  margin-bottom: 1.75rem;
+}
+
+.theme-doc-markdown h2 {
+  font-size: 1.625rem;
+  margin-bottom: 1rem;
+  margin-top: 2.75rem;
+}
+
+.theme-doc-markdown h3 {
+  font-size: 1.2rem;
+  margin-top: 2rem;
+}
+
+.theme-doc-markdown p,
+.theme-doc-markdown ul,
+.theme-doc-markdown ol {
+  margin-bottom: 1.25rem;
+}
+
+.theme-doc-markdown li + li {
+  margin-top: 0.45rem;
+}
+
+.theme-doc-markdown a {
+  text-underline-offset: 3px;
+}
+
+.theme-doc-markdown :not(pre) > code {
+  border: 1px solid var(--modsim-border);
+  border-radius: 0.3rem;
+  color: var(--modsim-ink);
+  padding: 0.1em 0.35em;
+}
+
+.theme-doc-breadcrumbs {
+  margin-bottom: 1.5rem;
+}
+
+.breadcrumbs__item {
+  font-size: 0.8125rem;
+}
+
+.table-of-contents {
+  border-left: 1px solid var(--modsim-border);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  padding-left: 1rem;
+}
+
+.table-of-contents li {
+  margin: 0 0 0.75rem;
+}
+
+.table-of-contents__link {
+  color: var(--modsim-muted);
+}
+
+.table-of-contents__link--active {
+  color: var(--modsim-accent);
+  font-weight: 600;
+}
+
+.theme-code-block {
+  border: 1px solid var(--modsim-border);
+  border-radius: var(--modsim-radius-panel);
+  box-shadow: none;
+  font-size: 0.875rem;
+  margin: 1.5rem 0;
+  overflow: hidden;
+}
+
+.theme-code-block pre {
+  border-radius: 0;
+  font-size: inherit;
+  line-height: 1.75;
+}
+
+.theme-code-block pre code {
+  font-size: inherit;
+}
+
+.theme-doc-markdown table {
+  border: 1px solid var(--modsim-border);
+  border-collapse: separate;
+  border-radius: var(--modsim-radius-panel);
+  border-spacing: 0;
+  display: table;
+  font-size: 0.9375rem;
+  max-width: 100%;
+  overflow-x: auto;
+  width: 100%;
+}
+
+.theme-doc-markdown table th:first-child,
+.theme-doc-markdown table td:first-child {
+  min-width: 7.5rem;
+  overflow-wrap: normal;
+}
+
+.theme-doc-markdown table th,
+.theme-doc-markdown table td {
+  border: 0;
+  border-bottom: 1px solid var(--modsim-border);
+  padding: 0.875rem 1rem;
+}
+
+.theme-doc-markdown table th {
+  color: var(--modsim-muted);
+  font-weight: 600;
+  text-align: left;
+}
+
+.theme-doc-markdown table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.theme-doc-markdown table thead th:first-child {
+  border-top-left-radius: var(--modsim-radius-panel);
+}
+
+.theme-doc-markdown table thead th:last-child {
+  border-top-right-radius: var(--modsim-radius-panel);
+}
+
+/* Generated Python reference uses the same shell, with scannable API sections. */
+html[class*='docs-doc-id-reference/api/'] .theme-doc-markdown h2 {
+  border-top: 1px solid var(--modsim-border);
+  margin-top: 3rem;
+  padding-top: 2rem;
+}
+
+html[class*='docs-doc-id-reference/api/'] .theme-doc-markdown h3 {
+  border-top: 1px solid var(--modsim-border);
+  font-family: var(--modsim-font-mono);
+  font-size: 1.125rem;
+  font-stretch: normal;
+  letter-spacing: -0.025em;
+  line-height: 1.6;
+  margin-top: 2.5rem;
+  padding-top: 1.75rem;
+}
+
+html[class*='docs-doc-id-reference/api/'] .theme-doc-markdown h3 code {
+  background: none;
+  border: 0;
+  color: inherit;
+  font-size: inherit;
+  padding: 0;
+}
+
+html[class*='docs-doc-id-reference/api/'] .theme-code-block {
+  font-size: 0.8125rem;
+  margin-top: 1rem;
+}
+
+.api-table-scroll {
+  border: 1px solid var(--modsim-border);
+  border-radius: var(--modsim-radius-panel);
+  margin-bottom: var(--ifm-spacing-vertical);
+  max-width: 100%;
+  overflow-x: auto;
+  width: 100%;
+}
+
+html[class*='docs-doc-id-reference/api/'] .theme-doc-markdown .api-table-scroll > table {
+  border: 0;
+  border-radius: 0;
+  display: table;
+  font-size: 0.875rem;
+  margin-bottom: 0;
+  max-width: none;
+  min-width: 100%;
+  width: 100%;
+}
+
+html[class*='docs-doc-id-reference/api/'] .theme-doc-markdown table th,
+html[class*='docs-doc-id-reference/api/'] .theme-doc-markdown table td {
+  padding: 0.75rem;
+  vertical-align: top;
+}
+
+html[class*='docs-doc-id-reference/api/'] .theme-doc-markdown table th {
+  white-space: nowrap;
+}
+
+html[class*='docs-doc-id-reference/api/'] .theme-doc-markdown table td {
+  overflow-wrap: normal;
+}
+
+html[class*='docs-doc-id-reference/api/'] .theme-doc-markdown a[id] {
+  scroll-margin-top: calc(var(--ifm-navbar-height) + 1.25rem);
+}
+
+.theme-doc-markdown blockquote {
+  background: var(--modsim-accent-soft);
+  border-left: 3px solid var(--modsim-accent);
+  border-radius: 0 var(--modsim-radius) var(--modsim-radius) 0;
+  color: var(--modsim-ink);
+  padding: 1rem 1.25rem;
+}
+
+.theme-doc-markdown blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+.theme-admonition {
+  border-radius: var(--modsim-radius-panel);
+  box-shadow: none;
+}
+
+.pagination-nav {
+  margin-top: 3rem;
+}
+
+.pagination-nav__link {
+  background: var(--modsim-reading-bg);
+  border-color: var(--modsim-border);
+  border-radius: var(--modsim-radius-panel);
+  padding: 1.25rem 1.5rem;
+}
+
+.pagination-nav__sublabel {
+  color: var(--modsim-muted);
+  font-size: 0.8125rem;
+  margin-bottom: 0.35rem;
+}
+
+.pagination-nav__label {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+@media (min-width: 997px) {
+  .docs-wrapper .main-wrapper .container {
+    max-width: 96rem;
+    padding: 2.5rem clamp(2rem, 4vw, 4.5rem) 4rem;
+  }
+}
+
+@media (max-width: 996px) {
+  :root {
+    --modsim-navbar-height: 4rem;
+    --ifm-navbar-padding-horizontal: 1rem;
+  }
+
+  .navbar__brand {
+    margin-right: 0;
+  }
+
+  .navbar__title {
+    font-size: 1.125rem;
+  }
+
+  .docs-wrapper .main-wrapper .container {
+    padding: 1.5rem 1.25rem 3rem;
+  }
+
+  .theme-doc-markdown h1 {
+    margin-bottom: 1.5rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .docs-wrapper .main-wrapper .container {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .theme-doc-markdown table th,
+  .theme-doc-markdown table td {
+    padding: 0.75rem;
+  }
+
+  .theme-doc-markdown table {
+    display: block;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}

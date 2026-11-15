@@ -17,16 +17,16 @@ pytest.importorskip("pyqtgraph")
 from PySide6.QtCore import QPointF, Qt
 from PySide6.QtWidgets import QApplication
 
-from modsim.runtime.inspection import RuntimeEventRow, RuntimeInspectorFrame
-from modsim.runtime.inspector_runner import RuntimeInspectorConfig
-from modsim_studio.appearance import THEMES, theme_manager
-from modsim_studio.runtime_events import (
+from modsim_robotics.runtime.inspection import RuntimeEventRow, RuntimeInspectorFrame
+from modsim_robotics.runtime.inspector_runner import RuntimeInspectorConfig
+from modsim_robotics_studio.appearance import THEMES, theme_manager
+from modsim_robotics_studio.runtime_events import (
     RuntimeEventLogWidget,
     RuntimeEventTableModel,
 )
-from modsim_studio.runtime_graph import TopologyGraphWidget
-from modsim_studio.runtime_lattice import CubicLatticeWidget, LatticeViewBox
-from modsim_studio.runtime_lattice_presenter import (
+from modsim_robotics_studio.runtime_graph import TopologyGraphWidget
+from modsim_robotics_studio.runtime_lattice import CubicLatticeWidget, LatticeViewBox
+from modsim_robotics_studio.runtime_lattice_presenter import (
     CubicLatticeGeometry,
     LatticeProjection,
     PresentedGridLine,
@@ -37,14 +37,14 @@ from modsim_studio.runtime_lattice_presenter import (
     PresentedLatticeModule,
     PresentedOrientationAxis,
 )
-from modsim_studio.runtime_presenter import (
+from modsim_robotics_studio.runtime_presenter import (
     CubicLatticePresentation,
     GraphSelection,
     PresentedConnectionEdge,
     PresentedModuleNode,
     RuntimePresentation,
 )
-from modsim_studio.runtime_window import RuntimeInspectorWindow
+from modsim_robotics_studio.runtime_window import RuntimeInspectorWindow
 
 
 def test_live_theme_changes_preserve_runtime_selection_camera_and_geometry(

@@ -13,14 +13,14 @@ mujoco = pytest.importorskip("mujoco", reason="the MuJoCo backend extra is not i
 
 import numpy as np
 
-from modsim.core.ids import ConnectorInstanceId, ModuleInstanceId
-from modsim.core.scene import ModulePlacement, SceneSpec
-from modsim.core.transforms import Transform, quat_from_axis_angle
-from modsim.robot_packs import LoadedRobotPack, RobotPackLoader
-from modsim.runtime.session import RuntimeSession
-from modsim_backend_mujoco.adapter import MuJoCoBackendAdapter
-from modsim_backend_mujoco.scene import GROUND_GEOM, body_name, build_scene
-from modsim_backend_mujoco.welds import collision_signature
+from modsim_robotics.core.ids import ConnectorInstanceId, ModuleInstanceId
+from modsim_robotics.core.scene import ModulePlacement, SceneSpec
+from modsim_robotics.core.transforms import Transform, quat_from_axis_angle
+from modsim_robotics.robot_packs import LoadedRobotPack, RobotPackLoader
+from modsim_robotics.runtime.session import RuntimeSession
+from modsim_robotics_backend_mujoco.adapter import MuJoCoBackendAdapter
+from modsim_robotics_backend_mujoco.scene import GROUND_GEOM, body_name, build_scene
+from modsim_robotics_backend_mujoco.welds import collision_signature
 
 pytestmark = pytest.mark.mujoco
 

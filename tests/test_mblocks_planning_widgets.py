@@ -14,22 +14,25 @@ pytest.importorskip("pyqtgraph")
 
 from PySide6.QtWidgets import QApplication
 
-from modsim.model_views import ModelViewFactory
-from modsim.planning.mblocks import LatticePlanningSnapshot, plan_reconfiguration
-from modsim.robot_packs import RobotPackLoader
-from modsim.runtime.inspection import RuntimeInspectorFrame, build_runtime_inspector_frame
-from modsim.runtime.inspection_protocol import (
+from modsim_robotics.model_views import ModelViewFactory
+from modsim_robotics.planning.mblocks import LatticePlanningSnapshot, plan_reconfiguration
+from modsim_robotics.robot_packs import RobotPackLoader
+from modsim_robotics.runtime.inspection import RuntimeInspectorFrame, build_runtime_inspector_frame
+from modsim_robotics.runtime.inspection_protocol import (
     RuntimeFrame,
     decode_runtime_message,
     encode_runtime_message,
 )
-from modsim.runtime.inspector_runner import RuntimeInspectorConfig, resolve_runtime_recipe
-from modsim.runtime.mblocks_lattice import line_goal, rectangle_state, tabletop_scene
-from modsim.runtime.reconfiguration import ReconfigurationPhase, ReconfigurationStatus
-from modsim.runtime.session import RuntimeSession
-from modsim_studio.appearance import THEMES, theme_manager
-from modsim_studio.runtime_mblocks_planning import LatticePlanningWorkspace, target_lattice_view
-from modsim_studio.runtime_window import RuntimeInspectorWindow
+from modsim_robotics.runtime.inspector_runner import RuntimeInspectorConfig, resolve_runtime_recipe
+from modsim_robotics.runtime.mblocks_lattice import line_goal, rectangle_state, tabletop_scene
+from modsim_robotics.runtime.reconfiguration import ReconfigurationPhase, ReconfigurationStatus
+from modsim_robotics.runtime.session import RuntimeSession
+from modsim_robotics_studio.appearance import THEMES, theme_manager
+from modsim_robotics_studio.runtime_mblocks_planning import (
+    LatticePlanningWorkspace,
+    target_lattice_view,
+)
+from modsim_robotics_studio.runtime_window import RuntimeInspectorWindow
 
 
 @pytest.fixture

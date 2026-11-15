@@ -8,26 +8,26 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from modsim.backends.base import ConnectionOutcome, ConnectionRequest
-from modsim.backends.mock import MockBackendAdapter
-from modsim.core.entities import ConnectionRuntime
-from modsim.core.events import DockCommitted, DockFailed, DockFailureReason
-from modsim.core.ids import (
+from modsim_robotics.backends.base import ConnectionOutcome, ConnectionRequest
+from modsim_robotics.backends.mock import MockBackendAdapter
+from modsim_robotics.core.entities import ConnectionRuntime
+from modsim_robotics.core.events import DockCommitted, DockFailed, DockFailureReason
+from modsim_robotics.core.ids import (
     ConnectionId,
     ConnectorInstanceId,
     ConstraintHandle,
     ModuleInstanceId,
 )
-from modsim.core.scene import SceneSpec
-from modsim.core.state import WorldState
-from modsim.core.transforms import Transform
-from modsim.model_views import (
+from modsim_robotics.core.scene import SceneSpec
+from modsim_robotics.core.state import WorldState
+from modsim_robotics.core.transforms import Transform
+from modsim_robotics.model_views import (
     CubicLatticeView,
     ModelViewContext,
     ModelViewFactory,
     ModuleTopologyGraphView,
 )
-from modsim.robot_packs import (
+from modsim_robotics.robot_packs import (
     HingeConstraintSpec,
     PhysicalConnectionSpec,
     PhysicalConstraintType,
@@ -36,14 +36,14 @@ from modsim.robot_packs import (
     RobotPackValidator,
     ValidationProfile,
 )
-from modsim.robot_packs.schema import ModelViewSpec
-from modsim.runtime.inspection import build_runtime_inspector_frame
-from modsim.runtime.inspection_protocol import (
+from modsim_robotics.robot_packs.schema import ModelViewSpec
+from modsim_robotics.runtime.inspection import build_runtime_inspector_frame
+from modsim_robotics.runtime.inspection_protocol import (
     RuntimeFrame,
     decode_runtime_message,
     encode_runtime_message,
 )
-from modsim.runtime.session import RuntimeSession
+from modsim_robotics.runtime.session import RuntimeSession
 
 MODULE_TYPE = "generic_cube"
 FRONT = ConnectorInstanceId("generic_cube_0/front")

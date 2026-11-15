@@ -10,37 +10,37 @@ from typing import cast
 
 import pytest
 
-from modsim.backends.base import BackendCapabilities, BackendHandleRegistry
-from modsim.backends.mock import MockBackendAdapter
-from modsim.core.entities import JointCommand
-from modsim.core.ids import ConnectorInstanceId, JointInstanceId, ModuleInstanceId
-from modsim.core.scene import ModulePlacement, SceneSpec
-from modsim.core.snapshot import BackendStateSnapshot, JointState
-from modsim.core.transforms import Transform
-from modsim.robot_packs import ControlMode, LoadedRobotPack, RobotPack
-from modsim.runtime.differential_drive import (
+from modsim_robotics.backends.base import BackendCapabilities, BackendHandleRegistry
+from modsim_robotics.backends.mock import MockBackendAdapter
+from modsim_robotics.core.entities import JointCommand
+from modsim_robotics.core.ids import ConnectorInstanceId, JointInstanceId, ModuleInstanceId
+from modsim_robotics.core.scene import ModulePlacement, SceneSpec
+from modsim_robotics.core.snapshot import BackendStateSnapshot, JointState
+from modsim_robotics.core.transforms import Transform
+from modsim_robotics.robot_packs import ControlMode, LoadedRobotPack, RobotPack
+from modsim_robotics.runtime.differential_drive import (
     DifferentialDriveGeometry,
     PositionEffortController,
     VelocityEffortController,
 )
-from modsim.runtime.physical_reconfiguration import (
+from modsim_robotics.runtime.physical_reconfiguration import (
     DifferentialDriveReconfigurationConfig,
     DifferentialDriveReconfigurationScenario,
     PhysicalActionRoute,
     TargetRelativeWaypoint,
 )
-from modsim.runtime.physics_docking import (
+from modsim_robotics.runtime.physics_docking import (
     DifferentialDriveDockingConfig,
     DifferentialDriveDockingScenario,
     JointHoldTarget,
 )
-from modsim.runtime.reconfiguration import (
+from modsim_robotics.runtime.reconfiguration import (
     ConnectorPairRef,
     ReconfigurationAction,
     ReconfigurationPlan,
     ReconfigurationScenarioError,
 )
-from modsim.runtime.session import RuntimeSession
+from modsim_robotics.runtime.session import RuntimeSession
 
 
 class _JointFeedbackMock(MockBackendAdapter):

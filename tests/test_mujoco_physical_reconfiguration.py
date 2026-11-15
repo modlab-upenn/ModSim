@@ -9,7 +9,7 @@ import pytest
 
 pytest.importorskip("mujoco", reason="the MuJoCo backend extra is not installed")
 
-from modsim.core.events import (
+from modsim_robotics.core.events import (
     AssemblyMerged,
     AssemblySplit,
     DockCommitted,
@@ -18,12 +18,14 @@ from modsim.core.events import (
     UndockCommitted,
     UndockFailed,
 )
-from modsim.core.ids import ModuleInstanceId, split_connector_instance_id
-from modsim.core.transforms import quat_rotate
-from modsim.runtime import ReconfigurationPhase, RuntimeDemo
-from modsim.runtime.inspector_runner import RuntimeInspectorConfig, RuntimeInspectorRunner
-from modsim.runtime.physical_reconfiguration import DifferentialDriveReconfigurationScenario
-from modsim.runtime.session import RuntimeSession
+from modsim_robotics.core.ids import ModuleInstanceId, split_connector_instance_id
+from modsim_robotics.core.transforms import quat_rotate
+from modsim_robotics.runtime import ReconfigurationPhase, RuntimeDemo
+from modsim_robotics.runtime.inspector_runner import RuntimeInspectorConfig, RuntimeInspectorRunner
+from modsim_robotics.runtime.physical_reconfiguration import (
+    DifferentialDriveReconfigurationScenario,
+)
+from modsim_robotics.runtime.session import RuntimeSession
 
 pytestmark = pytest.mark.mujoco
 

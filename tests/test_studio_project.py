@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from modsim.robot_packs import (
+from modsim_robotics.robot_packs import (
     AcceptanceRegion,
     AcceptanceShape,
     AlignmentMode,
@@ -26,7 +26,7 @@ from modsim.robot_packs import (
     RobotPackWriteError,
     ValidationProfile,
 )
-from modsim_studio import StudioProject
+from modsim_robotics_studio import StudioProject
 
 
 def test_studio_project_opens_assets_and_renders_yaml(example_pack_dir: Path) -> None:
@@ -390,7 +390,7 @@ def test_studio_save_rolls_back_failed_directory_swap(
     copied_pack: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import modsim.robot_packs.writer as writer_module
+    import modsim_robotics.robot_packs.writer as writer_module
 
     project = StudioProject.open(copied_pack).update_manifest(
         name="Must Roll Back",

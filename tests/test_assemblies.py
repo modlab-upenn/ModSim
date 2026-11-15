@@ -7,8 +7,8 @@ from itertools import pairwise
 
 import pytest
 
-from modsim.core.assemblies import Adjacency, AssemblyIndex
-from modsim.core.ids import ModuleInstanceId, assembly_id
+from modsim_robotics.core.assemblies import Adjacency, AssemblyIndex
+from modsim_robotics.core.ids import ModuleInstanceId, assembly_id
 
 
 def modules(*names: str) -> tuple[ModuleInstanceId, ...]:

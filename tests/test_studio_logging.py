@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from modsim_studio.project import StudioProject
-from modsim_studio.session_logging import (
+from modsim_robotics_studio.project import StudioProject
+from modsim_robotics_studio.session_logging import (
     LOGGER_NAME,
     configure_session_logging,
     resolve_session_log_path,
@@ -103,7 +103,7 @@ def test_configuration_truncates_and_formats_debug_log(tmp_path: Path) -> None:
 
     line = log_path.read_text(encoding="utf-8")
     assert re.fullmatch(
-        r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} DEBUG modsim session ready\n",
+        r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} DEBUG modsim_robotics session ready\n",
         line,
     )
 

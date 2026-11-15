@@ -5,9 +5,9 @@ from collections.abc import Callable
 
 import pytest
 
-from modsim.core.ids import ModuleInstanceId
-from modsim.core.transforms import Transform, quat_from_axis_angle
-from modsim.runtime.differential_drive import (
+from modsim_robotics.core.ids import ModuleInstanceId
+from modsim_robotics.core.transforms import Transform, quat_from_axis_angle
+from modsim_robotics.runtime.differential_drive import (
     DifferentialDriveGeometry,
     PositionEffortController,
     RigidAssemblyWheelAllocation,

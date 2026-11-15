@@ -9,31 +9,31 @@ from pathlib import Path
 
 import pytest
 
-from modsim.backends.base import (
+from modsim_robotics.backends.base import (
     BackendCapabilities,
     BackendHandleRegistry,
     ConnectionOutcome,
     ConnectionRequest,
 )
-from modsim.backends.mock import MockBackendAdapter
-from modsim.core.entities import JointCommand
-from modsim.core.events import DockCommitted, UndockCommitted
-from modsim.core.ids import ConstraintHandle, JointInstanceId, ModuleInstanceId
-from modsim.core.scene import SceneSpec
-from modsim.core.snapshot import BackendStateSnapshot, JointState
-from modsim.core.transforms import Transform, quat_from_axis_angle, quat_rotate, vec_scale
-from modsim.model_views import CubicLatticeView, ModelViewContext, ModelViewFactory
-from modsim.robot_packs import ControlMode, RobotPack, RobotPackLoader
-from modsim.robot_packs.schema import PhysicalConstraintType
-from modsim.runtime.momentum_pivot import (
+from modsim_robotics.backends.mock import MockBackendAdapter
+from modsim_robotics.core.entities import JointCommand
+from modsim_robotics.core.events import DockCommitted, UndockCommitted
+from modsim_robotics.core.ids import ConstraintHandle, JointInstanceId, ModuleInstanceId
+from modsim_robotics.core.scene import SceneSpec
+from modsim_robotics.core.snapshot import BackendStateSnapshot, JointState
+from modsim_robotics.core.transforms import Transform, quat_from_axis_angle, quat_rotate, vec_scale
+from modsim_robotics.model_views import CubicLatticeView, ModelViewContext, ModelViewFactory
+from modsim_robotics.robot_packs import ControlMode, RobotPack, RobotPackLoader
+from modsim_robotics.robot_packs.schema import PhysicalConstraintType
+from modsim_robotics.runtime.momentum_pivot import (
     PUBLISHED_BRAKE_EFFORT_CAP_NM,
     PUBLISHED_FLYWHEEL_SPEED_CAP_RAD_S,
     PUBLISHED_SPINUP_EFFORT_CAP_NM,
     MomentumPivotConfig,
     MomentumPivotScenario,
 )
-from modsim.runtime.reconfiguration import ReconfigurationPhase
-from modsim.runtime.session import RuntimeSession
+from modsim_robotics.runtime.reconfiguration import ReconfigurationPhase
+from modsim_robotics.runtime.session import RuntimeSession
 
 _ROOT = Path(__file__).resolve().parents[1]
 _PACK_PATH = _ROOT / "examples" / "robot_packs" / "mblocks_3d"

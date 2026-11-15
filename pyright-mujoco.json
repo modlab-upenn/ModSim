@@ -1,6 +1,6 @@
 {
   "include": [
-    "src/modsim_backend_mujoco",
+    "src/modsim_robotics_backend_mujoco",
     "tests/test_mujoco_backend.py",
     "tests/test_mujoco_contact_mechanics.py",
     "tests/test_mujoco_docking.py",

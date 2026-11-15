@@ -15,9 +15,9 @@ pytest.importorskip("pyvistaqt")
 from PySide6.QtCore import QCoreApplication, QEvent, QSettings, Qt, QTimer, Signal
 from PySide6.QtWidgets import QApplication, QFileDialog, QPushButton, QWidget
 
-from modsim_studio import main_window
-from modsim_studio.appearance import DEFAULT_THEME, THEMES, ThemeManager, theme_manager
-from modsim_studio.chrome import ThemePicker, VectorEdit
+from modsim_robotics_studio import main_window
+from modsim_robotics_studio.appearance import DEFAULT_THEME, THEMES, ThemeManager, theme_manager
+from modsim_robotics_studio.chrome import ThemePicker, VectorEdit
 
 
 @pytest.fixture(scope="module")

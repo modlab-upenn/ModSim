@@ -1,0 +1,103 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Verify stable version and source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Match tag to package version
+        run: python tools/release/verify_tag.py --tag "$GITHUB_REF_NAME"
+
+      - name: Require authored release notes
+        run: test -s "docs/releases/${GITHUB_REF_NAME#v}.md"
+
+      - name: Require a commit on main
+        run: git merge-base --is-ancestor HEAD origin/main
+
+  checks:
+    name: Run full CI and build distributions once
+    needs: validate
+    uses: ./.github/workflows/ci.yml
+
+  pypi:
+    name: Publish tested distributions to PyPI
+    needs: checks
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/modsim-robotics/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: modsim-distributions-${{ github.sha }}
+          path: artifact/
+
+      - name: Verify distribution checksums
+        working-directory: artifact
+        run: sha256sum --check SHA256SUMS
+
+      - name: Select distributions for PyPI
+        run: |
+          mkdir dist
+          cp artifact/*.whl artifact/*.tar.gz dist/
+
+      - name: Publish using PyPI Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+
+  github:
+    name: Publish matching GitHub Release
+    needs:
+      - checks
+      - pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: modsim-distributions-${{ github.sha }}
+          path: dist/
+
+      - name: Verify distribution checksums
+        working-directory: dist
+        run: sha256sum --check SHA256SUMS
+
+      - name: Attach tested files and publish the stable release
+        run: |
+          release_notes="docs/releases/${GITHUB_REF_NAME#v}.md"
+          test -s "$release_notes"
+          if gh release view "$GITHUB_REF_NAME" --json isDraft --jq '.isDraft' > release-state.txt 2>/dev/null; then
+            test "$(cat release-state.txt)" = true
+            gh release upload "$GITHUB_REF_NAME" dist/*.whl dist/*.tar.gz dist/SHA256SUMS --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/*.whl dist/*.tar.gz dist/SHA256SUMS \
+              --verify-tag --draft --notes-file "$release_notes" --title "$GITHUB_REF_NAME"
+          fi
+          gh release edit "$GITHUB_REF_NAME" --draft=false --notes-file "$release_notes"

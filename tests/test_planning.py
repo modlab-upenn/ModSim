@@ -8,7 +8,7 @@ import random
 
 import pytest
 
-from modsim.planning import (
+from modsim_robotics.planning import (
     AssemblyGoal,
     GoalEdge,
     Pose2,
@@ -16,8 +16,8 @@ from modsim.planning import (
     plan_assembly,
     tree_root,
 )
-from modsim.planning.models import TimedPose
-from modsim.planning.routing import (
+from modsim_robotics.planning.models import TimedPose
+from modsim_robotics.planning.routing import (
     Footprint,
     Obstacle,
     Reservation,
@@ -26,7 +26,7 @@ from modsim.planning.routing import (
     plan_route,
     swept_clear,
 )
-from modsim.planning.smores import (
+from modsim_robotics.planning.smores import (
     driver_to_snake_goal,
     mobile_manipulator_goal,
     paper_initial_poses,

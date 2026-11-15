@@ -127,13 +127,13 @@ they never snap or edit the simulation.
 Generate both views without launching a simulator:
 
 ```bash
-modsim views examples/robot_packs/mblocks_3d \
+modsim-robotics views examples/robot_packs/mblocks_3d \
   --view mblocks_topology \
   --count 3 \
   --spacing 0.05 \
   --output json
 
-modsim views examples/robot_packs/mblocks_3d \
+modsim-robotics views examples/robot_packs/mblocks_3d \
   --view mblocks_lattice \
   --count 3 \
   --spacing 0.05 \
@@ -143,10 +143,10 @@ modsim views examples/robot_packs/mblocks_3d \
 ## Inspect and validate
 
 ```bash
-modsim pack inspect examples/robot_packs/mblocks_3d
-modsim pack validate examples/robot_packs/mblocks_3d
-modsim pack validate examples/robot_packs/mblocks_3d --profile simulation
-modsim studio examples/robot_packs/mblocks_3d
+modsim-robotics pack inspect examples/robot_packs/mblocks_3d
+modsim-robotics pack validate examples/robot_packs/mblocks_3d
+modsim-robotics pack validate examples/robot_packs/mblocks_3d --profile simulation
+modsim-robotics studio examples/robot_packs/mblocks_3d
 ```
 
 Both validation profiles are expected to report zero issues. Studio should
@@ -157,7 +157,7 @@ The existing generic two-module lifecycle can exercise any face before the
 pivot scenario is used:
 
 ```bash
-modsim runtime examples/robot_packs/mblocks_3d \
+modsim-robotics runtime examples/robot_packs/mblocks_3d \
   --backend mujoco \
   --demo dock_undock \
   --fixed-connector pos_x \
@@ -170,7 +170,7 @@ modsim runtime examples/robot_packs/mblocks_3d \
 Run the authored traversal with the Runtime Inspector and MuJoCo mesh viewer:
 
 ```bash
-modsim runtime examples/robot_packs/mblocks_3d \
+modsim-robotics runtime examples/robot_packs/mblocks_3d \
   --backend mujoco \
   --demo mblocks_five_module_pivot
 ```
@@ -196,7 +196,7 @@ This demo is backend-neutral and can be checked quickly without a native 3D
 window:
 
 ```bash
-modsim runtime examples/robot_packs/mblocks_3d \
+modsim-robotics runtime examples/robot_packs/mblocks_3d \
   --backend mock \
   --demo mblocks_five_module_pivot
 ```
@@ -216,7 +216,7 @@ visual integration demonstration rather than a physics experiment.
 Run the first physics path with its demo-aware defaults:
 
 ```bash
-modsim runtime examples/robot_packs/mblocks_3d \
+modsim-robotics runtime examples/robot_packs/mblocks_3d \
   --demo mblocks_momentum_pivot
 ```
 
@@ -286,7 +286,7 @@ temporary magnetic edge contact.
 Run the larger view/event demonstration:
 
 ```bash
-modsim runtime examples/robot_packs/mblocks_3d \
+modsim-robotics runtime examples/robot_packs/mblocks_3d \
   --backend mujoco \
   --demo mblocks_twelve_module_line
 ```
@@ -302,7 +302,7 @@ and one assembly.
 For a faster semantic check without the native mesh viewer, use:
 
 ```bash
-modsim runtime examples/robot_packs/mblocks_3d \
+modsim-robotics runtime examples/robot_packs/mblocks_3d \
   --backend mock \
   --demo mblocks_twelve_module_line
 ```
@@ -319,7 +319,7 @@ Run the separate physics realization with the Runtime Inspector and native
 MuJoCo viewer:
 
 ```bash
-modsim runtime examples/robot_packs/mblocks_3d \
+modsim-robotics runtime examples/robot_packs/mblocks_3d \
   --demo mblocks_physical_twelve_module_line \
   --speed 4
 ```
@@ -391,7 +391,7 @@ The staircase adds the cyclic and multi-module operations that the line demo
 does not exercise. Start with the deterministic reference:
 
 ```bash
-modsim runtime examples/robot_packs/mblocks_3d \
+modsim-robotics runtime examples/robot_packs/mblocks_3d \
   --backend mock \
   --demo mblocks_twelve_module_staircase \
   --no-viewer
@@ -401,7 +401,7 @@ The same reference route can use MuJoCo only as a mesh renderer and endpoint
 constraint backend:
 
 ```bash
-modsim runtime examples/robot_packs/mblocks_3d \
+modsim-robotics runtime examples/robot_packs/mblocks_3d \
   --backend mujoco \
   --demo mblocks_twelve_module_staircase
 ```
@@ -409,7 +409,7 @@ modsim runtime examples/robot_packs/mblocks_3d \
 Run the dynamics version with:
 
 ```bash
-modsim runtime examples/robot_packs/mblocks_3d \
+modsim-robotics runtime examples/robot_packs/mblocks_3d \
   --demo mblocks_physical_twelve_module_staircase \
   --speed 4
 ```

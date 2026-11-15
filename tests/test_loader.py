@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from modsim.robot_packs import RobotPackLoader, RobotPackLoadError
+from modsim_robotics.robot_packs import RobotPackLoader, RobotPackLoadError
 
 
 def test_generic_pack_loads(example_pack_dir: Path) -> None:

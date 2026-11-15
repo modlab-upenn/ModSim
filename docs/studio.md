@@ -25,20 +25,38 @@ in editable mode:
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install -e ".[studio,dev]"
-.venv/bin/modsim studio
+.venv/bin/modsim-robotics setup
+.venv/bin/modsim-robotics studio generic_cube
 ```
 
-Open a pack directly:
+Select the robot for each launch. `generic_cube` resolves by ID in the installed
+library, whose directory is configured by `[paths].robot_packs` in the ModSim
+home's `config.toml`. Use `modsim-robotics pack list` to see IDs, versions, and
+paths, or qualify the name as `generic_cube@0.1.0`. Ambiguous names report an
+error rather than selecting the newest version. There is no implicit default
+robot, including when only the starter is installed.
+
+Home selection uses `--home PATH`, then `MODSIM_PATH`, legacy `MODSIM_HOME`, and
+finally `~/.modsim`. Setup prints guidance for persisting `MODSIM_PATH`; it does
+not edit your shell profile. Launching Studio does not run setup implicitly.
+
+Open a different pack directly, or use the equivalent named option:
 
 ```bash
-.venv/bin/modsim studio /absolute/path/to/robot_pack
+.venv/bin/modsim-robotics studio /absolute/path/to/robot_pack
+.venv/bin/modsim-robotics studio --pack /absolute/path/to/robot_pack
 ```
+
+An absolute pack path or a relative path beginning with `./` bypasses library
+configuration without changing it. `studio generic_cube --home PATH` instead
+looks up the name in another ModSim home's library. `--pack generic_cube` is an
+equivalent way to supply the selector.
 
 Install MuJoCo too, then launch the Runtime Inspector for a pack:
 
 ```bash
 .venv/bin/python -m pip install -e ".[studio,mujoco,dev]"
-.venv/bin/modsim runtime /absolute/path/to/robot_pack \
+.venv/bin/modsim-robotics runtime /absolute/path/to/robot_pack \
   --fixed-connector CONNECTOR_ID \
   --moving-connector CONNECTOR_ID
 ```
@@ -50,8 +68,10 @@ when the backend should run without a native 3D window. The Qt window still
 requires a desktop display or Xvfb. `--backend mock` also opens only the
 semantic window; explicit `--viewer` with that backend is rejected.
 
-The standalone `modsim-studio` command and `python -m modsim_studio` are
-equivalent. Running through `.venv/bin/python -m modsim_studio` is useful while
+The standalone `modsim-robotics-studio` command and `python -m modsim_robotics_studio` are
+equivalent and accept the same positional selector, `--pack`, and `--home PATH`
+selection. Both require a robot name or path; neither silently opens a default.
+Running through `.venv/bin/python -m modsim_robotics_studio` is useful while
 developing because the editable install uses the current source tree.
 
 ## Appearance and workspace
@@ -142,21 +162,24 @@ The current Studio MVP provides:
 
 The authoring viewport renders one module type at a time in the URDF zero-joint
 configuration. Simulation readiness is a validation profile; it does not start
-a runtime by itself. `modsim runtime` is the explicit launch path. See
+a runtime by itself. `modsim-robotics runtime` is the explicit launch path. See
 `runtime_inspector.md` for controls, process/thread ownership, and current
 limitations.
 
 ## Session logging
 
 Each Studio launch starts a new local session log and rewrites the previous log
-rather than appending to it. When a pack is supplied at launch, the log is kept
-in a sidecar directory outside the atomically replaced pack folder:
+rather than appending to it. Studio resolves the selected name or path before
+configuring session logging. The log is kept in a sidecar directory
+outside the atomically replaced pack folder:
 
 ```text
 <pack-parent>/.modsim/logs/<pack-folder-name>/studio.log
 ```
 
-When Studio is launched without a pack, the default is:
+Omitting the selector on a normal CLI launch reports a selection error. The
+low-level `resolve_session_log_path(None)` helper retains this
+fallback for direct or internal callers that do not supply a pack:
 
 ```text
 <current-working-directory>/.modsim/logs/studio.log
@@ -165,7 +188,7 @@ When Studio is launched without a pack, the default is:
 Set `MODSIM_STUDIO_LOG` to override the log path:
 
 ```bash
-MODSIM_STUDIO_LOG=/path/to/studio.log modsim studio /path/to/robot_pack
+MODSIM_STUDIO_LOG=/path/to/studio.log modsim-robotics studio /path/to/robot_pack
 ```
 
 The **Session Log** tab mirrors the same file during the running session.
@@ -191,7 +214,7 @@ root and keep the log in the ignored repository-local `.modsim` directory:
 ```bash
 mkdir -p .modsim/logs
 MODSIM_STUDIO_LOG="$PWD/.modsim/logs/studio-dev.log" \
-  .venv/bin/python -m modsim_studio /absolute/path/to/robot_pack
+  .venv/bin/python -m modsim_robotics_studio /absolute/path/to/robot_pack
 ```
 
 Reproduce one problem per launch because the file is truncated when the
@@ -411,10 +434,10 @@ OBJ or DAE.
 
 ## Package boundary
 
-`modsim` contains the backend-neutral schemas, importer, validation,
+`modsim_robotics` contains the backend-neutral schemas, importer, validation,
 persistence, runtime, immutable inspector transport, and model-view APIs. It
 does not import Qt, PyVista, VTK, or PyQtGraph.
 
-`modsim_studio` is an optional client of those APIs. A future web frontend or
+`modsim_robotics_studio` is an optional client of those APIs. A future web frontend or
 C++ visualization application can consume the same Robot Pack and importer
 models without depending on Studio.

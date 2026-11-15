@@ -13,13 +13,13 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-from modsim.backends.mock import MockBackendAdapter
-from modsim.cli import app
-from modsim.core.events import Event
-from modsim.core.scene import SceneSpec
-from modsim.model_views import CubicLatticeView
-from modsim.robot_packs import LoadedRobotPack, RobotPackLoader
-from modsim.runtime import (
+from modsim_robotics.backends.mock import MockBackendAdapter
+from modsim_robotics.cli import app
+from modsim_robotics.core.events import Event
+from modsim_robotics.core.scene import SceneSpec
+from modsim_robotics.model_views import CubicLatticeView
+from modsim_robotics.robot_packs import LoadedRobotPack, RobotPackLoader
+from modsim_robotics.runtime import (
     KinematicPivotScenario,
     ReconfigurationPhase,
     ReconfigurationStatus,
@@ -28,13 +28,13 @@ from modsim.runtime import (
     RuntimeInspectorRunner,
     RuntimeInspectorSetupError,
 )
-from modsim.runtime.inspector_runner import validate_runtime_inspector_config
-from modsim.runtime.mblocks_lattice import starter_state
-from modsim.runtime.momentum_pivot import (
+from modsim_robotics.runtime.inspector_runner import validate_runtime_inspector_config
+from modsim_robotics.runtime.mblocks_lattice import starter_state
+from modsim_robotics.runtime.momentum_pivot import (
     MAX_MOMENTUM_TIMESTEP_S,
     MomentumPivotConfig,
 )
-from modsim.runtime.session import RuntimeSession
+from modsim_robotics.runtime.session import RuntimeSession
 
 _ROOT = Path(__file__).resolve().parents[1]
 _PACK_PATH = _ROOT / "examples" / "robot_packs" / "mblocks_3d"
@@ -146,7 +146,7 @@ def test_runner_loads_twelve_module_line_with_default_lattice_recipe() -> None:
 def test_runner_wires_two_module_momentum_pivot_without_starting_mujoco(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import modsim.runtime.inspector_runner as runner_module
+    import modsim_robotics.runtime.inspector_runner as runner_module
 
     captured: dict[str, object] = {}
 
@@ -233,7 +233,7 @@ def test_runner_wires_two_module_momentum_pivot_without_starting_mujoco(
 def test_runner_wires_physical_twelve_module_line_without_starting_mujoco(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import modsim.runtime.inspector_runner as runner_module
+    import modsim_robotics.runtime.inspector_runner as runner_module
 
     captured: dict[str, object] = {}
     scene = SceneSpec.grid(
@@ -318,7 +318,7 @@ def test_runner_wires_physical_twelve_module_line_without_starting_mujoco(
 def test_physical_twelve_module_session_reserves_route_sized_constraint_pools(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import modsim.runtime.inspector_runner as runner_module
+    import modsim_robotics.runtime.inspector_runner as runner_module
 
     captured: dict[str, object] = {}
 
@@ -485,14 +485,14 @@ def test_cli_supplies_safe_mblocks_kinematic_defaults(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: dict[str, object] = {}
-    runtime_app = ModuleType("modsim_studio.runtime_app")
+    runtime_app = ModuleType("modsim_robotics_studio.runtime_app")
 
     def fake_main(config: object) -> int:
         captured["config"] = config
         return 0
 
     runtime_app.main = fake_main  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "modsim_studio.runtime_app", runtime_app)
+    monkeypatch.setitem(sys.modules, "modsim_robotics_studio.runtime_app", runtime_app)
 
     result = CliRunner().invoke(
         app,
@@ -523,14 +523,14 @@ def test_cli_supplies_safe_twelve_module_line_defaults(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: dict[str, object] = {}
-    runtime_app = ModuleType("modsim_studio.runtime_app")
+    runtime_app = ModuleType("modsim_robotics_studio.runtime_app")
 
     def fake_main(config: object) -> int:
         captured["config"] = config
         return 0
 
     runtime_app.main = fake_main  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "modsim_studio.runtime_app", runtime_app)
+    monkeypatch.setitem(sys.modules, "modsim_robotics_studio.runtime_app", runtime_app)
 
     result = CliRunner().invoke(
         app,
@@ -562,14 +562,14 @@ def test_cli_supplies_safe_mblocks_momentum_pivot_defaults(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: dict[str, object] = {}
-    runtime_app = ModuleType("modsim_studio.runtime_app")
+    runtime_app = ModuleType("modsim_robotics_studio.runtime_app")
 
     def fake_main(config: object) -> int:
         captured["config"] = config
         return 0
 
     runtime_app.main = fake_main  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "modsim_studio.runtime_app", runtime_app)
+    monkeypatch.setitem(sys.modules, "modsim_robotics_studio.runtime_app", runtime_app)
 
     result = CliRunner().invoke(
         app,
@@ -611,14 +611,14 @@ def test_cli_supplies_safe_physical_mblocks_defaults(
     duration_s: float,
 ) -> None:
     captured: dict[str, object] = {}
-    runtime_app = ModuleType("modsim_studio.runtime_app")
+    runtime_app = ModuleType("modsim_robotics_studio.runtime_app")
 
     def fake_main(config: object) -> int:
         captured["config"] = config
         return 0
 
     runtime_app.main = fake_main  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "modsim_studio.runtime_app", runtime_app)
+    monkeypatch.setitem(sys.modules, "modsim_robotics_studio.runtime_app", runtime_app)
 
     result = CliRunner().invoke(
         app,

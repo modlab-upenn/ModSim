@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from modsim.robot_packs import LoadedRobotPack, RobotPack, RobotPackLoader
+from modsim_robotics.robot_packs import LoadedRobotPack, RobotPack, RobotPackLoader
 
 
 @pytest.fixture

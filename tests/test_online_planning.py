@@ -9,27 +9,27 @@ import pytest
 
 pytest.importorskip("mujoco")
 
-from modsim.backends.base import BackendAdapter, ConnectionOutcome, ConnectionRequest
-from modsim.core.ids import ModuleInstanceId
-from modsim.core.scene import ModulePlacement, SceneSpec
-from modsim.core.transforms import Transform, quat_from_rpy
-from modsim.model_views import ModelViewFactory
-from modsim.planning import AssemblyGoal, GoalEdge
-from modsim.robot_packs import RobotPackLoader
-from modsim.runtime import ReconfigurationPhase, RuntimeSession, inspector_runner
-from modsim.runtime.demos import RuntimeDemo
-from modsim.runtime.inspection import build_runtime_inspector_frame
-from modsim.runtime.inspection_protocol import (
+from modsim_robotics.backends.base import BackendAdapter, ConnectionOutcome, ConnectionRequest
+from modsim_robotics.core.ids import ModuleInstanceId
+from modsim_robotics.core.scene import ModulePlacement, SceneSpec
+from modsim_robotics.core.transforms import Transform, quat_from_rpy
+from modsim_robotics.model_views import ModelViewFactory
+from modsim_robotics.planning import AssemblyGoal, GoalEdge
+from modsim_robotics.robot_packs import RobotPackLoader
+from modsim_robotics.runtime import ReconfigurationPhase, RuntimeSession, inspector_runner
+from modsim_robotics.runtime.demos import RuntimeDemo
+from modsim_robotics.runtime.inspection import build_runtime_inspector_frame
+from modsim_robotics.runtime.inspection_protocol import (
     RuntimeFrame,
     decode_runtime_message,
     encode_runtime_message,
 )
-from modsim.runtime.inspector_runner import (
+from modsim_robotics.runtime.inspector_runner import (
     RuntimeInspectorConfig,
     RuntimeInspectorRunner,
     resolve_runtime_recipe,
 )
-from modsim.runtime.online_planning import OnlineAssemblyScenario
+from modsim_robotics.runtime.online_planning import OnlineAssemblyScenario
 
 PACK = Path(__file__).resolve().parents[1] / "examples/robot_packs/smores_ep"
 

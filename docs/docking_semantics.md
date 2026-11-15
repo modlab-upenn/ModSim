@@ -2,8 +2,8 @@
 
 This document is the implemented contract for docking execution. `archive/HANDOFF.md`
 is a roadmap; when the two differ, this document and the code under
-`src/modsim/core`, `src/modsim/connectors`, `src/modsim/backends`, and
-`src/modsim/runtime` describe what actually runs.
+`src/modsim_robotics/core`, `src/modsim_robotics/connectors`, `src/modsim_robotics/backends`, and
+`src/modsim_robotics/runtime` describe what actually runs.
 
 Format 0.1 covers the full semantic pipeline against the mock backend and fixed
 plus hinge connection execution under the optional MuJoCo adapter. Section 9
@@ -281,7 +281,7 @@ declared break forces governs: a joint is only as strong as its weakest half.
 
 ## 9. The MuJoCo backend
 
-`modsim_backend_mujoco` implements fixed and hinge execution. See
+`modsim_robotics_backend_mujoco` implements fixed and hinge execution. See
 `docs/backends.md` for scene composition, naming, and options. What matters for
 docking semantics:
 
@@ -427,25 +427,33 @@ and overload paths are testable without a physics engine.
 
 ### 11.1 From the command line
 
+`dock` and `run` require a pack selector, supplied positionally or with `--pack`.
+After explicit setup, a name such as `generic_cube` resolves in the configured
+library; `generic_cube@0.1.0` specifies a version. Missing or ambiguous selectors
+report an error rather than choosing a default or the newest pack. An absolute
+path or one beginning with `./` bypasses library configuration. `--home PATH`
+selects the home used for library lookup. Pack selection does not change docking
+semantics or run setup implicitly. The following examples show explicit paths:
+
 ```bash
-modsim dock path/to/pack --count 3 --spacing 0.1
-modsim dock path/to/pack --count 3 --undock
-modsim dock path/to/pack --no-latch          # honour each type's auto_latch only
-modsim dock path/to/pack --output json
-modsim dock path/to/pack --backend mujoco --no-gravity
+modsim-robotics dock path/to/pack --count 3 --spacing 0.1
+modsim-robotics dock path/to/pack --count 3 --undock
+modsim-robotics dock path/to/pack --no-latch          # honour each type's auto_latch only
+modsim-robotics dock path/to/pack --output json
+modsim-robotics dock path/to/pack --backend mujoco --no-gravity
 ```
 
-`modsim dock` is a one-shot authoring check: it places modules already in range
-and asks whether they would latch. `modsim run` is the generic scripted
+`modsim-robotics dock` is a one-shot authoring check: it places modules already in range
+and asks whether they would latch. `modsim-robotics run` is the generic scripted
 root-motion simulation; modules approach, latch, and release on a schedule:
 
 ```bash
-modsim run path/to/pack --backend mujoco --count 2 --duration 6 --undock-at 4
-modsim run path/to/pack --backend mujoco \
+modsim-robotics run path/to/pack --backend mujoco --count 2 --duration 6 --undock-at 4
+modsim-robotics run path/to/pack --backend mujoco \
   --fixed-connector front --moving-connector rear --connector-gap 0.03
-modsim run path/to/pack --backend mujoco --view          # real-time viewer
-modsim run path/to/pack --gravity --ground --height 0.2  # let them settle first
-modsim run path/to/pack --undock-at 4 --retract 0        # release without retracting
+modsim-robotics run path/to/pack --backend mujoco --view          # real-time viewer
+modsim-robotics run path/to/pack --gravity --ground --height 0.2  # let them settle first
+modsim-robotics run path/to/pack --undock-at 4 --retract 0        # release without retracting
 ```
 
 On macOS, `--view` must run under `mjpython` rather than `python`.
@@ -453,7 +461,7 @@ On macOS, `--view` must run under `mjpython` rather than `python`.
 For the physical wheel/contact path, use the Runtime Inspector demonstration:
 
 ```bash
-modsim runtime examples/robot_packs/smores_ep \
+modsim-robotics runtime examples/robot_packs/smores_ep \
   --backend mujoco \
   --demo smores_diff_drive_dock_undock \
   --model-view smores_topology
@@ -469,7 +477,7 @@ at the same speed. The connection is gone — `UndockCommitted` and
 but nothing moves relative to anything.
 
 Separation is an *actuation* step, in simulation exactly as it would be on real
-hardware. `modsim run` therefore backs the driven module away after release, at
+hardware. `modsim-robotics run` therefore backs the driven module away after release, at
 `--retract` (defaulting to the approach speed). Passing `--retract 0` reproduces
 the coast-together behaviour, which is itself worth seeing once.
 
@@ -484,8 +492,8 @@ a criterion, or were blocked by a guard.
 ```python
 from pathlib import Path
 
-from modsim import MockBackendAdapter, RobotPackLoader, RuntimeSession, SceneSpec
-from modsim.core.ids import ConnectorInstanceId
+from modsim_robotics import MockBackendAdapter, RobotPackLoader, RuntimeSession, SceneSpec
+from modsim_robotics.core.ids import ConnectorInstanceId
 
 pack = RobotPackLoader().load(Path("examples/robot_packs/generic_cube")).pack
 scene = SceneSpec.grid("generic_cube", 3, spacing_m=0.1)

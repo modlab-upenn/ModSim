@@ -10,17 +10,17 @@ import argparse
 import math
 from pathlib import Path
 
-from modsim.planning.mblocks import LatticeGoal, LatticeState, plan_reconfiguration
-from modsim.robot_packs import RobotPackLoader
-from modsim.runtime.mblocks_lattice import (
+from modsim_robotics.planning.mblocks import LatticeGoal, LatticeState, plan_reconfiguration
+from modsim_robotics.robot_packs import RobotPackLoader
+from modsim_robotics.runtime.mblocks_lattice import (
     elbow_goal,
     larger_state,
     line_goal,
     starter_state,
     tabletop_scene,
 )
-from modsim.runtime.mblocks_online_planning import OnlineLatticeScenario
-from modsim.runtime.session import RuntimeSession
+from modsim_robotics.runtime.mblocks_online_planning import OnlineLatticeScenario
+from modsim_robotics.runtime.session import RuntimeSession
 
 
 def main() -> int:

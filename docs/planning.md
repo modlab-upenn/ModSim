@@ -3,8 +3,8 @@
 ModSim provides an experimental SMORES-EP online planner with two demonstrations:
 
 ```bash
-modsim runtime examples/robot_packs/smores_ep --demo smores_online_assembly
-modsim runtime examples/robot_packs/smores_ep --demo smores_online_driver_to_snake
+modsim-robotics runtime examples/robot_packs/smores_ep --demo smores_online_assembly
+modsim-robotics runtime examples/robot_packs/smores_ep --demo smores_online_driver_to_snake
 ```
 
 Both launch the Runtime Inspector and MuJoCo companion. Use `--no-viewer` for
@@ -64,15 +64,15 @@ The five implementation stages map to these components:
 
 | Stage | Implementation |
 | --- | --- |
-| Goal and observation models | `modsim.planning.models`: immutable, serializable planner inputs and snapshots |
-| Assembly algorithm | `modsim.planning.assembly`: root choice, Hungarian assignment, depth groups, releases |
-| Navigation and concurrency | `modsim.planning.routing`: bounded route search, swept footprints, timed reservations |
-| Feedback execution | `modsim.runtime.online_planning`: scheduling, wheel control, capture, backoff, replanning |
+| Goal and observation models | `modsim_robotics.planning.models`: immutable, serializable planner inputs and snapshots |
+| Assembly algorithm | `modsim_robotics.planning.assembly`: root choice, Hungarian assignment, depth groups, releases |
+| Navigation and concurrency | `modsim_robotics.planning.routing`: bounded route search, swept footprints, timed reservations |
+| Feedback execution | `modsim_robotics.runtime.online_planning`: scheduling, wheel control, capture, backoff, replanning |
 | SMORES integration | Two runtime demos, headless runner, and the Inspector's Planning tab; connected-train execution remains experimental |
 
 ## Ownership and execution
 
-`modsim.planning` contains immutable goals, assignments, actions, observations,
+`modsim_robotics.planning` contains immutable goals, assignments, actions, observations,
 the assignment algorithm, and the route search. It imports neither Studio nor
 MuJoCo. A goal is scenario input; it is not a Robot Pack schema extension.
 

@@ -18,13 +18,13 @@ from pathlib import Path
 
 import pytest
 
-from modsim.backends.registry import installed_backends
-from modsim.connectors.docking import DockProposal
-from modsim.core.ids import ModuleInstanceId
-from modsim.core.scene import SceneSpec
-from modsim.core.transforms import Transform, angle_between, vec_norm, vec_sub
-from modsim.robot_packs import LoadedRobotPack, RobotPackLoader
-from modsim.runtime.session import RuntimeSession
+from modsim_robotics.backends.registry import installed_backends
+from modsim_robotics.connectors.docking import DockProposal
+from modsim_robotics.core.ids import ModuleInstanceId
+from modsim_robotics.core.scene import SceneSpec
+from modsim_robotics.core.transforms import Transform, angle_between, vec_norm, vec_sub
+from modsim_robotics.robot_packs import LoadedRobotPack, RobotPackLoader
+from modsim_robotics.runtime.session import RuntimeSession
 
 MODULE_TYPE = "generic_cube"
 SPACING_M = 0.1

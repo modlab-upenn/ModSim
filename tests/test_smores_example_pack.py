@@ -4,13 +4,18 @@ from __future__ import annotations
 
 import pytest
 
-from modsim.core.events import AssemblyMerged, DockCandidateDetected, DockCommitted, DockFailed
-from modsim.core.ids import ConnectorInstanceId, ModuleInstanceId
-from modsim.core.scene import SceneSpec
-from modsim.robot_packs import LoadedRobotPack, RobotPackValidator, ValidationProfile
-from modsim.robot_packs.schema import ControlMode
-from modsim.runtime.reconfiguration import stage_docking_assembly_pair
-from modsim.runtime.session import RuntimeSession
+from modsim_robotics.core.events import (
+    AssemblyMerged,
+    DockCandidateDetected,
+    DockCommitted,
+    DockFailed,
+)
+from modsim_robotics.core.ids import ConnectorInstanceId, ModuleInstanceId
+from modsim_robotics.core.scene import SceneSpec
+from modsim_robotics.robot_packs import LoadedRobotPack, RobotPackValidator, ValidationProfile
+from modsim_robotics.robot_packs.schema import ControlMode
+from modsim_robotics.runtime.reconfiguration import stage_docking_assembly_pair
+from modsim_robotics.runtime.session import RuntimeSession
 
 MODULE_TYPE = "smores_ep"
 MODULE_0 = ModuleInstanceId("smores_ep_0")

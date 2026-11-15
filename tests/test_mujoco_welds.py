@@ -13,9 +13,14 @@ import pytest
 
 pytest.importorskip("mujoco", reason="the MuJoCo backend extra is not installed")
 
-from modsim.core.ids import ConstraintHandle
-from modsim.core.transforms import Transform, angle_between, quat_from_axis_angle, quat_rotate
-from modsim_backend_mujoco.welds import (
+from modsim_robotics.core.ids import ConstraintHandle
+from modsim_robotics.core.transforms import (
+    Transform,
+    angle_between,
+    quat_from_axis_angle,
+    quat_rotate,
+)
+from modsim_robotics_backend_mujoco.welds import (
     EQ_DATA_WIDTH,
     WeldPool,
     WeldPoolExhaustedError,

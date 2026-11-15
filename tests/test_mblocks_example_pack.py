@@ -6,16 +6,21 @@ from pathlib import Path
 
 import pytest
 
-from modsim.core.entities import JointCommand
-from modsim.core.events import AssemblyMerged, DockCandidateDetected, DockCommitted, DockFailed
-from modsim.core.ids import ConnectorInstanceId, JointInstanceId, ModuleInstanceId
-from modsim.core.scene import SceneSpec
-from modsim.core.state import WorldState
-from modsim.model_views import CubicLatticeView, ModelViewContext, ModelViewFactory
-from modsim.robot_packs import RobotPackLoader, RobotPackValidator, ValidationProfile
-from modsim.robot_packs.schema import AlignmentMode, ControlMode, PhysicalConstraintType
-from modsim.runtime.reconfiguration import stage_docking_assembly_pair
-from modsim.runtime.session import RuntimeSession
+from modsim_robotics.core.entities import JointCommand
+from modsim_robotics.core.events import (
+    AssemblyMerged,
+    DockCandidateDetected,
+    DockCommitted,
+    DockFailed,
+)
+from modsim_robotics.core.ids import ConnectorInstanceId, JointInstanceId, ModuleInstanceId
+from modsim_robotics.core.scene import SceneSpec
+from modsim_robotics.core.state import WorldState
+from modsim_robotics.model_views import CubicLatticeView, ModelViewContext, ModelViewFactory
+from modsim_robotics.robot_packs import RobotPackLoader, RobotPackValidator, ValidationProfile
+from modsim_robotics.robot_packs.schema import AlignmentMode, ControlMode, PhysicalConstraintType
+from modsim_robotics.runtime.reconfiguration import stage_docking_assembly_pair
+from modsim_robotics.runtime.session import RuntimeSession
 
 MODULE_TYPE = "mblocks_3d"
 MODULE_0 = ModuleInstanceId("mblocks_3d_0")

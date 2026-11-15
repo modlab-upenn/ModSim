@@ -15,14 +15,14 @@ import pytest
 
 pytest.importorskip("mujoco", reason="the MuJoCo backend extra is not installed")
 
-from modsim.core.scene import SceneSpec
-from modsim.robot_packs import RobotPackLoader
-from modsim.runtime.session import RuntimeSession
-from modsim_backend_mujoco.scene import (
+from modsim_robotics.core.scene import SceneSpec
+from modsim_robotics.robot_packs import RobotPackLoader
+from modsim_robotics.runtime.session import RuntimeSession
+from modsim_robotics_backend_mujoco.scene import (
     ENVIRONMENT_GEOM_GROUP,
     URDF_COLLISION_GEOM_GROUP,
 )
-from modsim_backend_mujoco.viewer import run_with_viewer
+from modsim_robotics_backend_mujoco.viewer import run_with_viewer
 
 pytestmark = pytest.mark.mujoco
 
@@ -113,7 +113,9 @@ def test_viewer_waits_for_async_render_cleanup_before_returning(
         stop_requested.set()
         return ()
 
-    monkeypatch.setattr("modsim_backend_mujoco.viewer.mujoco.viewer.launch_passive", launch)
+    monkeypatch.setattr(
+        "modsim_robotics_backend_mujoco.viewer.mujoco.viewer.launch_passive", launch
+    )
     try:
         expected = (
             pytest.raises(ValueError, match="scenario failed") if step_fails else nullcontext()
@@ -146,7 +148,7 @@ def test_terminal_scenario_freezes_physics_and_keeps_viewer_interactive(
     )
     viewer = _PassiveViewer()
     monkeypatch.setattr(
-        "modsim_backend_mujoco.viewer.mujoco.viewer.launch_passive", lambda *_args: viewer
+        "modsim_robotics_backend_mujoco.viewer.mujoco.viewer.launch_passive", lambda *_args: viewer
     )
     complete: list[float] = []
     try:
@@ -186,7 +188,7 @@ def test_viewer_starts_with_collision_proxies_hidden(
         return viewer
 
     monkeypatch.setattr(
-        "modsim_backend_mujoco.viewer.mujoco.viewer.launch_passive",
+        "modsim_robotics_backend_mujoco.viewer.mujoco.viewer.launch_passive",
         launch_passive,
     )
 
@@ -235,11 +237,11 @@ def test_viewer_scales_wall_deadlines_without_changing_simulated_steps(
         return True
 
     monkeypatch.setattr(
-        "modsim_backend_mujoco.viewer.mujoco.viewer.launch_passive",
+        "modsim_robotics_backend_mujoco.viewer.mujoco.viewer.launch_passive",
         launch_passive,
     )
-    monkeypatch.setattr("modsim_backend_mujoco.viewer.time.perf_counter", lambda: 100.0)
-    monkeypatch.setattr("modsim_backend_mujoco.viewer._wait_until", record_deadline)
+    monkeypatch.setattr("modsim_robotics_backend_mujoco.viewer.time.perf_counter", lambda: 100.0)
+    monkeypatch.setattr("modsim_robotics_backend_mujoco.viewer._wait_until", record_deadline)
 
     try:
         run_with_viewer(
@@ -284,15 +286,15 @@ def test_viewer_sync_is_throttled_without_skipping_physics_steps(
         return ()
 
     monkeypatch.setattr(
-        "modsim_backend_mujoco.viewer.mujoco.viewer.launch_passive",
+        "modsim_robotics_backend_mujoco.viewer.mujoco.viewer.launch_passive",
         launch_passive,
     )
     monkeypatch.setattr(
-        "modsim_backend_mujoco.viewer.time.perf_counter",
+        "modsim_robotics_backend_mujoco.viewer.time.perf_counter",
         lambda: wall_time,
     )
     monkeypatch.setattr(
-        "modsim_backend_mujoco.viewer._wait_until",
+        "modsim_robotics_backend_mujoco.viewer._wait_until",
         lambda target_s, stop_requested: True,
     )
 
@@ -344,15 +346,15 @@ def test_slow_viewer_sync_does_not_trigger_again_on_the_next_physics_step(
         return ()
 
     monkeypatch.setattr(
-        "modsim_backend_mujoco.viewer.mujoco.viewer.launch_passive",
+        "modsim_robotics_backend_mujoco.viewer.mujoco.viewer.launch_passive",
         launch_passive,
     )
     monkeypatch.setattr(
-        "modsim_backend_mujoco.viewer.time.perf_counter",
+        "modsim_robotics_backend_mujoco.viewer.time.perf_counter",
         lambda: wall_time,
     )
     monkeypatch.setattr(
-        "modsim_backend_mujoco.viewer._wait_until",
+        "modsim_robotics_backend_mujoco.viewer._wait_until",
         lambda target_s, stop_requested: True,
     )
 
@@ -416,7 +418,7 @@ def test_viewer_supports_cooperative_stop_and_lifecycle_hooks(
         return viewer
 
     monkeypatch.setattr(
-        "modsim_backend_mujoco.viewer.mujoco.viewer.launch_passive",
+        "modsim_robotics_backend_mujoco.viewer.mujoco.viewer.launch_passive",
         launch_passive,
     )
 
@@ -463,7 +465,7 @@ def test_viewer_cooperative_stop_interrupts_final_state_hold(
         return viewer
 
     monkeypatch.setattr(
-        "modsim_backend_mujoco.viewer.mujoco.viewer.launch_passive",
+        "modsim_robotics_backend_mujoco.viewer.mujoco.viewer.launch_passive",
         launch_passive,
     )
 
@@ -514,7 +516,7 @@ def test_viewer_passes_through_key_callback_and_advertises_space_action(
         return viewer
 
     monkeypatch.setattr(
-        "modsim_backend_mujoco.viewer.mujoco.viewer.launch_passive",
+        "modsim_robotics_backend_mujoco.viewer.mujoco.viewer.launch_passive",
         launch_passive,
     )
 
@@ -582,14 +584,14 @@ def test_viewer_pause_keeps_rendering_and_resume_rebases_wall_pacing(
         return True
 
     monkeypatch.setattr(
-        "modsim_backend_mujoco.viewer.mujoco.viewer.launch_passive",
+        "modsim_robotics_backend_mujoco.viewer.mujoco.viewer.launch_passive",
         launch_passive,
     )
     monkeypatch.setattr(
-        "modsim_backend_mujoco.viewer.time.perf_counter",
+        "modsim_robotics_backend_mujoco.viewer.time.perf_counter",
         lambda: wall_time,
     )
-    monkeypatch.setattr("modsim_backend_mujoco.viewer._wait_until", record_wait)
+    monkeypatch.setattr("modsim_robotics_backend_mujoco.viewer._wait_until", record_wait)
 
     try:
         run_with_viewer(
@@ -659,11 +661,11 @@ def test_pause_arriving_during_pacing_is_acknowledged_before_another_step(
         return True
 
     monkeypatch.setattr(
-        "modsim_backend_mujoco.viewer.mujoco.viewer.launch_passive",
+        "modsim_robotics_backend_mujoco.viewer.mujoco.viewer.launch_passive",
         launch_passive,
     )
     monkeypatch.setattr(
-        "modsim_backend_mujoco.viewer._wait_until",
+        "modsim_robotics_backend_mujoco.viewer._wait_until",
         interrupt_first_pacing_wait,
     )
 
@@ -720,7 +722,7 @@ def test_viewer_stop_while_paused_never_advances_runtime(
 
     viewer.sync = sync_and_stop  # type: ignore[method-assign]
     monkeypatch.setattr(
-        "modsim_backend_mujoco.viewer.mujoco.viewer.launch_passive",
+        "modsim_robotics_backend_mujoco.viewer.mujoco.viewer.launch_passive",
         launch_passive,
     )
 
@@ -772,7 +774,7 @@ def test_viewer_close_while_paused_never_advances_runtime(
         return ()
 
     monkeypatch.setattr(
-        "modsim_backend_mujoco.viewer.mujoco.viewer.launch_passive",
+        "modsim_robotics_backend_mujoco.viewer.mujoco.viewer.launch_passive",
         launch_passive,
     )
 

@@ -7,21 +7,21 @@ from pathlib import Path
 
 import pytest
 
-from modsim.backends.base import BackendError
-from modsim.model_views import CubicLatticeView
-from modsim.planning.mblocks import apply_pivot
-from modsim.robot_packs import RobotPackLoader
-from modsim.runtime.demos import RuntimeDemo
-from modsim.runtime.inspection_protocol import (
+from modsim_robotics.backends.base import BackendError
+from modsim_robotics.model_views import CubicLatticeView
+from modsim_robotics.planning.mblocks import apply_pivot
+from modsim_robotics.robot_packs import RobotPackLoader
+from modsim_robotics.runtime.demos import RuntimeDemo
+from modsim_robotics.runtime.inspection_protocol import (
     RuntimeFrame,
     decode_runtime_message,
     encode_runtime_message,
 )
-from modsim.runtime.inspector_runner import RuntimeInspectorConfig, RuntimeInspectorRunner
-from modsim.runtime.mblocks_lattice import face_pairs, observe_lattice, tabletop_scene
-from modsim.runtime.mblocks_online_planning import OnlineLatticeScenario
-from modsim.runtime.reconfiguration import ReconfigurationPhase
-from modsim.runtime.session import RuntimeSession
+from modsim_robotics.runtime.inspector_runner import RuntimeInspectorConfig, RuntimeInspectorRunner
+from modsim_robotics.runtime.mblocks_lattice import face_pairs, observe_lattice, tabletop_scene
+from modsim_robotics.runtime.mblocks_online_planning import OnlineLatticeScenario
+from modsim_robotics.runtime.reconfiguration import ReconfigurationPhase
+from modsim_robotics.runtime.session import RuntimeSession
 
 _PACK = Path(__file__).resolve().parents[1] / "examples/robot_packs/mblocks_3d"
 
@@ -134,7 +134,7 @@ def test_failed_landing_is_terminal_and_keeps_diagnostics(monkeypatch: pytest.Mo
 @pytest.mark.mujoco
 def test_constraint_solver_option_rejects_invalid_values() -> None:
     pytest.importorskip("mujoco")
-    from modsim_backend_mujoco.adapter import MuJoCoBackendAdapter
+    from modsim_robotics_backend_mujoco.adapter import MuJoCoBackendAdapter
 
     for value in (0.0, -1.0, float("nan"), float("inf")):
         with pytest.raises(ValueError, match="constraint_time_constant"):

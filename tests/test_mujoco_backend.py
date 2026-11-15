@@ -13,23 +13,23 @@ import pytest
 
 pytest.importorskip("mujoco", reason="the MuJoCo backend extra is not installed")
 
-from modsim.backends.base import (
+from modsim_robotics.backends.base import (
     BackendAdapter,
     BackendError,
     SupportsJointCommands,
     SupportsModuleKinematics,
 )
-from modsim.core.entities import ConnectorLifecycleState, JointCommand
-from modsim.core.events import DockCommitted, DockFailed
-from modsim.core.ids import ConnectorInstanceId, JointInstanceId, ModuleInstanceId
-from modsim.core.scene import ModulePlacement, SceneSpec
-from modsim.core.transforms import Transform, quat_from_axis_angle, vec_norm, vec_sub
-from modsim.robot_packs import LoadedRobotPack, RobotPack, RobotPackLoader
-from modsim.robot_packs.schema import ControlMode
-from modsim.runtime.reconfiguration import stage_docking_assembly_pair
-from modsim.runtime.session import RuntimeSession
-from modsim_backend_mujoco.adapter import MuJoCoBackendAdapter
-from modsim_backend_mujoco.scene import (
+from modsim_robotics.core.entities import ConnectorLifecycleState, JointCommand
+from modsim_robotics.core.events import DockCommitted, DockFailed
+from modsim_robotics.core.ids import ConnectorInstanceId, JointInstanceId, ModuleInstanceId
+from modsim_robotics.core.scene import ModulePlacement, SceneSpec
+from modsim_robotics.core.transforms import Transform, quat_from_axis_angle, vec_norm, vec_sub
+from modsim_robotics.robot_packs import LoadedRobotPack, RobotPack, RobotPackLoader
+from modsim_robotics.robot_packs.schema import ControlMode
+from modsim_robotics.runtime.reconfiguration import stage_docking_assembly_pair
+from modsim_robotics.runtime.session import RuntimeSession
+from modsim_robotics_backend_mujoco.adapter import MuJoCoBackendAdapter
+from modsim_robotics_backend_mujoco.scene import (
     ENVIRONMENT_GEOM_GROUP,
     GROUND_GEOM,
     GROUND_RGBA,

@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from modsim.importers import DraftPackBuilder, URDFImporter, URDFImportError
-from modsim.robot_packs import RobotPackValidator, ValidationProfile
+from modsim_robotics.importers import DraftPackBuilder, URDFImporter, URDFImportError
+from modsim_robotics.robot_packs import RobotPackValidator, ValidationProfile
 
 
 def _write_urdf(root: Path, *, with_mesh: bool = False) -> Path:

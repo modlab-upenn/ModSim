@@ -21,6 +21,7 @@ connector_types:
     physical_connection:
       constraint: fixed
       compliance: null
+      hinge: null
     limits:
       max_normal_force_n: 100.0
       max_shear_force_n: 50.0
@@ -35,4 +36,5 @@ connector_types:
       interface: electropermanent_magnet
       status: provisional_demo
       hardware_ratings_verified: false
-      note: The 25 degree orientation bound reflects published residual EP-Face attraction, not a verified reliable-latch envelope; other capture and load values remain provisional.
+      note: The 25 degree orientation bound reflects published residual EP-Face attraction, not a 
+        verified reliable-latch envelope; other capture and load values remain provisional.

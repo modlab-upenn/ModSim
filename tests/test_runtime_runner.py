@@ -10,11 +10,11 @@ from typing import Any
 
 import pytest
 
-from modsim.backends.mock import MockBackendAdapter
-from modsim.core.events import Event
-from modsim.core.scene import SceneSpec
-from modsim.robot_packs import LoadedRobotPack
-from modsim.runtime import (
+from modsim_robotics.backends.mock import MockBackendAdapter
+from modsim_robotics.core.events import Event
+from modsim_robotics.core.scene import SceneSpec
+from modsim_robotics.robot_packs import LoadedRobotPack
+from modsim_robotics.runtime import (
     ReconfigurationPhase,
     ReconfigurationStatus,
     RuntimeDemo,
@@ -23,12 +23,12 @@ from modsim.runtime import (
     RuntimeInspectorSetupError,
     ScriptedReconfigurationScenario,
 )
-from modsim.runtime.inspector_runner import validate_runtime_inspector_config
-from modsim.runtime.physical_reconfiguration import (
+from modsim_robotics.runtime.inspector_runner import validate_runtime_inspector_config
+from modsim_robotics.runtime.physical_reconfiguration import (
     DifferentialDriveReconfigurationConfig,
 )
-from modsim.runtime.reconfiguration import ReconfigurationPlan
-from modsim.runtime.session import RuntimeSession
+from modsim_robotics.runtime.reconfiguration import ReconfigurationPlan
+from modsim_robotics.runtime.session import RuntimeSession
 
 
 def test_runtime_inspector_config_defaults_to_real_time_playback() -> None:
@@ -119,7 +119,7 @@ def test_runner_rejects_incomplete_connector_pair_before_backend_start(
         )
 
 
-def test_runner_loads_smores_plan_from_the_example_tree(smores_pack_dir: Path) -> None:
+def test_runner_loads_packaged_smores_plan(smores_pack_dir: Path) -> None:
     runner = RuntimeInspectorRunner.create(
         RuntimeInspectorConfig(
             pack_path=smores_pack_dir,
@@ -168,7 +168,7 @@ def test_runner_wires_physical_driver_to_snake_without_starting_mujoco(
     monkeypatch: pytest.MonkeyPatch,
     smores_pack_dir: Path,
 ) -> None:
-    import modsim.runtime.inspector_runner as runner_module
+    import modsim_robotics.runtime.inspector_runner as runner_module
 
     captured: dict[str, object] = {}
 
@@ -289,20 +289,18 @@ def test_runner_validates_physical_driver_to_snake_options(
         validate_runtime_inspector_config(replace(base, **overrides))
 
 
-def test_runner_reports_missing_smores_example_content(
+def test_runner_reports_missing_packaged_demo_configuration(
     monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
     smores_pack_dir: Path,
 ) -> None:
-    missing_scenario = tmp_path / "missing" / "smores_driver_to_snake.py"
     monkeypatch.setattr(
-        "modsim.runtime.inspector_runner._SMORES_EXAMPLE_SCENARIO",
-        missing_scenario,
+        "modsim_robotics.runtime.inspector_runner._SMORES_EXAMPLE_SCENARIO",
+        "modsim_robotics.demo_configs.missing_scenario",
     )
 
     with pytest.raises(
         RuntimeInspectorSetupError,
-        match="requires a ModSim source checkout",
+        match="Could not load packaged demonstration configuration",
     ):
         RuntimeInspectorRunner.create(
             RuntimeInspectorConfig(

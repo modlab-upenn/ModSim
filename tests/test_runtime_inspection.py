@@ -5,26 +5,26 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from modsim.backends.mock import MockBackendAdapter
-from modsim.core.events import DockCandidateDetected
-from modsim.core.ids import ConnectorInstanceId
-from modsim.core.scene import SceneSpec
-from modsim.model_views import CubicLatticeView, ModelViewFactory
-from modsim.robot_packs import RobotPack
-from modsim.robot_packs.schema import ModelViewSpec
-from modsim.runtime.inspection import (
+from modsim_robotics.backends.mock import MockBackendAdapter
+from modsim_robotics.core.events import DockCandidateDetected
+from modsim_robotics.core.ids import ConnectorInstanceId
+from modsim_robotics.core.scene import SceneSpec
+from modsim_robotics.model_views import CubicLatticeView, ModelViewFactory
+from modsim_robotics.robot_packs import RobotPack
+from modsim_robotics.robot_packs.schema import ModelViewSpec
+from modsim_robotics.runtime.inspection import (
     RuntimeInspectionError,
     RuntimeInspectorFrame,
     build_runtime_inspector_frame,
     event_row,
 )
-from modsim.runtime.reconfiguration import (
+from modsim_robotics.runtime.reconfiguration import (
     ReconfigurationPhase,
     ScriptedReconfigurationConfig,
     ScriptedReconfigurationScenario,
     connector_pair_plan,
 )
-from modsim.runtime.session import RuntimeSession
+from modsim_robotics.runtime.session import RuntimeSession
 
 
 def _docking_scenario(pack: RobotPack) -> ScriptedReconfigurationScenario:

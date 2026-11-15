@@ -1,6 +1,6 @@
 """Assembly color allocation avoids ID-hash collisions as topology changes."""
 
-from modsim_studio.visual_colors import CategoryColors
+from modsim_robotics_studio.visual_colors import CategoryColors
 
 
 def test_assembly_colors_survive_reordering_and_new_members_without_collisions() -> None:

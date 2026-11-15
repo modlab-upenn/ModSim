@@ -17,11 +17,11 @@ pytest.importorskip("pyvistaqt")
 import pyvista as pv
 from PySide6.QtWidgets import QApplication, QWidget
 
-from modsim.importers import ImportedGeometry
-from modsim.importers.urdf import GeometryKind
-from modsim_studio import viewport as viewport_module
-from modsim_studio.main_window import MainWindow
-from modsim_studio.project import StudioProject
+from modsim_robotics.importers import ImportedGeometry
+from modsim_robotics.importers.urdf import GeometryKind
+from modsim_robotics_studio import viewport as viewport_module
+from modsim_robotics_studio.main_window import MainWindow
+from modsim_robotics_studio.project import StudioProject
 
 
 class _HeadlessInteractor(pv.Plotter):

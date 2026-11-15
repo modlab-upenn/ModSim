@@ -6,7 +6,7 @@ import math
 
 import pytest
 
-from modsim.planning.mblocks import (
+from modsim_robotics.planning.mblocks import (
     LatticeBlock,
     LatticeGoal,
     LatticePlanningError,
@@ -16,9 +16,9 @@ from modsim.planning.mblocks import (
     pivots,
     plan_reconfiguration,
 )
-from modsim.planning.mblocks.geometry import connected
-from modsim.planning.mblocks.planner import recovery_search
-from modsim.runtime.mblocks_lattice import elbow_goal, line_goal, rectangle_state
+from modsim_robotics.planning.mblocks.geometry import connected
+from modsim_robotics.planning.mblocks.planner import recovery_search
+from modsim_robotics.runtime.mblocks_lattice import elbow_goal, line_goal, rectangle_state
 
 
 def test_p3_queue_opens_an_admissible_ring_and_reaches_the_line() -> None:

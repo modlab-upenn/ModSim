@@ -7,6 +7,8 @@ name = "modsim-robotics"
 dynamic = ["version"]
 description = "A backend-agnostic framework for modular and multi-robot simulation."
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
   "pydantic>=2.10,<3",
@@ -26,9 +28,16 @@ classifiers = [
   "Typing :: Typed",
 ]
 
+[project.urls]
+Homepage = "https://modlab-upenn.github.io/ModSim/"
+Documentation = "https://github.com/modlab-upenn/ModSim/tree/main/docs"
+Repository = "https://github.com/modlab-upenn/ModSim"
+Issues = "https://github.com/modlab-upenn/ModSim/issues"
+Releases = "https://github.com/modlab-upenn/ModSim/releases"
+
 [project.optional-dependencies]
 mujoco = [
-  "mujoco>=3.2,<4",
+  "mujoco>=3.3.3,<4",
   "numpy>=1.26,<3",
 ]
 studio = [
@@ -43,27 +52,37 @@ dev = [
   "pyright>=1.1.390,<2",
   "pytest>=8,<10",
   "pytest-cov>=5,<8",
-  "ruff>=0.9,<1",
+  "ruff>=0.16,<1",
 ]
 
 [project.scripts]
-modsim = "modsim.cli:app"
-modsim-studio = "modsim_studio.launcher:cli"
+modsim-robotics = "modsim_robotics.cli:app"
+modsim-robotics-studio = "modsim_robotics_studio.launcher:cli"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/modsim", "src/modsim_studio", "src/modsim_backend_mujoco"]
+packages = ["src/modsim_robotics", "src/modsim_robotics_studio", "src/modsim_robotics_backend_mujoco"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"examples/robot_packs/generic_cube" = "modsim_robotics/data/robot_packs/generic_cube"
 
 [tool.hatch.version]
-path = "src/modsim/__init__.py"
+path = "src/modsim_robotics/__init__.py"
 
 [tool.hatch.build.targets.sdist]
 include = [
   "/src",
-  "/tests",
-  "/examples",
+  "/examples/robot_packs/generic_cube",
+  "/examples/scenarios",
   "/docs",
+  "/tools/release",
+  "/LICENSE",
   "/README.md",
   "/pyproject.toml",
+]
+exclude = [
+  "/docs/archive",
+  "/docs/technical_report",
+  "/docs/reference/api",
 ]
 
 [tool.ruff]
@@ -84,21 +103,21 @@ select = ["B", "E", "F", "I", "RUF", "SIM", "UP"]
 [tool.pyright]
 include = ["src", "tests"]
 exclude = [
-  "src/modsim_studio/app.py",
-  "src/modsim_studio/appearance.py",
-  "src/modsim_studio/chrome.py",
-  "src/modsim_studio/icons.py",
-  "src/modsim_studio/main_window.py",
-  "src/modsim_studio/runtime_app.py",
-  "src/modsim_studio/runtime_events.py",
-  "src/modsim_studio/runtime_graph.py",
-  "src/modsim_studio/runtime_lattice.py",
-  "src/modsim_studio/runtime_process.py",
-  "src/modsim_studio/runtime_planning.py",
-  "src/modsim_studio/runtime_mblocks_planning.py",
-  "src/modsim_studio/runtime_window.py",
-  "src/modsim_studio/runtime_worker.py",
-  "src/modsim_studio/viewport.py",
+  "src/modsim_robotics_studio/app.py",
+  "src/modsim_robotics_studio/appearance.py",
+  "src/modsim_robotics_studio/chrome.py",
+  "src/modsim_robotics_studio/icons.py",
+  "src/modsim_robotics_studio/main_window.py",
+  "src/modsim_robotics_studio/runtime_app.py",
+  "src/modsim_robotics_studio/runtime_events.py",
+  "src/modsim_robotics_studio/runtime_graph.py",
+  "src/modsim_robotics_studio/runtime_lattice.py",
+  "src/modsim_robotics_studio/runtime_process.py",
+  "src/modsim_robotics_studio/runtime_planning.py",
+  "src/modsim_robotics_studio/runtime_mblocks_planning.py",
+  "src/modsim_robotics_studio/runtime_window.py",
+  "src/modsim_robotics_studio/runtime_worker.py",
+  "src/modsim_robotics_studio/viewport.py",
   "tests/test_runtime_process.py",
   "tests/test_runtime_planning_widgets.py",
   "tests/test_mblocks_planning_widgets.py",
@@ -109,7 +128,7 @@ exclude = [
   # MuJoCo ships no type stubs, so strict mode reports every engine call as
   # partially unknown. Checked separately by pyright-mujoco.json, which runs at
   # standard strictness where the optional dependency is installed.
-  "src/modsim_backend_mujoco",
+  "src/modsim_robotics_backend_mujoco",
   "tests/test_mujoco_backend.py",
   "tests/test_mujoco_contact_mechanics.py",
   "tests/test_mujoco_docking.py",
@@ -131,7 +150,7 @@ addopts = [
   "--strict-config",
   "--strict-markers",
   "--basetemp=.test-tmp",
-  "--cov=modsim",
+  "--cov=modsim_robotics",
   "--cov-branch",
   "--cov-report=term-missing",
 ]
@@ -142,7 +161,7 @@ markers = [
 
 [tool.coverage.run]
 branch = true
-source = ["modsim"]
+source = ["modsim_robotics"]
 
 [tool.coverage.report]
 exclude_also = [
@@ -151,3 +170,11 @@ exclude_also = [
 ]
 show_missing = true
 skip_covered = true
+
+[dependency-groups]
+docs = [
+    "pylint>=4,<5",
+    "sphinx>=8.2,<10",
+    "sphinx-autoapi>=3.8,<4",
+    "sphinx-markdown-builder>=0.6.11,<0.7",
+]

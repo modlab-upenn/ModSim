@@ -1,0 +1,52 @@
+---
+title: Python API
+sidebar_label: Python API
+---
+
+Use the Python API reference to look up classes, method signatures, parameters,
+return types, and the docstrings attached to them. For the architectural roles
+and a reading order, start with the [codebase map](../explanation/codebase-map.md).
+
+These generated pages are part of this documentation and share its sidebar,
+theme, navigation, and page layout.
+
+Each method has a short heading and a Python signature, followed by its
+description, parameters, return value, and documented exceptions. Examples and
+lifecycle notes come from the source docstrings. Type links lead to the relevant
+reference entries.
+
+## First reference slice
+
+The initial reference follows one runtime session from its scene description to
+canonical state and the backend interface:
+
+| Start with | Use it to understand |
+| --- | --- |
+| [RuntimeSession](api/modsim_robotics/runtime/session/index.md#modsim_robotics.runtime.session.RuntimeSession) | Create a session, advance it, request connector operations, and shut it down. |
+| [SceneSpec and ModulePlacement](api/modsim_robotics/core/scene/index.md) | Choose the module instances and their initial poses. |
+| [WorldState](api/modsim_robotics/core/state/index.md) | Track live module, connector, connection, assembly, and event state. |
+| [BackendAdapter](api/modsim_robotics/backends/base/index.md) | See the simulator-independent contract for observations and physical constraints. |
+| [RobotPack schema types](api/modsim_robotics/robot_packs/schema/index.md) | Read the typed descriptions consumed by scenes and sessions. |
+
+The generated pages also include supporting runtime entities, snapshots,
+events, identifiers, transforms, and docking metrics. Studio widgets, concrete
+simulator adapters, planners, and the remaining API will be added as we review
+each subsystem.
+
+## How this reference stays current
+
+[Sphinx AutoAPI](https://github.com/readthedocs/sphinx-autoapi) parses the
+selected Python source without importing ModSim, Studio, or MuJoCo.
+[Sphinx Markdown Builder](https://github.com/liran-funaro/sphinx-markdown-builder)
+converts its resolved documentation into Markdown, which Docusaurus renders
+alongside the authored manual. Signatures and docstrings come from Python;
+explanations and examples remain authored pages.
+
+Update a docstring beside its class or method, then
+[regenerate the local docs](../contribute/documentation-generation.md).
+Contributors must follow the [API documentation rules](../contribute/api-documentation.md)
+and pass the documentation checks before submitting an API change.
+Intermediate files live under `website/.generated/api/`; generated module pages
+are refreshed under the ignored `docs/reference/api/` directory. Edit the Python
+source rather than these generated files. Generated pages enter the manual
+through the same documentation plugin as the authored pages.

@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from modsim.robot_packs import ConnectorTypeSpec
-from modsim_studio.user_errors import (
+from modsim_robotics.robot_packs import ConnectorTypeSpec
+from modsim_robotics_studio.user_errors import (
     error_log_details,
     user_error_message,
     validate_identifier,

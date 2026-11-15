@@ -7,7 +7,7 @@ import math
 import pytest
 from pydantic import ValidationError
 
-from modsim.robot_packs import (
+from modsim_robotics.robot_packs import (
     AcceptanceRegion,
     AcceptanceShape,
     AlignmentMode,

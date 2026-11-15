@@ -13,12 +13,17 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-from modsim.backends.mock import MockBackendAdapter
-from modsim.cli import app
-from modsim.core.events import AssemblyMerged, AssemblySplit, DockCommitted, UndockCommitted
-from modsim.model_views import CubicLatticeView, ModelViewContext, ModelViewFactory
-from modsim.robot_packs import RobotPackLoader
-from modsim.runtime import (
+from modsim_robotics.backends.mock import MockBackendAdapter
+from modsim_robotics.cli import app
+from modsim_robotics.core.events import (
+    AssemblyMerged,
+    AssemblySplit,
+    DockCommitted,
+    UndockCommitted,
+)
+from modsim_robotics.model_views import CubicLatticeView, ModelViewContext, ModelViewFactory
+from modsim_robotics.robot_packs import RobotPackLoader
+from modsim_robotics.runtime import (
     CoordinatedKinematicPivotScenario,
     CoordinatedMomentumPivotScenario,
     CoordinatedPivotPlan,
@@ -28,9 +33,9 @@ from modsim.runtime import (
     RuntimeInspectorRunner,
     RuntimeInspectorSetupError,
 )
-from modsim.runtime.inspector_runner import validate_runtime_inspector_config
-from modsim.runtime.momentum_pivot import MAX_MOMENTUM_TIMESTEP_S
-from modsim.runtime.session import RuntimeSession
+from modsim_robotics.runtime.inspector_runner import validate_runtime_inspector_config
+from modsim_robotics.runtime.momentum_pivot import MAX_MOMENTUM_TIMESTEP_S
+from modsim_robotics.runtime.session import RuntimeSession
 
 _ROOT = Path(__file__).resolve().parents[1]
 _PACK_PATH = _ROOT / "examples" / "robot_packs" / "mblocks_3d"
@@ -225,14 +230,14 @@ def test_cli_supplies_staircase_defaults(
     height_m: float,
 ) -> None:
     captured: dict[str, object] = {}
-    runtime_app = ModuleType("modsim_studio.runtime_app")
+    runtime_app = ModuleType("modsim_robotics_studio.runtime_app")
 
     def fake_main(config: object) -> int:
         captured["config"] = config
         return 0
 
     runtime_app.main = fake_main  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "modsim_studio.runtime_app", runtime_app)
+    monkeypatch.setitem(sys.modules, "modsim_robotics_studio.runtime_app", runtime_app)
     result = CliRunner().invoke(
         app,
         ["runtime", str(_PACK_PATH), "--demo", demo.value, "--no-viewer"],

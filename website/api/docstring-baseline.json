@@ -1,0 +1,772 @@
+{
+  "schema_version": 1,
+  "symbols": {
+    "modsim_robotics.backends.base.BackendAdapter.capabilities": {
+      "missing": [
+        "doc:returns"
+      ],
+      "signature": "d081b46df31474f1d08d3eb63ff8d1d3b45a2e8f85912567885ea85aeaa1482c"
+    },
+    "modsim_robotics.backends.base.BackendAdapter.create_physical_connection": {
+      "missing": [
+        "doc:param:request",
+        "doc:returns"
+      ],
+      "signature": "23519b37d0beaf48a59b64cbae3bb125cd0917b315537fc221794b767f0ddb56"
+    },
+    "modsim_robotics.backends.base.BackendAdapter.load": {
+      "missing": [
+        "doc:param:pack",
+        "doc:param:root",
+        "doc:param:scene",
+        "doc:returns"
+      ],
+      "signature": "37677ea5c3f66bd866663d19f804afd73688cd3c369115e63841290bb3937b40"
+    },
+    "modsim_robotics.backends.base.BackendAdapter.remove_physical_connection": {
+      "missing": [
+        "doc:param:handle",
+        "doc:returns"
+      ],
+      "signature": "a89b1f35c89418971dd3ad8ae6634dc5d3c06c6e534a86aa0cdd3ef5d5713cd6"
+    },
+    "modsim_robotics.backends.base.BackendAdapter.snapshot": {
+      "missing": [
+        "doc:returns"
+      ],
+      "signature": "9d215f8a1ed9496f08408d744ee9dd59ff3526a6be3a1f77fa58cf35b60e0272"
+    },
+    "modsim_robotics.backends.base.BackendAdapter.step": {
+      "missing": [
+        "doc:param:dt_s"
+      ],
+      "signature": "011243bab5d6a4e6d74f462867e05ea71280b488f85e2fcdf09625730e02df9f"
+    },
+    "modsim_robotics.backends.base.ConnectionOutcome.accepted": {
+      "missing": [
+        "doc:param:handle",
+        "doc:returns"
+      ],
+      "signature": "b9922c48b948197f0603ade29a40885e1ee630d1af9d2cd1371a244999a68f64"
+    },
+    "modsim_robotics.backends.base.ConnectionOutcome.refused": {
+      "missing": [
+        "doc:param:detail",
+        "doc:returns"
+      ],
+      "signature": "3b6a08a79b2420a09b8ce747de2c3db62ec4c7283a6462f12813000b03479eb7"
+    },
+    "modsim_robotics.backends.base.SupportsJointCommands.clear_joint_commands": {
+      "missing": [
+        "doc:param:joints"
+      ],
+      "signature": "872cf912c565de36699587939fb60b5a9b4004bc32ae6f65156e85384249858b"
+    },
+    "modsim_robotics.backends.base.SupportsJointCommands.set_joint_commands": {
+      "missing": [
+        "doc:param:commands"
+      ],
+      "signature": "1293819b684cf94741bba5309c58292ddb2132d1910ab13bfe623870257ecdcb"
+    },
+    "modsim_robotics.backends.base.SupportsModuleKinematics.set_module_pose": {
+      "missing": [
+        "doc:param:module_id",
+        "doc:param:pose"
+      ],
+      "signature": "bf00fbeada47dc5166c165ecf86e0780e892e6658b136edce5107c5a704a345a"
+    },
+    "modsim_robotics.backends.base.SupportsModuleKinematics.set_module_twist": {
+      "missing": [
+        "doc:param:angular_rad_s",
+        "doc:param:linear_m_s",
+        "doc:param:module_id"
+      ],
+      "signature": "3818a2e3b79e13455239d4209dbed69a30ef1a8c40f5ddeebb265b5216b7ea59"
+    },
+    "modsim_robotics.core.entities.ConnectionRuntime.connectors": {
+      "missing": [
+        "doc:returns"
+      ],
+      "signature": "f103a501192a066f1f80a7731b417cf0ed3450ecd466de280b17ac2f9ac3d75d"
+    },
+    "modsim_robotics.core.entities.ConnectorInstance.is_engaged": {
+      "missing": [
+        "doc:returns"
+      ],
+      "signature": "a46f8b736cca48fe7e71569c67129c932faee7ec3318c2296f2bc4a99f4490a0"
+    },
+    "modsim_robotics.core.events.Event.kind": {
+      "missing": [
+        "doc:returns"
+      ],
+      "signature": "0ad782dd9c758351eec87a6096706bebeb2539034d33ce9d6a4be7f51d09bb42"
+    },
+    "modsim_robotics.core.events.EventLog.append": {
+      "missing": [
+        "doc:param:event",
+        "doc:returns"
+      ],
+      "signature": "57080606b08a764d9e1c36fd118b8c1685993dd40933754618cd54761c0c9d5d"
+    },
+    "modsim_robotics.core.events.EventLog.count_of": {
+      "missing": [
+        "doc:param:kinds",
+        "doc:returns"
+      ],
+      "signature": "0f1b2552069a3eb0d7924a8e2199ff897bb77757ae2b27fd1311184af6994b39"
+    },
+    "modsim_robotics.core.events.EventLog.events": {
+      "missing": [
+        "doc:returns"
+      ],
+      "signature": "de0a54ef16e0d343e75fb4e828eb8b015f6e1b2dd01bb5be88e46df8908c12db"
+    },
+    "modsim_robotics.core.events.EventLog.extend": {
+      "missing": [
+        "doc:param:events",
+        "doc:returns"
+      ],
+      "signature": "7ef2bfdb57de56bfa6b5a9d360201b39dc3073e1375d4e8ad069d7979a10f31d"
+    },
+    "modsim_robotics.core.events.EventLog.of_kind": {
+      "missing": [
+        "doc:param:kinds",
+        "doc:returns"
+      ],
+      "signature": "b4c9166a6f98638c3b320642cda7f65346beeadbc2c3009978cc5365c7c755a5"
+    },
+    "modsim_robotics.core.events.EventLog.since": {
+      "missing": [
+        "doc:param:sequence",
+        "doc:returns"
+      ],
+      "signature": "a814664d2e4bf4262c03cb790f36aa60c90bbb949f9a86bdfab39a58e17321b0"
+    },
+    "modsim_robotics.core.ids.assembly_id": {
+      "missing": [
+        "doc:param:members",
+        "doc:raises:ValueError",
+        "doc:returns"
+      ],
+      "signature": "ea76d908fb5c62f27ebbb61812c61595e9e96e76e854b97728b6c14d6a5cbcbc"
+    },
+    "modsim_robotics.core.ids.connection_id": {
+      "missing": [
+        "doc:param:connector_a",
+        "doc:param:connector_b",
+        "doc:returns"
+      ],
+      "signature": "bf586f2f565cf76d6fa49c6eebfb778e2f88ab5d4452f8f721bd055705f9df37"
+    },
+    "modsim_robotics.core.ids.connector_instance_id": {
+      "missing": [
+        "doc:param:connector_id",
+        "doc:param:module_id",
+        "doc:returns"
+      ],
+      "signature": "f79eb2c031b2073617cc48f70bb6971039a48a705688897f8af7638de6735e24"
+    },
+    "modsim_robotics.core.ids.joint_instance_id": {
+      "missing": [
+        "doc:param:joint_id",
+        "doc:param:module_id",
+        "doc:returns"
+      ],
+      "signature": "0d90566249b9c15c19992164a437d6297e0103f0b7cba3b38b7b0e8d4644e653"
+    },
+    "modsim_robotics.core.ids.split_connector_instance_id": {
+      "missing": [
+        "doc:param:connector_instance_id_",
+        "doc:raises:ValueError",
+        "doc:returns"
+      ],
+      "signature": "aa43f7911ab868492441cd5ac2a4f06dc753bfff28d3d9861d2029136283a146"
+    },
+    "modsim_robotics.core.ids.split_joint_instance_id": {
+      "missing": [
+        "doc:param:joint_instance_id_",
+        "doc:raises:ValueError",
+        "doc:returns"
+      ],
+      "signature": "8d527f87cdf1fc97e0f2103e0cd649e2156b2df0cb5ee70fc17ee04c037615f8"
+    },
+    "modsim_robotics.core.scene.SceneSpec.grid": {
+      "missing": [
+        "doc:param:axis",
+        "doc:param:count",
+        "doc:param:module_type_id",
+        "doc:param:origin",
+        "doc:param:prefix",
+        "doc:param:spacing_m",
+        "doc:raises:SceneError",
+        "doc:returns"
+      ],
+      "signature": "035fb98f54a1d06bcf59ddb7b10bd10ee5a4e9965e87ed6dd7369207d1eca67b"
+    },
+    "modsim_robotics.core.scene.SceneSpec.instance_ids": {
+      "missing": [
+        "doc:returns"
+      ],
+      "signature": "996a1973cdc922685fcb73879f4b55a97583826943172849b7e0e2a301783ba6"
+    },
+    "modsim_robotics.core.scene.SceneSpec.module_links": {
+      "missing": [
+        "doc:param:pack",
+        "doc:returns"
+      ],
+      "signature": "2756ec644b836b4fb54cebb0b166330ca36781fa5763389f8797a52ecdcf399f"
+    },
+    "modsim_robotics.core.scene.SceneSpec.of": {
+      "missing": [
+        "doc:param:placements",
+        "doc:returns"
+      ],
+      "signature": "51bac8fdffddacc7a627c1c66e3edfebcbb5472f19d6f6c3526ed2131e175668"
+    },
+    "modsim_robotics.core.scene.SceneSpec.validate_against": {
+      "missing": [
+        "doc:param:pack",
+        "doc:raises:SceneError"
+      ],
+      "signature": "a6ea127fb1222c9f5ebd4dc0b27d610de5bce8b93d283bc12bed48cba4c1a3c6"
+    },
+    "modsim_robotics.core.snapshot.BackendStateSnapshot.body": {
+      "missing": [
+        "doc:param:link",
+        "doc:param:module_id",
+        "doc:returns"
+      ],
+      "signature": "a10952017606923a4709ee7f1932f51b2d4ee3bc1be329f0b96c93c752e9c9f1"
+    },
+    "modsim_robotics.core.snapshot.BodyState.velocity_at": {
+      "missing": [
+        "doc:param:world_point",
+        "doc:returns"
+      ],
+      "signature": "95f399b93c49d8466c60eb83311078d87be1aec590817614908b732696457545"
+    },
+    "modsim_robotics.core.state.WorldState.adjacency": {
+      "missing": [
+        "doc:param:exclude",
+        "doc:returns"
+      ],
+      "signature": "8f4f13f02dddcaed3feeecc386bfb53adbf89b53d42d53d36720f7cb2c62196a"
+    },
+    "modsim_robotics.core.state.WorldState.apply": {
+      "missing": [
+        "doc:param:event",
+        "doc:returns"
+      ],
+      "signature": "57080606b08a764d9e1c36fd118b8c1685993dd40933754618cd54761c0c9d5d"
+    },
+    "modsim_robotics.core.state.WorldState.assemblies": {
+      "missing": [
+        "doc:returns"
+      ],
+      "signature": "edd68f3f03ed3fd530eb35fcb856f77968ff3d5808f0e1c7dc8b81dff560b58b"
+    },
+    "modsim_robotics.core.state.WorldState.connections": {
+      "missing": [
+        "doc:returns"
+      ],
+      "signature": "ceb30a7765ac3edf238a11bbb7e54698d88a7dda33d1a6fff68a3122953c0108"
+    },
+    "modsim_robotics.core.state.WorldState.connector": {
+      "missing": [
+        "doc:param:connector",
+        "doc:raises:KeyError",
+        "doc:returns"
+      ],
+      "signature": "ee9d966b43d71febdcc50cc0c4b18859889bca78cd127ce33e530078a1e0b4eb"
+    },
+    "modsim_robotics.core.state.WorldState.connector_type": {
+      "missing": [
+        "doc:param:connector",
+        "doc:raises:KeyError",
+        "doc:returns"
+      ],
+      "signature": "bea846bbb4341f7c3463e850895e62daf01a2914142acbd0febad724a9e3c747"
+    },
+    "modsim_robotics.core.state.WorldState.connectors": {
+      "missing": [
+        "doc:returns"
+      ],
+      "signature": "287c53a7a749bd7756c3e1b6a58358a92a62f30648fdc44024374c3ec066a990"
+    },
+    "modsim_robotics.core.state.WorldState.event_log": {
+      "missing": [
+        "doc:returns"
+      ],
+      "signature": "a947d22831f8382f7206d31963ff90aba0eba93666692edfba7bb4a475d9efe1"
+    },
+    "modsim_robotics.core.state.WorldState.from_scene": {
+      "missing": [
+        "doc:param:pack",
+        "doc:param:scene",
+        "doc:returns"
+      ],
+      "signature": "02a426583ee83b217561fba18565832b1feb39738d435ca50f38e264038f05e5"
+    },
+    "modsim_robotics.core.state.WorldState.ingest": {
+      "missing": [
+        "doc:param:snapshot"
+      ],
+      "signature": "3e3dd732c1857f6c63a5d48e9706e58b3e2708a0f97fa0300fc283f7ffc18435"
+    },
+    "modsim_robotics.core.state.WorldState.joint_spec": {
+      "missing": [
+        "doc:param:joint",
+        "doc:raises:KeyError",
+        "doc:returns"
+      ],
+      "signature": "7c7c8fbdd440357031966d41eeeaf05fb1448128381699c9ad5ef108aed625da"
+    },
+    "modsim_robotics.core.state.WorldState.joint_state": {
+      "missing": [
+        "doc:param:joint",
+        "doc:raises:KeyError",
+        "doc:returns"
+      ],
+      "signature": "077eb94563b11e3ac115967455d3dd077ac3292e7bf81f5d5e77a25039f24835"
+    },
+    "modsim_robotics.core.state.WorldState.mark_lifecycle": {
+      "missing": [
+        "doc:param:connector_id",
+        "doc:param:state",
+        "doc:raises:WorldStateError"
+      ],
+      "signature": "96cdf254bb30507705587a64262f8cbe2ba99df2ae5a86402761bad76429826e"
+    },
+    "modsim_robotics.core.state.WorldState.modules": {
+      "missing": [
+        "doc:returns"
+      ],
+      "signature": "012e9cfae78618d0395d813000084994541c54093de1ed860c994019ccfbb380"
+    },
+    "modsim_robotics.core.state.WorldState.pack": {
+      "missing": [
+        "doc:returns"
+      ],
+      "signature": "9ad1ae6a5c55c1f8a9ef12d4ba7e45fbac86fbf81ba1f1910712175ac1110b20"
+    },
+    "modsim_robotics.core.state.WorldState.revision": {
+      "missing": [
+        "doc:returns"
+      ],
+      "signature": "8aa2c090850fa567ddae4b04353f187f9b7bc3067c52d24289358c6507e44265"
+    },
+    "modsim_robotics.core.state.WorldState.time_s": {
+      "missing": [
+        "doc:returns"
+      ],
+      "signature": "412c3c01104f55b94e50786865d49473d4804563fb67ef781eb4800499989abc"
+    },
+    "modsim_robotics.core.transforms.Transform.apply_direction": {
+      "missing": [
+        "doc:param:direction",
+        "doc:returns"
+      ],
+      "signature": "748b36b9ad2cdcfddab6cc1616e70677ee94015f8a234de1f61908a61af69a0e"
+    },
+    "modsim_robotics.core.transforms.Transform.apply_point": {
+      "missing": [
+        "doc:param:point",
+        "doc:returns"
+      ],
+      "signature": "ee5fa9ac70f88dcf44cede0717344f1a5a9c7f5aebe3f3e362bbe8793126311d"
+    },
+    "modsim_robotics.core.transforms.Transform.compose": {
+      "missing": [
+        "doc:param:other",
+        "doc:returns"
+      ],
+      "signature": "5e389b7ce98ba30903594a4cd46aa6d90aa7672fe4cabef4b3c1679f7b0ef2c3"
+    },
+    "modsim_robotics.core.transforms.Transform.from_pose_spec": {
+      "missing": [
+        "doc:param:pose",
+        "doc:returns"
+      ],
+      "signature": "c231c15d264f61877cf4df1310ab6111fa89fe9f6ba3062797d7e3658c8c63f6"
+    },
+    "modsim_robotics.core.transforms.Transform.from_translation": {
+      "missing": [
+        "doc:param:translation",
+        "doc:returns"
+      ],
+      "signature": "d7febab86d91899b7282fc13dce000207cd869ef5e1acb8764520b5fd95254c5"
+    },
+    "modsim_robotics.core.transforms.Transform.identity": {
+      "missing": [
+        "doc:returns"
+      ],
+      "signature": "0088e2ffcf0b78e696ababd7a3da6f28490c5331ebbf47d2a3d2464eafab3af9"
+    },
+    "modsim_robotics.core.transforms.Transform.inverse": {
+      "missing": [
+        "doc:returns"
+      ],
+      "signature": "fa407719f49ce4b1163ea920025439f3e14b7cfc5846cb6704b97444eba13bb6"
+    },
+    "modsim_robotics.core.transforms.Transform.is_close": {
+      "missing": [
+        "doc:param:orientation_tolerance_rad",
+        "doc:param:other",
+        "doc:param:position_tolerance_m",
+        "doc:returns"
+      ],
+      "signature": "236e4de5ea6d06dd67678524e1663281d2cd71d58c33bfdd8b4176ae0747968b"
+    },
+    "modsim_robotics.core.transforms.Transform.relative_to": {
+      "missing": [
+        "doc:param:other",
+        "doc:returns"
+      ],
+      "signature": "5e389b7ce98ba30903594a4cd46aa6d90aa7672fe4cabef4b3c1679f7b0ef2c3"
+    },
+    "modsim_robotics.core.transforms.angle_between": {
+      "missing": [
+        "doc:param:a",
+        "doc:param:b",
+        "doc:returns"
+      ],
+      "signature": "9aef3521f39950a5c1d26d366551799eaef7e2a97da3928c0da5aeadb9830fa5"
+    },
+    "modsim_robotics.core.transforms.minimal_rotation": {
+      "missing": [
+        "doc:param:source",
+        "doc:param:target",
+        "doc:returns"
+      ],
+      "signature": "7126d258f5543067ac36631c32df78f9c16beb57b256d6a467af9ba1590011b1"
+    },
+    "modsim_robotics.core.transforms.perpendicular": {
+      "missing": [
+        "doc:param:axis",
+        "doc:returns"
+      ],
+      "signature": "e34b66ca66a9fe4c5b5e0df2e455cb349d8471e226f286ee4a21c8cb22933c55"
+    },
+    "modsim_robotics.core.transforms.project_onto_plane": {
+      "missing": [
+        "doc:param:normal",
+        "doc:param:vector",
+        "doc:returns"
+      ],
+      "signature": "fb2eab28606180cc7ade08479e9746c5ac39287a79db09b12bbc608c271e25cc"
+    },
+    "modsim_robotics.core.transforms.quat_angle": {
+      "missing": [
+        "doc:param:q",
+        "doc:returns"
+      ],
+      "signature": "9680d76c57df559f9f7add9ea013d0f8d5bfc40758d0e232ca60a4c1518ac14a"
+    },
+    "modsim_robotics.core.transforms.quat_conjugate": {
+      "missing": [
+        "doc:param:q",
+        "doc:returns"
+      ],
+      "signature": "2d33bc15505e3ca389ab884d7a23332d47f3707efe06d81e425d27d32043edf5"
+    },
+    "modsim_robotics.core.transforms.quat_from_axis_angle": {
+      "missing": [
+        "doc:param:angle_rad",
+        "doc:param:axis",
+        "doc:returns"
+      ],
+      "signature": "b038b92905f3ae598c14bcef79aa0ba18c2056f14e015601f099cc732782e74d"
+    },
+    "modsim_robotics.core.transforms.quat_from_rpy": {
+      "missing": [
+        "doc:param:rpy_rad",
+        "doc:returns"
+      ],
+      "signature": "25e3571603da675f28f028a1cfce21cc1131bb30e8aafbdaff77c385974b7614"
+    },
+    "modsim_robotics.core.transforms.quat_multiply": {
+      "missing": [
+        "doc:param:a",
+        "doc:param:b",
+        "doc:returns"
+      ],
+      "signature": "a320897f584c1e5c06d92ba947675958b6bf39f83f30b8ef294d6e366780856f"
+    },
+    "modsim_robotics.core.transforms.quat_normalize": {
+      "missing": [
+        "doc:param:q",
+        "doc:raises:ValueError",
+        "doc:returns"
+      ],
+      "signature": "2d33bc15505e3ca389ab884d7a23332d47f3707efe06d81e425d27d32043edf5"
+    },
+    "modsim_robotics.core.transforms.quat_rotate": {
+      "missing": [
+        "doc:param:q",
+        "doc:param:v",
+        "doc:returns"
+      ],
+      "signature": "56c9e6767a97ec6a6f41c1b326ce3850b76018c459bad9593071e1667b292f2e"
+    },
+    "modsim_robotics.core.transforms.signed_angle_about": {
+      "missing": [
+        "doc:param:axis",
+        "doc:param:reference",
+        "doc:param:target",
+        "doc:raises:ValueError",
+        "doc:returns"
+      ],
+      "signature": "d57f34c962c24f7476bb12044714bb1023667ad6ae790b6223f5939b0de0c427"
+    },
+    "modsim_robotics.core.transforms.vec_add": {
+      "missing": [
+        "doc:param:a",
+        "doc:param:b",
+        "doc:returns"
+      ],
+      "signature": "5e4e410940de93579ee762e46c84f46007c92db2a832778306ace085c6f89238"
+    },
+    "modsim_robotics.core.transforms.vec_cross": {
+      "missing": [
+        "doc:param:a",
+        "doc:param:b",
+        "doc:returns"
+      ],
+      "signature": "5e4e410940de93579ee762e46c84f46007c92db2a832778306ace085c6f89238"
+    },
+    "modsim_robotics.core.transforms.vec_dot": {
+      "missing": [
+        "doc:param:a",
+        "doc:param:b",
+        "doc:returns"
+      ],
+      "signature": "9aef3521f39950a5c1d26d366551799eaef7e2a97da3928c0da5aeadb9830fa5"
+    },
+    "modsim_robotics.core.transforms.vec_norm": {
+      "missing": [
+        "doc:param:a",
+        "doc:returns"
+      ],
+      "signature": "790894a14dd3c2dd75ba3671f780ab1559f339d7cde7e1cdd05b206326a1d974"
+    },
+    "modsim_robotics.core.transforms.vec_normalize": {
+      "missing": [
+        "doc:param:a",
+        "doc:raises:ValueError",
+        "doc:returns"
+      ],
+      "signature": "bfe6e74cee1ca52d5a0dd2ffa011ad3fb7e8643791072fd99bae58552455bba6"
+    },
+    "modsim_robotics.core.transforms.vec_scale": {
+      "missing": [
+        "doc:param:a",
+        "doc:param:factor",
+        "doc:returns"
+      ],
+      "signature": "88c3e802f795b031eff4b02afea4edce7c675d02452a1efdafc5aca5c248d7bd"
+    },
+    "modsim_robotics.core.transforms.vec_sub": {
+      "missing": [
+        "doc:param:a",
+        "doc:param:b",
+        "doc:returns"
+      ],
+      "signature": "5e4e410940de93579ee762e46c84f46007c92db2a832778306ace085c6f89238"
+    },
+    "modsim_robotics.core.transforms.wrap_angle": {
+      "missing": [
+        "doc:param:angle_rad",
+        "doc:returns"
+      ],
+      "signature": "e2e6ed9053c232683d35eddf52c0ea6c55652ebad7176682a10f934c16f6f22d"
+    },
+    "modsim_robotics.robot_packs.schema.AllowedOrientations.validate_values": {
+      "missing": [
+        "doc:raises:ValueError",
+        "doc:returns",
+        "doc:summary"
+      ],
+      "signature": "afc6b4e93cd06c770ae778632e54a7083dd80684078fe61a66ef00a63b6d1b68"
+    },
+    "modsim_robotics.robot_packs.schema.AssetManifest.mechanical_catalog": {
+      "missing": [
+        "doc:param:kind",
+        "doc:returns"
+      ],
+      "signature": "53e13c9999be6fdba3f40c62d734fb2d22ac84f84dfaf8d3be57ffff9c7e80b3"
+    },
+    "modsim_robotics.robot_packs.schema.AssetManifest.paths_with_kinds": {
+      "missing": [
+        "doc:returns"
+      ],
+      "signature": "9bcc585dd305cecfabf8dc33f63a0d7fe43ccf95473ebc8c425367c2a5ccf2cb"
+    },
+    "modsim_robotics.robot_packs.schema.AssetManifest.require_unique_asset_paths": {
+      "missing": [
+        "doc:raises:ValueError",
+        "doc:returns",
+        "doc:summary"
+      ],
+      "signature": "afc6b4e93cd06c770ae778632e54a7083dd80684078fe61a66ef00a63b6d1b68"
+    },
+    "modsim_robotics.robot_packs.schema.CapabilityCatalog.require_matching_catalog_ids": {
+      "missing": [
+        "doc:raises:ValueError",
+        "doc:returns",
+        "doc:summary"
+      ],
+      "signature": "afc6b4e93cd06c770ae778632e54a7083dd80684078fe61a66ef00a63b6d1b68"
+    },
+    "modsim_robotics.robot_packs.schema.CapabilitySpec.require_unique_connector_requirements": {
+      "missing": [
+        "doc:param:value",
+        "doc:raises:ValueError",
+        "doc:returns",
+        "doc:summary"
+      ],
+      "signature": "494a9757ccaf6def223ab178711b1f0c085b381574f60a98b8a0238d44af04bb"
+    },
+    "modsim_robotics.robot_packs.schema.ComplianceSpec.require_stiffness": {
+      "missing": [
+        "doc:raises:ValueError",
+        "doc:returns",
+        "doc:summary"
+      ],
+      "signature": "afc6b4e93cd06c770ae778632e54a7083dd80684078fe61a66ef00a63b6d1b68"
+    },
+    "modsim_robotics.robot_packs.schema.ConnectorSpec.require_location": {
+      "missing": [
+        "doc:raises:ValueError",
+        "doc:returns",
+        "doc:summary"
+      ],
+      "signature": "afc6b4e93cd06c770ae778632e54a7083dd80684078fe61a66ef00a63b6d1b68"
+    },
+    "modsim_robotics.robot_packs.schema.ConnectorTypeSpec.effective_docking_policy": {
+      "missing": [
+        "doc:returns"
+      ],
+      "signature": "2a57fb9d14cdc8bf17145044158c673c0352179ba39d299a68e73ebbe06bad45"
+    },
+    "modsim_robotics.robot_packs.schema.ConnectorTypeSpec.require_unique_compatibility": {
+      "missing": [
+        "doc:param:value",
+        "doc:raises:ValueError",
+        "doc:returns",
+        "doc:summary"
+      ],
+      "signature": "d888bdfe50c8cb526d2730284298061d3c2d0126053ec9132ad72e6964b4e962"
+    },
+    "modsim_robotics.robot_packs.schema.HardwareCatalog.require_matching_catalog_ids": {
+      "missing": [
+        "doc:raises:ValueError",
+        "doc:returns",
+        "doc:summary"
+      ],
+      "signature": "afc6b4e93cd06c770ae778632e54a7083dd80684078fe61a66ef00a63b6d1b68"
+    },
+    "modsim_robotics.robot_packs.schema.JointLimits.validate_range": {
+      "missing": [
+        "doc:raises:ValueError",
+        "doc:returns",
+        "doc:summary"
+      ],
+      "signature": "afc6b4e93cd06c770ae778632e54a7083dd80684078fe61a66ef00a63b6d1b68"
+    },
+    "modsim_robotics.robot_packs.schema.JointSpec.validate_joint": {
+      "missing": [
+        "doc:raises:ValueError",
+        "doc:returns",
+        "doc:summary"
+      ],
+      "signature": "afc6b4e93cd06c770ae778632e54a7083dd80684078fe61a66ef00a63b6d1b68"
+    },
+    "modsim_robotics.robot_packs.schema.LoadedRobotPack.with_pack": {
+      "missing": [
+        "doc:param:pack",
+        "doc:returns"
+      ],
+      "signature": "f5ab57fa354b77eb32b7567db6ea8ec4f08ffe736975276e822b73bcc1962a5b"
+    },
+    "modsim_robotics.robot_packs.schema.ModelViewSpec.require_unique_nonempty_modes": {
+      "missing": [
+        "doc:param:value",
+        "doc:raises:ValueError",
+        "doc:returns",
+        "doc:summary"
+      ],
+      "signature": "904368303d815c8f052ed7f4b810873dd6c312fe8b0c1fc39b7cde5a00fa28af"
+    },
+    "modsim_robotics.robot_packs.schema.ModuleType.require_unique_child_ids": {
+      "missing": [
+        "doc:raises:ValueError",
+        "doc:returns",
+        "doc:summary"
+      ],
+      "signature": "afc6b4e93cd06c770ae778632e54a7083dd80684078fe61a66ef00a63b6d1b68"
+    },
+    "modsim_robotics.robot_packs.schema.PhysicalConnectionSpec.validate_constraint_parameters": {
+      "missing": [
+        "doc:raises:ValueError",
+        "doc:returns",
+        "doc:summary"
+      ],
+      "signature": "afc6b4e93cd06c770ae778632e54a7083dd80684078fe61a66ef00a63b6d1b68"
+    },
+    "modsim_robotics.robot_packs.schema.RobotPack.id": {
+      "missing": [
+        "doc:returns"
+      ],
+      "signature": "0ad782dd9c758351eec87a6096706bebeb2539034d33ce9d6a4be7f51d09bb42"
+    },
+    "modsim_robotics.robot_packs.schema.RobotPack.require_matching_backend_ids": {
+      "missing": [
+        "doc:raises:ValueError",
+        "doc:returns",
+        "doc:summary"
+      ],
+      "signature": "afc6b4e93cd06c770ae778632e54a7083dd80684078fe61a66ef00a63b6d1b68"
+    },
+    "modsim_robotics.robot_packs.schema.RobotPack.version": {
+      "missing": [
+        "doc:returns"
+      ],
+      "signature": "0ad782dd9c758351eec87a6096706bebeb2539034d33ce9d6a4be7f51d09bb42"
+    },
+    "modsim_robotics.robot_packs.schema.RobotPackManifest.require_unique_referenced_documents": {
+      "missing": [
+        "doc:raises:ValueError",
+        "doc:returns",
+        "doc:summary"
+      ],
+      "signature": "afc6b4e93cd06c770ae778632e54a7083dd80684078fe61a66ef00a63b6d1b68"
+    },
+    "modsim_robotics.robot_packs.schema.SpecFileManifest.require_unique_document_paths": {
+      "missing": [
+        "doc:raises:ValueError",
+        "doc:returns",
+        "doc:summary"
+      ],
+      "signature": "afc6b4e93cd06c770ae778632e54a7083dd80684078fe61a66ef00a63b6d1b68"
+    },
+    "modsim_robotics.runtime.metrics.DockingMetrics.as_dict": {
+      "missing": [
+        "doc:returns"
+      ],
+      "signature": "b7d4a83616285e12ec344e65b9eb37ef4205ac97f30ccd4d27742551dad6de56"
+    },
+    "modsim_robotics.runtime.metrics.DockingMetrics.docking_success_rate": {
+      "missing": [
+        "doc:returns"
+      ],
+      "signature": "412c3c01104f55b94e50786865d49473d4804563fb67ef781eb4800499989abc"
+    },
+    "modsim_robotics.runtime.metrics.collect_metrics": {
+      "missing": [
+        "doc:param:world",
+        "doc:returns"
+      ],
+      "signature": "fc4417206d8b51029b9f298f9935c63784ec77d60e333a456ec86ebc10b1112f"
+    }
+  }
+}

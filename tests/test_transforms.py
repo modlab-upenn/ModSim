@@ -6,7 +6,7 @@ import math
 
 import pytest
 
-from modsim.core.transforms import (
+from modsim_robotics.core.transforms import (
     IDENTITY_QUAT,
     Transform,
     Vec3,

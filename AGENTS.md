@@ -16,3 +16,17 @@ an imported mechanical asset, Robot Pack YAML as the semantic description,
 Dated plans, implementation snapshots, and former agent instructions are kept
 in `docs/archive/` for historical context only; do not treat them as current
 contracts or inventories.
+
+## Public API documentation
+
+Follow `docs/contribute/api-documentation.md` when adding or changing public
+Python APIs. Keep type annotations and source docstrings current, document
+parameters and return values, and describe relevant exceptions, units, lifecycle
+requirements, and side effects. Use Google-style docstring sections for new
+code; existing reStructuredText field lists remain supported.
+
+Register new published modules in `website/api/scope.py`. Run
+`npm --prefix website run docs:check` and the documentation build before
+submitting an API change. Fix new documentation gaps rather than extending the
+legacy-debt baseline. Generated files under `docs/reference/api/` are build
+output; change the source or generator instead.

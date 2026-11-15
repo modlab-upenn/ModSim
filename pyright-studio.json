@@ -1,6 +1,6 @@
 {
   "include": [
-    "src/modsim_studio"
+    "src/modsim_robotics_studio"
   ],
   "pythonVersion": "3.11",
   "typeCheckingMode": "strict",

@@ -54,6 +54,10 @@ cover/
 # ModSim Studio local session state
 .modsim/
 
+# MuJoCo viewer debugging exports
+MJMODEL.TXT
+MJDATA.TXT
+
 # Translations
 *.mo
 *.pot
@@ -73,6 +77,15 @@ instance/
 
 # Sphinx documentation
 docs/_build/
+
+# Local documentation application
+website/node_modules/
+website/.docusaurus/
+website/.generated/
+website/.sites-runtime/
+
+# Python API pages generated for the shared Docusaurus docs plugin
+docs/reference/api/
 
 # PyBuilder
 .pybuilder/

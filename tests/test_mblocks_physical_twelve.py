@@ -10,21 +10,21 @@ from typing import Any
 
 import pytest
 
-from modsim.core.events import DockCommitted, UndockCommitted
-from modsim.core.ids import ModuleInstanceId
-from modsim.core.scene import SceneSpec
-from modsim.model_views import CubicLatticeView, ModelViewContext, ModelViewFactory
-from modsim.robot_packs import RobotPackLoader
-from modsim.runtime.momentum_sequence import (
+from modsim_robotics.core.events import DockCommitted, UndockCommitted
+from modsim_robotics.core.ids import ModuleInstanceId
+from modsim_robotics.core.scene import SceneSpec
+from modsim_robotics.model_views import CubicLatticeView, ModelViewContext, ModelViewFactory
+from modsim_robotics.robot_packs import RobotPackLoader
+from modsim_robotics.runtime.momentum_sequence import (
     MomentumPivotSequencePlan,
     MomentumPivotSequenceScenario,
 )
-from modsim.runtime.reconfiguration import (
+from modsim_robotics.runtime.reconfiguration import (
     ConnectorPairRef,
     ReconfigurationPhase,
     ReconfigurationPlan,
 )
-from modsim.runtime.session import RuntimeSession
+from modsim_robotics.runtime.session import RuntimeSession
 
 _ROOT = Path(__file__).resolve().parents[1]
 _PACK_PATH = _ROOT / "examples" / "robot_packs" / "mblocks_3d"

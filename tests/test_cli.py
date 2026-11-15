@@ -11,14 +11,14 @@ from typing import cast
 import pytest
 from typer.testing import CliRunner
 
-from modsim import __version__
-from modsim.backends.registry import BACKEND_ENV_VAR
-from modsim.cli import app
-from modsim.core.scene import SceneSpec
-from modsim.core.state import WorldState
-from modsim.model_views import ModelViewContext, ModelViewFactory
-from modsim.robot_packs import RobotPackLoader
-from modsim.runtime import RuntimeDemo, RuntimeInspectorConfig
+from modsim_robotics import __version__
+from modsim_robotics.backends.registry import BACKEND_ENV_VAR
+from modsim_robotics.cli import app
+from modsim_robotics.core.scene import SceneSpec
+from modsim_robotics.core.state import WorldState
+from modsim_robotics.model_views import ModelViewContext, ModelViewFactory
+from modsim_robotics.robot_packs import RobotPackLoader
+from modsim_robotics.runtime import RuntimeDemo, RuntimeInspectorConfig
 
 runner = CliRunner()
 
@@ -34,7 +34,7 @@ def test_cli_help_succeeds() -> None:
 def test_cli_version_succeeds() -> None:
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
-    assert result.stdout.strip() == f"modsim {__version__}"
+    assert result.stdout.strip() == f"modsim-robotics {__version__}"
 
 
 def test_cli_validate_valid_pack_exits_zero(example_pack_dir: Path) -> None:
@@ -374,14 +374,14 @@ def test_cli_runtime_launches_the_optional_inspector_with_resolved_viewer_mode(
 ) -> None:
     captured: dict[str, object] = {}
 
-    runtime_app = ModuleType("modsim_studio.runtime_app")
+    runtime_app = ModuleType("modsim_robotics_studio.runtime_app")
 
     def fake_main(config: object) -> int:
         captured["config"] = config
         return 0
 
     runtime_app.main = fake_main  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "modsim_studio.runtime_app", runtime_app)
+    monkeypatch.setitem(sys.modules, "modsim_robotics_studio.runtime_app", runtime_app)
 
     arguments = [
         *command,
@@ -419,14 +419,14 @@ def test_cli_runtime_accepts_the_descriptive_real_time_factor_alias(
     command: tuple[str, ...],
 ) -> None:
     captured: dict[str, object] = {}
-    runtime_app = ModuleType("modsim_studio.runtime_app")
+    runtime_app = ModuleType("modsim_robotics_studio.runtime_app")
 
     def fake_main(config: object) -> int:
         captured["config"] = config
         return 0
 
     runtime_app.main = fake_main  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "modsim_studio.runtime_app", runtime_app)
+    monkeypatch.setitem(sys.modules, "modsim_robotics_studio.runtime_app", runtime_app)
 
     result = runner.invoke(
         app,
@@ -464,14 +464,14 @@ def test_cli_runtime_demo_selects_a_reproducible_default_duration(
     expected_duration_s: float,
 ) -> None:
     captured: dict[str, object] = {}
-    runtime_app = ModuleType("modsim_studio.runtime_app")
+    runtime_app = ModuleType("modsim_robotics_studio.runtime_app")
 
     def fake_main(config: object) -> int:
         captured["config"] = config
         return 0
 
     runtime_app.main = fake_main  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "modsim_studio.runtime_app", runtime_app)
+    monkeypatch.setitem(sys.modules, "modsim_robotics_studio.runtime_app", runtime_app)
 
     result = runner.invoke(
         app,
@@ -511,14 +511,14 @@ def test_cli_runtime_physical_smores_demos_supply_physics_defaults(
     expected_duration_s: float,
 ) -> None:
     captured: dict[str, object] = {}
-    runtime_app = ModuleType("modsim_studio.runtime_app")
+    runtime_app = ModuleType("modsim_robotics_studio.runtime_app")
 
     def fake_main(config: object) -> int:
         captured["config"] = config
         return 0
 
     runtime_app.main = fake_main  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "modsim_studio.runtime_app", runtime_app)
+    monkeypatch.setitem(sys.modules, "modsim_robotics_studio.runtime_app", runtime_app)
 
     result = runner.invoke(
         app,

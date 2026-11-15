@@ -9,18 +9,18 @@ from pathlib import Path
 
 import pytest
 
-from modsim.backends.mock import MockBackendAdapter
-from modsim.core.events import DockCommitted, Event, UndockCommitted
-from modsim.core.ids import ModuleInstanceId, connection_id, connector_instance_id
-from modsim.core.scene import ModulePlacement, SceneSpec
-from modsim.core.transforms import Transform
-from modsim.robot_packs import RobotPackLoader
-from modsim.runtime.kinematic_pivot import (
+from modsim_robotics.backends.mock import MockBackendAdapter
+from modsim_robotics.core.events import DockCommitted, Event, UndockCommitted
+from modsim_robotics.core.ids import ModuleInstanceId, connection_id, connector_instance_id
+from modsim_robotics.core.scene import ModulePlacement, SceneSpec
+from modsim_robotics.core.transforms import Transform
+from modsim_robotics.robot_packs import RobotPackLoader
+from modsim_robotics.runtime.kinematic_pivot import (
     KinematicPivotConfig,
     KinematicPivotRoute,
     KinematicPivotScenario,
 )
-from modsim.runtime.reconfiguration import (
+from modsim_robotics.runtime.reconfiguration import (
     ConnectorPairRef,
     ReconfigurationAction,
     ReconfigurationPhase,
@@ -28,7 +28,7 @@ from modsim.runtime.reconfiguration import (
     ReconfigurationScenarioError,
     stage_docking_assembly_pair,
 )
-from modsim.runtime.session import RuntimeSession
+from modsim_robotics.runtime.session import RuntimeSession
 
 _ROOT = Path(__file__).resolve().parents[1]
 _PACK_PATH = _ROOT / "examples" / "robot_packs" / "mblocks_3d"

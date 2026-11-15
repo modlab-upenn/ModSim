@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from modsim.backends.base import BackendAdapter, BackendError
-from modsim.backends.mock import MockBackendAdapter
-from modsim.backends.registry import (
+from modsim_robotics.backends.base import BackendAdapter, BackendError
+from modsim_robotics.backends.mock import MockBackendAdapter
+from modsim_robotics.backends.registry import (
     BACKEND_ENV_VAR,
     DEFAULT_BACKEND,
     BackendEntry,

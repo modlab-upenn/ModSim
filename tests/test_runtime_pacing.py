@@ -6,7 +6,7 @@ import math
 
 import pytest
 
-from modsim.runtime.pacing import wall_clock_deadline_s
+from modsim_robotics.runtime.pacing import wall_clock_deadline_s
 
 
 @pytest.mark.parametrize(

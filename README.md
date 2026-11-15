@@ -1,14 +1,14 @@
 # ModSim
 
 [![CI](https://github.com/modlab-upenn/ModSim/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/modlab-upenn/ModSim/actions/workflows/ci.yml)
-[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
-[![Pre-alpha](https://img.shields.io/badge/status-pre--alpha-F59E0B)](pyproject.toml)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://github.com/modlab-upenn/ModSim/blob/main/pyproject.toml)
+[![Pre-alpha](https://img.shields.io/badge/status-pre--alpha-F59E0B)](https://github.com/modlab-upenn/ModSim/blob/main/pyproject.toml)
 [![Ruff](https://img.shields.io/badge/lint-Ruff-D7FF64?logo=ruff&logoColor=black)](#development-checks)
 
-[![MuJoCo](https://img.shields.io/badge/physics-MuJoCo-0D9488)](docs/backends.md)
-[![PySide6](https://img.shields.io/badge/desktop-PySide6-41CD52?logo=qt&logoColor=white)](docs/studio.md)
-[![YAML](https://img.shields.io/badge/Robot_Packs-YAML-CB171E?logo=yaml&logoColor=white)](docs/robot_pack_spec.md)
-[![URDF / XML](https://img.shields.io/badge/robot_assets-URDF_%2F_XML-E34F26)](examples/robot_packs)
+[![MuJoCo](https://img.shields.io/badge/physics-MuJoCo-0D9488)](https://github.com/modlab-upenn/ModSim/blob/main/docs/backends.md)
+[![PySide6](https://img.shields.io/badge/desktop-PySide6-41CD52?logo=qt&logoColor=white)](https://github.com/modlab-upenn/ModSim/blob/main/docs/studio.md)
+[![YAML](https://img.shields.io/badge/Robot_Packs-YAML-CB171E?logo=yaml&logoColor=white)](https://github.com/modlab-upenn/ModSim/blob/main/docs/robot_pack_spec.md)
+[![URDF / XML](https://img.shields.io/badge/robot_assets-URDF_%2F_XML-E34F26)](https://github.com/modlab-upenn/ModSim/tree/main/examples/robot_packs)
 
 ModSim is a Python-first, backend-agnostic framework for modular and multi-robot
 systems. Robot Packs describe hardware and docking semantics; ModSim owns the
@@ -34,9 +34,9 @@ The pre-alpha project currently supports these core workflows:
 An experimental online SMORES-EP planner generates planar assembly assignments,
 parallel action groups, and routes with feedback-based recovery. Its Planning
 tab visualizes goals, paths, action progress, and decisions; see
-[online planning](docs/planning.md) for validation scope and current limitations.
+[online planning](https://github.com/modlab-upenn/ModSim/blob/main/docs/planning.md) for validation scope and current limitations.
 
-The [M-Blocks planar planner](docs/mblocks_planning.md) generates lattice pivots
+The [M-Blocks planar planner](https://github.com/modlab-upenn/ModSim/blob/main/docs/mblocks_planning.md) generates lattice pivots
 from initial and target shapes. Physical presets turn four- or six-block clusters
 into a line, with measured landing checks and live planner visualization.
 
@@ -66,16 +66,57 @@ Core planning and semantic code remain independent of Qt and MuJoCo. Planner
 intent travels separately from measured state; drawing a target or route never
 creates a live connection or moves a cube. Runtime Inspector protocol version 3
 carries coherent world and planner snapshots between the GUI and native-viewer
-process. Both processes must use the same installed checkout.
+process. Both processes must use the same installed ModSim version.
 
 ## Install
 
-ModSim requires Python 3.11 or newer. From a source checkout, install the full
-development environment with `uv`:
+ModSim requires Python 3.11 or newer. To use ModSim without a source checkout,
+follow [Installation](https://github.com/modlab-upenn/ModSim/blob/main/docs/how-to/installation.md).
+For the current release preparation, install a locally built wheel supplied by a
+contributor in an active virtual environment:
+
+```bash
+python -m pip install "/absolute/path/modsim_robotics-0.1.0-py3-none-any.whl"
+modsim-robotics --version
+```
+
+After the first public PyPI release, installation by package name will use
+`python -m pip install modsim-robotics`, or
+`python -m pip install "modsim-robotics[studio,mujoco]"` for both optional surfaces.
+Public publication remains a separate step from this local wheel workflow.
+
+The wheel includes the small Generic Cube starter:
+
+```bash
+modsim-robotics setup
+export MODSIM_PATH="$HOME/.modsim"
+modsim-robotics pack list
+modsim-robotics pack validate generic_cube --profile simulation
+modsim-robotics dock generic_cube --backend mock --count 2
+```
+
+Setup records the RobotPack library directory in `config.toml` and installs
+Generic Cube there. Select a pack by its ID when launching a command, such as
+`modsim-robotics studio generic_cube`. Use `generic_cube@0.1.0` to select a
+specific installed version. Multiple matches require a more specific selector
+or an explicit path; no pack is chosen automatically. `--pack PATH` selects an
+external pack; `--home PATH` or `MODSIM_PATH` selects another home and library.
+`MODSIM_HOME` remains a legacy fallback.
+Repeated setup preserves an existing valid starter and configuration. Setup
+prints instructions for persisting `MODSIM_PATH` in your shell profile or
+Windows User environment; the installation guide includes platform-specific
+commands. The example above sets it for the current POSIX shell session.
+
+SMORES-EP and M-Blocks mechanical asset packs are not included in the public
+wheel or source distribution. Their repository demonstrations require separately
+supplied compatible assets at the documented paths.
+
+For code contributions, follow [Development setup](https://github.com/modlab-upenn/ModSim/blob/main/docs/contribute/development-setup.md).
+From a source checkout, install the full development environment with `uv`:
 
 ```bash
 uv sync --locked --extra dev --extra studio --extra mujoco --python 3.12
-uv run --no-sync modsim --version
+uv run --no-sync modsim-robotics --version
 ```
 
 Or use a virtual environment and pip:
@@ -88,23 +129,24 @@ python3.12 -m venv .venv
 The extras are independent: `studio` adds the desktop applications, `mujoco`
 adds physics and native-viewer support, and `dev` adds repository tooling. The
 base install contains the Robot Pack, model-view, mock-backend, and CLI APIs.
+The MuJoCo extra requires version 3.3.3 or newer within the 3.x series.
 
 Run the commands below from the repository root. If the environment is not
-activated, use `uv run --no-sync modsim` or `.venv/bin/modsim` in place of `modsim`.
+activated, use `uv run --no-sync modsim-robotics` or `.venv/bin/modsim-robotics` in place of `modsim-robotics`.
 
 ## Robot Packs and CLI
 
 Inspect the minimal example and verify that it is structurally ready to run:
 
 ```bash
-modsim pack inspect examples/robot_packs/generic_cube
-modsim pack validate examples/robot_packs/generic_cube --profile simulation
+modsim-robotics pack inspect examples/robot_packs/generic_cube
+modsim-robotics pack validate examples/robot_packs/generic_cube --profile simulation
 ```
 
 Create a new draft from a concrete URDF (Xacro must first be expanded):
 
 ```bash
-modsim pack init --from-urdf path/to/module.urdf --out path/to/new_pack
+modsim-robotics pack init --from-urdf path/to/module.urdf --out path/to/new_pack
 ```
 
 Use repeated `--asset-root` options when mesh references cannot be resolved
@@ -114,10 +156,10 @@ their paths so the resulting pack is self-contained.
 Other useful command surfaces are:
 
 ```bash
-modsim views examples/robot_packs/generic_cube
-modsim dock examples/robot_packs/generic_cube --count 3
-modsim run examples/robot_packs/generic_cube --backend mujoco
-modsim backends
+modsim-robotics views examples/robot_packs/generic_cube
+modsim-robotics dock examples/robot_packs/generic_cube --count 3
+modsim-robotics run examples/robot_packs/generic_cube --backend mujoco
+modsim-robotics backends
 ```
 
 `dock` exercises connector semantics with the mock backend by default. `run`
@@ -129,7 +171,7 @@ viewer, or `--gui` for the live Runtime Inspector.
 Install the `studio` extra, then open a pack in the Robot Pack Builder:
 
 ```bash
-modsim studio examples/robot_packs/generic_cube
+modsim-robotics studio examples/robot_packs/generic_cube
 ```
 
 Studio supports URDF visualization, semantic property editing, validation,
@@ -159,7 +201,7 @@ the static viewport no longer redraws continuously while idle. Open, import,
 and export use themed Qt file dialogs, avoiding native GTK/pixbuf crashes caused
 by incompatible libraries inherited from environments such as Snap terminals.
 
-See [Studio](docs/studio.md) for the authoring workflow and current UI limits.
+See [Studio](https://github.com/modlab-upenn/ModSim/blob/main/docs/studio.md) for the authoring workflow and current UI limits.
 
 ## Runtime Inspector
 
@@ -167,7 +209,7 @@ Install both the `studio` and `mujoco` extras, then run the live two-module
 docking demonstration:
 
 ```bash
-modsim run --gui examples/robot_packs/generic_cube \
+modsim-robotics run --gui examples/robot_packs/generic_cube \
   --fixed-connector front \
   --moving-connector front \
   --duration 4
@@ -177,7 +219,7 @@ The Runtime Inspector displays the selected immutable model view alongside
 event snapshots while a single authoritative process owns the runtime. It can
 render the generic module-topology graph or cubic-lattice diagnostics. With
 MuJoCo, a separate native 3D viewer opens by default; `--no-viewer` suppresses
-it while retaining the Qt inspector. Use `modsim run` for a fully non-GUI
+it while retaining the Qt inspector. Use `modsim-robotics run` for a fully non-GUI
 execution.
 
 Online planning demos provide three tabs:
@@ -238,7 +280,7 @@ demonstrations use measured joint feedback and bounded MuJoCo effort actuators;
 their platform-specific controller parameters and routes live under
 `examples/scenarios/`.
 
-See [Runtime Inspector](docs/runtime_inspector.md) for the execution boundary,
+See [Runtime Inspector](https://github.com/modlab-upenn/ModSim/blob/main/docs/runtime_inspector.md) for the execution boundary,
 controls, and named demonstrations.
 
 ## Reproducible SMORES-EP examples
@@ -246,8 +288,8 @@ controls, and named demonstrations.
 Try the experimental online demos with the Planning tab and MuJoCo companion:
 
 ```bash
-modsim runtime examples/robot_packs/smores_ep --demo smores_online_assembly
-modsim runtime examples/robot_packs/smores_ep --demo smores_online_driver_to_snake
+modsim-robotics runtime examples/robot_packs/smores_ep --demo smores_online_assembly
+modsim-robotics runtime examples/robot_packs/smores_ep --demo smores_online_driver_to_snake
 ```
 
 The planner implements tree-root selection, distance-based Hungarian assignment,
@@ -270,19 +312,19 @@ python examples/scenarios/smores_online_planning.py \
 
 General initial-to-goal graph correspondence, helping-module lifting, and
 arbitrary 3D goals remain outside this implementation. The examples below are
-the scripted references. See [Online planar planning](docs/planning.md) for
+the scripted references. See [Online planar planning](https://github.com/modlab-upenn/ModSim/blob/main/docs/planning.md) for
 the research basis, validation scope, and current controller limits.
 
 Run these commands from the repository root after installing the `studio` and
-`mujoco` extras. If the virtual environment is not activated, replace `modsim`
-with `uv run --no-sync modsim` or `.venv/bin/modsim`.
+`mujoco` extras. If the virtual environment is not activated, replace `modsim-robotics`
+with `uv run --no-sync modsim-robotics` or `.venv/bin/modsim-robotics`.
 
 Inspect the pack, then apply both validation profiles:
 
 ```bash
-modsim pack inspect examples/robot_packs/smores_ep
-modsim pack validate examples/robot_packs/smores_ep
-modsim pack validate \
+modsim-robotics pack inspect examples/robot_packs/smores_ep
+modsim-robotics pack validate examples/robot_packs/smores_ep
+modsim-robotics pack validate \
   examples/robot_packs/smores_ep \
   --profile simulation
 ```
@@ -290,7 +332,7 @@ modsim pack validate \
 Run a two-module docking demonstration using the `pan` face on each module:
 
 ```bash
-modsim run --gui examples/robot_packs/smores_ep \
+modsim-robotics run --gui examples/robot_packs/smores_ep \
   --backend mujoco \
   --demo dock \
   --fixed-connector pan \
@@ -307,7 +349,7 @@ Run the physical two-module demonstration first when evaluating SMORES
 locomotion and docking:
 
 ```bash
-modsim runtime examples/robot_packs/smores_ep \
+modsim-robotics runtime examples/robot_packs/smores_ep \
   --backend mujoco \
   --demo smores_diff_drive_dock_undock \
   --model-view smores_topology
@@ -346,7 +388,7 @@ Run the older kinematic pair through docking, undocking, and visible
 retraction:
 
 ```bash
-modsim run --gui examples/robot_packs/smores_ep \
+modsim-robotics run --gui examples/robot_packs/smores_ep \
   --backend mujoco \
   --demo dock_undock \
   --fixed-connector pan \
@@ -363,7 +405,7 @@ modsim run --gui examples/robot_packs/smores_ep \
 Finally, run the seven-module Driver-to-Snake demonstration:
 
 ```bash
-modsim run --gui examples/robot_packs/smores_ep \
+modsim-robotics run --gui examples/robot_packs/smores_ep \
   --backend mujoco \
   --demo smores_driver_to_snake \
   --model-view smores_topology \
@@ -377,7 +419,7 @@ modsim run --gui examples/robot_packs/smores_ep \
 Do not add `--ground` to Driver-to-Snake. It begins with seven nodes and six
 connections, performs four `6 → 5 → 6` edge transitions, and ends in the chain
 `module_1–module_3–module_2–module_4–module_5–module_6–module_7`. See the
-[Runtime Inspector examples](docs/runtime_inspector.md#reproducible-smores-ep-workflows)
+[Runtime Inspector examples](https://github.com/modlab-upenn/ModSim/blob/main/docs/runtime_inspector.md#reproducible-smores-ep-workflows)
 for expected events, metrics, connector substitutions, viewer behavior, and a
 fully headless two-module alternative.
 
@@ -385,7 +427,7 @@ Run the corresponding wheel-driven physics realization with gravity and the
 ground enabled by its demo defaults:
 
 ```bash
-modsim runtime examples/robot_packs/smores_ep \
+modsim-robotics runtime examples/robot_packs/smores_ep \
   --backend mujoco \
   --demo smores_physical_driver_to_snake \
   --model-view smores_topology \
@@ -426,13 +468,13 @@ demos below exercise complementary physics cases.
 Run the small four-cube square-to-line demo:
 
 ```bash
-modsim runtime examples/robot_packs/mblocks_3d --demo mblocks_online_lattice
+modsim-robotics runtime examples/robot_packs/mblocks_3d --demo mblocks_online_lattice
 ```
 
 For more cubes and a longer sequence, run the six-cube rectangle-to-line preset:
 
 ```bash
-modsim runtime examples/robot_packs/mblocks_3d \
+modsim-robotics runtime examples/robot_packs/mblocks_3d \
   --demo mblocks_online_lattice_large \
   --speed 0.5
 ```
@@ -480,7 +522,7 @@ for the four- and six-cube presets above. The wider 3-by-2 six-cube layout,
 eight-cube clusters, and elbow reversal still expose alignment or actuator-limit
 failures. Goals describe interchangeable cubes in a shape relative to the
 anchor; labelled final assignments and full 3D planning are not implemented.
-See [M-Blocks planning](docs/mblocks_planning.md) for input formats, research
+See [M-Blocks planning](https://github.com/modlab-upenn/ModSim/blob/main/docs/mblocks_planning.md) for input formats, research
 references, and calibration details.
 
 ### Authored pivot and lattice demonstrations
@@ -488,16 +530,16 @@ references, and calibration details.
 Inspect the CAD-derived pack in Studio and run simulation-readiness validation:
 
 ```bash
-modsim pack validate \
+modsim-robotics pack validate \
   examples/robot_packs/mblocks_3d \
   --profile simulation
-modsim studio examples/robot_packs/mblocks_3d
+modsim-robotics studio examples/robot_packs/mblocks_3d
 ```
 
 Generate the generic cubic-lattice model view as JSON:
 
 ```bash
-modsim views examples/robot_packs/mblocks_3d \
+modsim-robotics views examples/robot_packs/mblocks_3d \
   --view mblocks_lattice \
   --count 5 \
   --spacing 0.05 \
@@ -508,7 +550,7 @@ Run the five-module traversal with its default cubic-lattice view and the
 MuJoCo mesh viewer in parallel:
 
 ```bash
-modsim runtime examples/robot_packs/mblocks_3d \
+modsim-robotics runtime examples/robot_packs/mblocks_3d \
   --backend mujoco \
   --demo mblocks_five_module_pivot
 ```
@@ -529,7 +571,7 @@ flywheel-, magnetic-hinge-, or contact-driven M-Block dynamics.
 Run the two-module one-plane physics bootstrap:
 
 ```bash
-modsim runtime examples/robot_packs/mblocks_3d \
+modsim-robotics runtime examples/robot_packs/mblocks_3d \
   --demo mblocks_momentum_pivot
 ```
 
@@ -552,7 +594,7 @@ continuous magnetic-field or full three-plane-carrier model.
 Run the larger lattice benchmark:
 
 ```bash
-modsim runtime examples/robot_packs/mblocks_3d \
+modsim-robotics runtime examples/robot_packs/mblocks_3d \
   --backend mujoco \
   --demo mblocks_twelve_module_line
 ```
@@ -566,7 +608,7 @@ demo is intentionally kinematic and paper-inspired; it is neither the exact
 Run the corresponding one-plane MuJoCo physics sequence:
 
 ```bash
-modsim runtime examples/robot_packs/mblocks_3d \
+modsim-robotics runtime examples/robot_packs/mblocks_3d \
   --demo mblocks_physical_twelve_module_line \
   --speed 4
 ```
@@ -593,7 +635,7 @@ The physics route is still a deterministic one-plane approximation. It does
 not model continuous magnetic attraction, force-selected bond transitions,
 the real three-plane actuator carrier, autonomous planning, or the unpublished
 2019 hardware move trace. See the
-[3D M-Blocks integration notes](docs/mblocks_3d.md) for asset provenance,
+[3D M-Blocks integration notes](https://github.com/modlab-upenn/ModSim/blob/main/docs/mblocks_3d.md) for asset provenance,
 model-view semantics, the two execution paths, and the remaining fidelity
 gates.
 
@@ -612,7 +654,7 @@ physics executor realizes the same eleven actions through MuJoCo dynamics.
 Run the fast reference executor first:
 
 ```bash
-modsim runtime examples/robot_packs/mblocks_3d \
+modsim-robotics runtime examples/robot_packs/mblocks_3d \
   --backend mock \
   --demo mblocks_twelve_module_staircase \
   --no-viewer
@@ -626,7 +668,7 @@ Use MuJoCo when a detailed mesh window is useful while retaining the same
 analytical reference motion:
 
 ```bash
-modsim runtime examples/robot_packs/mblocks_3d \
+modsim-robotics runtime examples/robot_packs/mblocks_3d \
   --backend mujoco \
   --demo mblocks_twelve_module_staircase
 ```
@@ -634,7 +676,7 @@ modsim runtime examples/robot_packs/mblocks_3d \
 Then run the full dynamics realization:
 
 ```bash
-modsim runtime examples/robot_packs/mblocks_3d \
+modsim-robotics runtime examples/robot_packs/mblocks_3d \
   --backend mujoco \
   --demo mblocks_physical_twelve_module_staircase \
   --speed 4
@@ -690,7 +732,7 @@ breakaway model. The M-Blocks pack leaves `break_force_n` unset, so its connecto
 do not release automatically under load. Declared normal/shear/bending ratings
 are not separately enforced. The runtime does support an optional scalar
 overload threshold for packs that configure it; current M-Blocks demos command
-their face/hinge transitions explicitly. See [Docking semantics](docs/docking_semantics.md).
+their face/hinge transitions explicitly. See [Docking semantics](https://github.com/modlab-upenn/ModSim/blob/main/docs/docking_semantics.md).
 
 The online M-Blocks demos use a 0.002 s time constant for their reserved MuJoCo
 weld and hinge constraints. This numerical setting tunes the ideal attachment
@@ -702,8 +744,8 @@ allowed by the explicitly assembly-relative planning frame.
 ```python
 from pathlib import Path
 
-from modsim import MockBackendAdapter, RobotPackLoader, RuntimeSession, SceneSpec
-from modsim.robot_packs import RobotPackValidator, ValidationProfile
+from modsim_robotics import MockBackendAdapter, RobotPackLoader, RuntimeSession, SceneSpec
+from modsim_robotics.robot_packs import RobotPackValidator, ValidationProfile
 
 loaded = RobotPackLoader().load(Path("examples/robot_packs/generic_cube"))
 report = RobotPackValidator().validate(
@@ -723,22 +765,29 @@ derived snapshots rather than canonical state.
 
 ## Documentation
 
-- [Long-form technical report](docs/technical_report/modsim_technical_report.tex) —
+- [0.1.0 release notes](https://github.com/modlab-upenn/ModSim/blob/main/docs/releases/0.1.0.md) —
+  prepared release scope, packaged starter, and current limitations
+- [Contribute](https://github.com/modlab-upenn/ModSim/blob/main/docs/contribute/index.md) — development workflows and contribution process
+- [Local documentation development](https://github.com/modlab-upenn/ModSim/blob/main/docs/contribute/local-development.md) — run Docusaurus,
+  edit pages, and preview the documentation locally
+- [Documentation setup checklist](https://github.com/modlab-upenn/ModSim/blob/main/website/SETUP_PLAN.md) — staged setup tasks,
+  verification evidence, and walkthrough progress
+- [Long-form technical report](https://github.com/modlab-upenn/ModSim/blob/main/docs/technical_report/modsim_technical_report.tex) —
   LaTeX paper covering motivation, architecture, subsystems, SMORES-EP experiments,
   performance analysis, limitations, and future work
-- [Robot Pack format](docs/robot_pack_spec.md) — normative split-YAML schema
-- [Docking semantics](docs/docking_semantics.md) — acceptance and lifecycle
-- [Backend adapters](docs/backends.md) — runtime/backend responsibilities
-- [Model views](docs/model_views.md) — recipes and immutable generated views
-- [Runtime Inspector](docs/runtime_inspector.md) — live visualization contract
-- [M-Blocks planar planning](docs/mblocks_planning.md) — generated lattice pivots,
+- [Robot Pack format](https://github.com/modlab-upenn/ModSim/blob/main/docs/robot_pack_spec.md) — normative split-YAML schema
+- [Docking semantics](https://github.com/modlab-upenn/ModSim/blob/main/docs/docking_semantics.md) — acceptance and lifecycle
+- [Backend adapters](https://github.com/modlab-upenn/ModSim/blob/main/docs/backends.md) — runtime/backend responsibilities
+- [Model views](https://github.com/modlab-upenn/ModSim/blob/main/docs/model_views.md) — recipes and immutable generated views
+- [Runtime Inspector](https://github.com/modlab-upenn/ModSim/blob/main/docs/runtime_inspector.md) — live visualization contract
+- [M-Blocks planar planning](https://github.com/modlab-upenn/ModSim/blob/main/docs/mblocks_planning.md) — generated lattice pivots,
   four- and six-cube physical presets, planner visualization, and current limits
-- [Online planar planning](docs/planning.md) — SMORES-EP assignment, routing,
+- [Online planar planning](https://github.com/modlab-upenn/ModSim/blob/main/docs/planning.md) — SMORES-EP assignment, routing,
   execution, and planner visualization
-- [3D M-Blocks integration](docs/mblocks_3d.md) — CAD-derived pack, lattice view,
+- [3D M-Blocks integration](https://github.com/modlab-upenn/ModSim/blob/main/docs/mblocks_3d.md) — CAD-derived pack, lattice view,
   physical momentum pivots, kinematic/physics benchmarks, and fidelity gates
-- [Studio](docs/studio.md) — desktop authoring workflow
-- [Archived design history](docs/archive/) — dated roadmaps and handoff records
+- [Studio](https://github.com/modlab-upenn/ModSim/blob/main/docs/studio.md) — desktop authoring workflow
+- [Archived design history](https://github.com/modlab-upenn/ModSim/tree/main/docs/archive/) — dated roadmaps and handoff records
 
 ## Development checks
 

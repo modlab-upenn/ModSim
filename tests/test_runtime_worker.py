@@ -16,13 +16,13 @@ pytest.importorskip("PySide6")
 from PySide6.QtCore import QEventLoop, QThread, QTimer
 from PySide6.QtWidgets import QApplication
 
-from modsim.runtime import RuntimeInspectorFrame
-from modsim.runtime.inspector_runner import (
+from modsim_robotics.runtime import RuntimeInspectorFrame
+from modsim_robotics.runtime.inspector_runner import (
     RuntimeInspectorConfig as CoreRuntimeInspectorConfig,
 )
-from modsim.runtime.inspector_runner import RuntimeInspectorRunner
-from modsim_studio import runtime_worker as runtime_worker_module
-from modsim_studio.runtime_worker import RuntimeInspectorConfig, RuntimeInspectorWorker
+from modsim_robotics.runtime.inspector_runner import RuntimeInspectorRunner
+from modsim_robotics_studio import runtime_worker as runtime_worker_module
+from modsim_robotics_studio.runtime_worker import RuntimeInspectorConfig, RuntimeInspectorWorker
 
 
 def test_worker_preserves_public_config_import() -> None:
