@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, QPersistentModelIndex, Qt
+from PySide6.QtCore import (
+    QAbstractTableModel,
+    QEvent,
+    QModelIndex,
+    QObject,
+    QPersistentModelIndex,
+    Qt,
+)
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHeaderView,
@@ -14,6 +21,30 @@ from PySide6.QtWidgets import (
 from modsim_robotics.runtime.inspection import RuntimeEventRow
 
 _HEADERS = ("Seq", "Sim time (s)", "Event", "Detail")
+
+
+class TableRowSizing(QObject):
+    """Fit a table's default row height without scanning its model."""
+
+    def __init__(self, table: QTableView) -> None:
+        super().__init__(table)
+        self._table = table
+        table.installEventFilter(self)
+        self._refresh()
+
+    def _refresh(self) -> None:
+        row_height = self._table.fontMetrics().height() + 4
+        header = self._table.verticalHeader()
+        header.setMinimumSectionSize(row_height)
+        header.setDefaultSectionSize(row_height)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if watched is self._table and event.type() in (
+            QEvent.Type.FontChange,
+            QEvent.Type.StyleChange,
+        ):
+            self._refresh()
+        return super().eventFilter(watched, event)
 
 
 class RuntimeEventTableModel(QAbstractTableModel):
@@ -106,6 +137,7 @@ class RuntimeEventLogWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         self.table = QTableView()
+        self._row_sizing = TableRowSizing(self.table)
         self.model = RuntimeEventTableModel(self.table)
         self.table.setModel(self.model)
         self.table.setAlternatingRowColors(True)

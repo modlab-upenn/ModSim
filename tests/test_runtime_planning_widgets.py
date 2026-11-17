@@ -12,6 +12,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 pytest.importorskip("pyqtgraph")
 
+from PySide6.QtCore import QEvent
+from PySide6.QtGui import QFont, QFontMetrics
 from PySide6.QtWidgets import QApplication
 
 from modsim_robotics.core.ids import ModuleInstanceId
@@ -119,6 +121,45 @@ def test_planner_workspace_displays_goal_actions_timeline_and_theme(
     finally:
         manager.set_theme(original, persist=False)
         widget.close()
+
+
+def test_planner_headers_and_history_axis_fit_long_labels_and_large_fonts(
+    planning_frame: RuntimeInspectorFrame,
+) -> None:
+    existing = QApplication.instance()
+    app = existing if isinstance(existing, QApplication) else QApplication([])
+    widget = PlanningWorkspace()
+    font = QFont(widget.font())
+    font.setPointSizeF(font.pointSizeF() * 1.5)
+    widget.setFont(font)
+    label = "module_with_a_descriptive_identifier"
+    try:
+        widget.set_frame(planning_frame)
+        item = widget.action_table.item(0, 0)
+        assert item is not None
+        item.setText(f"{label} → parent")
+        axis = widget.history.plot.getAxis("left")
+        axis.setTickFont(font)
+        axis.setTicks([[(0, label)]])
+        widget.resize(1280, 720)
+        widget.show()
+        app.processEvents()
+        widget.grab()
+        app.processEvents()
+        assert axis.width() >= QFontMetrics(font).horizontalAdvance(label)
+        for column in range(3):
+            header = widget.action_table.horizontalHeaderItem(column)
+            assert header is not None
+            assert widget.action_table.columnWidth(
+                column
+            ) >= widget.action_table.fontMetrics().horizontalAdvance(header.text())
+        assert widget.action_table.columnWidth(
+            0
+        ) >= widget.action_table.fontMetrics().horizontalAdvance(item.text())
+    finally:
+        widget.close()
+        widget.deleteLater()
+        app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
 @pytest.mark.parametrize(

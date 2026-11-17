@@ -1,11 +1,11 @@
-"""Studio launchers resolve a selected pack before starting the optional UI."""
+"""Studio opens blank or resolves an explicit selection before starting its UI."""
 
 from __future__ import annotations
 
 import logging
 import sys
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -16,6 +16,7 @@ from modsim_robotics_studio import launcher
 @pytest.fixture(autouse=True)
 def isolated_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MODSIM_PATH", str(tmp_path / "modsim-home"))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "desktop-data"))
     monkeypatch.delenv("MODSIM_HOME", raising=False)
 
 
@@ -104,15 +105,38 @@ def test_standalone_information_does_not_require_or_create_home(
     assert not (tmp_path / "modsim-home").exists()
 
 
-def test_studio_app_passes_the_selected_pack_to_window(
+@pytest.mark.parametrize("selector", [None, "generic_cube"])
+def test_studio_app_passes_the_optional_pack_to_window(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    selector: str | None,
 ) -> None:
     pytest.importorskip("PySide6")
     pytest.importorskip("pyvistaqt")
-    from modsim_robotics_studio import app as studio_app
+    from PySide6.QtGui import QIcon
 
-    setup = initialize_user_home()
-    opened: list[Path] = []
+    from modsim_robotics_studio import app as studio_app
+    from modsim_robotics_studio._desktop import APPLICATION_ID
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("MODSIM_STUDIO_LOG", raising=False)
+    expected_path = initialize_user_home().starter_pack if selector is not None else None
+    expected_log_path = (
+        expected_path.parent / ".modsim" / "logs" / expected_path.name / "studio.log"
+        if expected_path is not None
+        else tmp_path / ".modsim" / "logs" / "studio.log"
+    )
+    opened: list[Path | None] = []
+    stages: list[str] = []
+
+    if selector is None:
+
+        def unexpected_resolution(
+            pack_path: str | Path | None = None, *, home: Path | None = None
+        ) -> Path:
+            raise AssertionError("Blank Studio must not resolve a pack")
+
+        monkeypatch.setattr(studio_app, "resolve_robot_pack", unexpected_resolution)
 
     class Application:
         def __init__(self, _arguments: list[str]) -> None:
@@ -125,32 +149,85 @@ def test_studio_app_passes_the_selected_pack_to_window(
         def setApplicationName(self, _name: str) -> None:
             pass
 
+        def setApplicationDisplayName(self, name: str) -> None:
+            assert name == "ModSim Studio"
+
+        def setDesktopFileName(self, name: str) -> None:
+            assert name == APPLICATION_ID
+            stages.append("desktop identity set")
+
         def setOrganizationName(self, _name: str) -> None:
+            pass
+
+        def setWindowIcon(self, _icon: QIcon) -> None:
             pass
 
         def exec(self) -> int:
             return 0
 
+    class Splash:
+        def __init__(self, _workspace: str) -> None:
+            pass
+
+        def show(self) -> None:
+            stages.append("splash shown")
+
+        def set_stage(self, _message: str) -> None:
+            stages.append("stage painted")
+
+        def play_intro(self) -> bool:
+            stages.append("intro played")
+            return True
+
+        def present(self, _window: object) -> bool:
+            stages.append("splash finished")
+            return True
+
+        def close(self) -> None:
+            stages.append("splash closed")
+
     class Window:
         def __init__(
             self,
             *,
-            initial_path: Path,
+            initial_path: Path | None,
             session_logger: logging.Logger,
             session_log_path: Path,
         ) -> None:
             del session_logger
-            assert session_log_path.is_relative_to(setup.home)
+            assert session_log_path == expected_log_path
             opened.append(initial_path)
+            stages.append("window created")
 
         def show(self) -> None:
             pass
 
     monkeypatch.setattr(studio_app, "QApplication", Application)
-    monkeypatch.setattr(studio_app, "MainWindow", Window)
+    monkeypatch.setattr(studio_app, "_create_window", Window)
+    monkeypatch.setattr(studio_app, "StartupSplash", Splash)
 
-    assert studio_app.main("generic_cube") == 0
-    assert opened == [setup.starter_pack]
+    def app_icon(_theme: str) -> QIcon:
+        return QIcon()
+
+    monkeypatch.setattr(studio_app, "application_icon", app_icon)
+    monkeypatch.setattr(
+        studio_app, "theme_manager", lambda: SimpleNamespace(theme=SimpleNamespace(id="midnight"))
+    )
+
+    assert studio_app.main(selector) == 0
+    assert opened == [expected_path]
+    assert stages == [
+        "desktop identity set",
+        "splash shown",
+        "stage painted",
+        "intro played",
+        "stage painted",
+        "window created",
+        "splash finished",
+    ]
+    assert expected_log_path.is_file()
+    if selector is None:
+        assert not (tmp_path / "modsim-home").exists()
 
 
 def test_studio_app_reports_missing_setup_before_creating_a_window(
@@ -165,16 +242,48 @@ def test_studio_app_reports_missing_setup_before_creating_a_window(
     assert not (tmp_path / "modsim-home").exists()
 
 
-def test_standalone_requires_selection_even_with_one_installed_pack(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+@pytest.mark.parametrize("initialized", [False, True])
+@pytest.mark.parametrize("override_home", [False, True])
+def test_standalone_without_selection_opens_blank_without_reading_the_library(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    initialized: bool,
+    override_home: bool,
 ) -> None:
-    initialize_user_home()
+    selected_home = tmp_path / ("other-home" if override_home else "modsim-home")
+    configuration = None
+    if initialized:
+        initialize_user_home(selected_home)
+        configuration = (selected_home / "config.toml").read_bytes()
 
-    code, received = _launch([], monkeypatch)
+    def unexpected_resolution(
+        pack_path: str | Path | None = None, *, home: Path | None = None
+    ) -> Path:
+        raise AssertionError("Blank Studio must not resolve a pack or read its library")
 
-    assert code == 2
-    assert received == []
-    assert "select" in capsys.readouterr().err.lower()
+    monkeypatch.setattr(launcher, "resolve_robot_pack", unexpected_resolution)
+    arguments = ["--home", str(selected_home)] if override_home else []
+    code, received = _launch(arguments, monkeypatch)
+
+    assert code == 0
+    assert received == [None]
+    assert selected_home.exists() == initialized
+    if initialized:
+        assert (selected_home / "config.toml").read_bytes() == configuration
+
+
+def test_blank_standalone_explains_missing_optional_dependencies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setitem(sys.modules, "modsim_robotics_studio.app", None)
+    monkeypatch.setattr(sys, "argv", ["modsim-robotics-studio"])
+
+    with pytest.raises(SystemExit) as result:
+        launcher.cli()
+
+    assert result.value.code == 2
+    assert "modsim-robotics[studio]" in capsys.readouterr().err
+    assert not (tmp_path / "modsim-home").exists()
 
 
 def test_standalone_pack_option_accepts_an_installed_name(

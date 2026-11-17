@@ -11,8 +11,8 @@ from pathlib import Path
 from typing import cast
 
 from pydantic import JsonValue
-from PySide6.QtCore import QObject, QSize, Qt, Signal
-from PySide6.QtGui import QAction, QCloseEvent, QFontDatabase
+from PySide6.QtCore import QDir, QObject, QSettings, QSize, Qt, Signal
+from PySide6.QtGui import QAction, QCloseEvent, QFontDatabase, QIcon
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -22,7 +22,10 @@ from PySide6.QtWidgets import (
     QDockWidget,
     QFileDialog,
     QFormLayout,
+    QFrame,
+    QGridLayout,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QMainWindow,
@@ -36,6 +39,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QTabWidget,
     QToolBar,
+    QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -67,6 +71,8 @@ from modsim_robotics.robot_packs import (
     PoseSpec,
     ValidationProfile,
 )
+from modsim_robotics_studio._loading import BusyDialog, LoadingPanel
+from modsim_robotics_studio._window_sizing import WindowSizingPolicy, manage_window
 from modsim_robotics_studio.appearance import theme_manager
 from modsim_robotics_studio.chrome import DetailsSection, StudioHeader, VectorEdit, property_group
 from modsim_robotics_studio.icons import studio_icon
@@ -84,6 +90,139 @@ _MODULE_ROLE = _KIND_ROLE + 2
 # Keep file pickers inside Qt: native GTK dialogs can abort the process when
 # launched from a Snap terminal with incompatible inherited pixbuf loaders.
 _FILE_DIALOG_OPTIONS = QFileDialog.Option.DontUseNativeDialog
+_SHOW_HIDDEN_SETTINGS_KEY = "file_dialogs/show_hidden"
+
+
+def _select_path(
+    parent: QWidget,
+    caption: str,
+    directory: str = "",
+    name_filter: str = "",
+    *,
+    file_mode: QFileDialog.FileMode = QFileDialog.FileMode.ExistingFile,
+    accept_mode: QFileDialog.AcceptMode = QFileDialog.AcceptMode.AcceptOpen,
+) -> str:
+    """Select a file or directory with a remembered hidden-entry toggle."""
+    dialog = QFileDialog(parent, caption, options=_FILE_DIALOG_OPTIONS)
+    # Qt's stock arrow icon pixmaps stay black in dark themes. Native button
+    # arrows follow the live palette, including disabled and high-DPI states.
+    back_arrow = Qt.ArrowType.RightArrow if dialog.isRightToLeft() else Qt.ArrowType.LeftArrow
+    forward_arrow = Qt.ArrowType.LeftArrow if dialog.isRightToLeft() else Qt.ArrowType.RightArrow
+    for name, arrow in (
+        ("backButton", back_arrow),
+        ("forwardButton", forward_arrow),
+        ("toParentButton", Qt.ArrowType.UpArrow),
+    ):
+        button = dialog.findChild(QToolButton, name)
+        if button is not None:
+            button.setIcon(QIcon())
+            button.setArrowType(arrow)
+    dialog.setFileMode(file_mode)
+    dialog.setAcceptMode(accept_mode)
+    if file_mode == QFileDialog.FileMode.Directory:
+        dialog.setOption(QFileDialog.Option.ShowDirsOnly, True)
+    if name_filter:
+        dialog.setNameFilter(name_filter)
+    if directory:
+        initial_path = Path(directory).expanduser()
+        if file_mode == QFileDialog.FileMode.Directory or initial_path.is_dir():
+            dialog.setDirectory(str(initial_path))
+        else:
+            dialog.setDirectory(str(initial_path.parent))
+            dialog.selectFile(initial_path.name)
+
+    settings = QSettings("ModSim", "Studio")
+    show_hidden = bool(settings.value(_SHOW_HIDDEN_SETTINGS_KEY, False, type=bool))
+
+    def set_hidden_filter(visible: bool) -> None:
+        # Use integer bits so clearing Hidden preserves AllDirs and NoDot flags.
+        # AllDirs keeps folders visible under a URDF filename filter.
+        filters = dialog.filter().value
+        hidden = QDir.Filter.Hidden.value
+        dialog.setFilter(QDir.Filter(filters | hidden if visible else filters & ~hidden))
+
+    set_hidden_filter(show_hidden)
+    checkbox = QCheckBox("Show hidden files and folders", dialog)
+    checkbox.setObjectName("showHiddenFiles")
+    checkbox.setChecked(show_hidden)
+
+    def remember_hidden(visible: bool) -> None:
+        settings.setValue(_SHOW_HIDDEN_SETTINGS_KEY, visible)
+        settings.sync()
+
+    def toggle_hidden(visible: bool) -> None:
+        set_hidden_filter(visible)
+        remember_hidden(visible)
+
+    checkbox.toggled.connect(toggle_hidden)
+
+    def sync_hidden(_checked: bool) -> None:
+        visible = bool(dialog.filter() & QDir.Filter.Hidden)
+        was_blocked = checkbox.blockSignals(True)
+        try:
+            checkbox.setChecked(visible)
+        finally:
+            checkbox.blockSignals(was_blocked)
+        remember_hidden(visible)
+
+    # Qt changes its filter on triggered. Reflect the result without feeding
+    # another visibility change back into its context-menu handler.
+    hidden_action = dialog.findChild(QAction, "qt_show_hidden_action")
+    if hidden_action is not None:
+        hidden_action.triggered.connect(sync_hidden)
+    layout = dialog.layout()
+    if isinstance(layout, QGridLayout):
+        layout.addWidget(checkbox, layout.rowCount(), 0, 1, layout.columnCount())
+    elif layout is not None:
+        layout.addWidget(checkbox)
+
+    window_sizing = manage_window(
+        dialog, "file-browser", preferred=QSize(980, 680), settings=settings
+    )
+    try:
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return ""
+        selected = dialog.selectedFiles()
+        return selected[0] if selected else ""
+    finally:
+        # Keep the policy alive throughout the modal loop, including Hide on
+        # accept/reject. The QObject parent handles its eventual destruction.
+        del window_sizing
+        dialog.deleteLater()
+
+
+class _FormDialog(QDialog):
+    """Scroll a creation form while keeping confirmation controls reachable."""
+
+    def __init__(self, parent: QWidget, title: str, key: str, preferred: QSize) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self._sizing_key = key
+        self._preferred_size = preferred
+        self._window_sizing: WindowSizingPolicy | None = None
+        layout = QVBoxLayout(self)
+        content = QWidget()
+        self.form = QFormLayout(content)
+        self.form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        self.form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setWidget(content)
+        layout.addWidget(scroll, 1)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def exec(self) -> int:
+        if self._window_sizing is None:
+            self._window_sizing = manage_window(
+                self, self._sizing_key, preferred=self._preferred_size
+            )
+        return super().exec()
 
 
 class _LogEmitter(QObject):
@@ -117,6 +256,8 @@ class _MetadataEditor(QWidget):
         self.table = QTableWidget(0, 2)
         self.table.setHorizontalHeaderLabels(["Field", "JSON value"])
         self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        self.table.setWordWrap(False)
         self.table.setMaximumHeight(180)
         layout.addWidget(self.table)
         buttons = QHBoxLayout()
@@ -184,9 +325,9 @@ class MainWindow(QMainWindow):
     ) -> None:
         super().__init__()
         self.setWindowTitle("ModSim Studio")
-        self.resize(1500, 920)
         self._appearance = theme_manager()
         self.header = StudioHeader(self, "Robot Pack Builder")
+        self.header.setObjectName("StudioHeader")
         self.addToolBar(self.header)
         self.addToolBarBreak()
         self.project: StudioProject | None = None
@@ -211,30 +352,31 @@ class MainWindow(QMainWindow):
         preview_layout.addWidget(self.layer_toolbar)
         self.viewport = RobotViewport(self)
         self.preview_stack = QStackedWidget()
-        welcome = QWidget()
-        welcome_layout = QVBoxLayout(welcome)
-        welcome_layout.addStretch(1)
-        welcome_title = QLabel("Build your Robot Pack")
-        welcome_title.setObjectName("Brand")
-        welcome_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        welcome_layout.addWidget(welcome_title)
-        welcome_hint = QLabel("Open a pack or import a URDF to begin authoring.")
-        welcome_hint.setObjectName("Muted")
-        welcome_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        welcome_layout.addWidget(welcome_hint)
-        welcome_buttons = QHBoxLayout()
-        welcome_buttons.addStretch(1)
+        welcome = LoadingPanel("Build your Robot Pack")
+        welcome.setMinimumSize(0, 0)
+        welcome.setObjectName("BrandWelcome")
+        welcome.set_stage("Import a URDF, author your connectors, and prepare a simulation.")
+        welcome.set_busy(False)
+        welcome_buttons = QVBoxLayout()
+        self._welcome_buttons: list[tuple[QPushButton, str, bool]] = []
         for title, callback in (
-            ("Open Robot Pack…", self._open_dialog),
-            ("Create from URDF…", self._create_from_urdf_dialog),
+            ("Create from URDF", self._create_from_urdf_dialog),
+            ("Open Robot Pack", self._open_dialog),
         ):
             button = QPushButton(title)
+            primary = title == "Create from URDF"
+            button.setProperty("primary", primary)
+            self._welcome_buttons.append((button, "modules" if primary else "folder", primary))
+            button.setMinimumHeight(40)
             button.clicked.connect(callback)
             welcome_buttons.addWidget(button)
-        welcome_buttons.addStretch(1)
-        welcome_layout.addLayout(welcome_buttons)
-        welcome_layout.addStretch(1)
-        self.preview_stack.addWidget(welcome)
+        welcome_layout = cast(QVBoxLayout, welcome.copy.layout())
+        welcome_layout.insertLayout(welcome_layout.count() - 1, welcome_buttons)
+        welcome_scroll = QScrollArea()
+        welcome_scroll.setWidgetResizable(True)
+        welcome_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        welcome_scroll.setWidget(welcome)
+        self.preview_stack.addWidget(welcome_scroll)
         self.preview_stack.addWidget(self.viewport)
         preview_layout.addWidget(self.preview_stack, 1)
         hint = QLabel(
@@ -242,6 +384,8 @@ class MainWindow(QMainWindow):
         )
         hint.setObjectName("Hint")
         hint.setWordWrap(True)
+        hint.hide()
+        self.preview_hint = hint
         preview_layout.addWidget(hint)
         self.setCentralWidget(preview)
         self.viewport.entity_selected.connect(self._select_from_viewport)
@@ -259,7 +403,7 @@ class MainWindow(QMainWindow):
         project_layout = QVBoxLayout(project_panel)
         project_layout.setContentsMargins(8, 8, 8, 8)
         self.project_search = QLineEdit()
-        self.project_search.setPlaceholderText("Search project…")
+        self.project_search.setPlaceholderText("Search project")
         self.project_search.setAccessibleName("Search project")
         self.project_search.setClearButtonEnabled(True)
         self.project_search.textChanged.connect(self._filter_project_tree)
@@ -268,7 +412,6 @@ class MainWindow(QMainWindow):
         project_dock = self._add_dock(
             "Project", project_panel, Qt.DockWidgetArea.LeftDockWidgetArea
         )
-        project_dock.setMinimumWidth(230)
 
         self.properties = QWidget()
         self.properties.setObjectName("InspectorContent")
@@ -283,7 +426,6 @@ class MainWindow(QMainWindow):
             self.properties_scroll,
             Qt.DockWidgetArea.RightDockWidgetArea,
         )
-        properties_dock.setMinimumWidth(335)
 
         self.validation_table = QTableWidget(0, 4)
         self.validation_table.setHorizontalHeaderLabels(["Severity", "Code", "Location", "Message"])
@@ -291,21 +433,27 @@ class MainWindow(QMainWindow):
         self.validation_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.validation_table.setShowGrid(False)
         self.validation_table.verticalHeader().hide()
+        self.validation_table.verticalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.ResizeToContents
+        )
         self.validation_table.horizontalHeader().setStretchLastSection(True)
         validation_panel = QWidget()
         validation_panel.setObjectName("Panel")
         validation_layout = QVBoxLayout(validation_panel)
         validation_layout.setContentsMargins(16, 12, 16, 12)
-        validation_row = QHBoxLayout()
+        validation_row = QFormLayout()
+        validation_row.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        validation_row.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         self.validation_summary = QLabel("No Robot Pack open")
         self.validation_summary.setObjectName("ValidationSummary")
-        validation_row.addWidget(self.validation_summary, 1)
+        self.validation_summary.setWordWrap(True)
         run_validation = QPushButton("Check simulation readiness")
         run_validation.clicked.connect(lambda: self._validate(ValidationProfile.SIMULATION))
-        validation_row.addWidget(run_validation)
+        validation_row.addRow(self.validation_summary, run_validation)
         validation_layout.addLayout(validation_row)
         self.validation_detail = QLabel("Open a pack to check its authoring metadata.")
         self.validation_detail.setObjectName("Muted")
+        self.validation_detail.setWordWrap(True)
         validation_layout.addWidget(self.validation_detail)
         validation_layout.addWidget(self.validation_table, 1)
         self.validation_table.hide()
@@ -318,7 +466,11 @@ class MainWindow(QMainWindow):
         self.yaml_preview.setFont(mono)
         self.log.setFont(mono)
         bottom_tabs = QTabWidget()
-        bottom_tabs.addTab(validation_panel, "Validation")
+        validation_scroll = QScrollArea()
+        validation_scroll.setWidgetResizable(True)
+        validation_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        validation_scroll.setWidget(validation_panel)
+        bottom_tabs.addTab(validation_scroll, "Validation")
         bottom_tabs.addTab(self.yaml_preview, "YAML Preview")
         bottom_tabs.addTab(self.log, "Session Log")
         bottom_dock = self._add_dock(
@@ -329,8 +481,6 @@ class MainWindow(QMainWindow):
         bottom_dock.setMinimumHeight(180)
         self.setCorner(Qt.Corner.BottomLeftCorner, Qt.DockWidgetArea.LeftDockWidgetArea)
         self.setCorner(Qt.Corner.BottomRightCorner, Qt.DockWidgetArea.RightDockWidgetArea)
-        self.resizeDocks([project_dock, properties_dock], [250, 370], Qt.Orientation.Horizontal)
-        self.resizeDocks([bottom_dock], [180], Qt.Orientation.Vertical)
         self._attach_session_log()
 
         self._build_actions()
@@ -343,15 +493,25 @@ class MainWindow(QMainWindow):
         self._logger.info("Studio window initialized")
         if initial_path is not None:
             self.open_project(initial_path)
+        self._window_sizing = manage_window(self, "studio", preferred=QSize(1500, 920))
+        if not self._window_sizing.has_saved_layout:
+            preview_width = max(300, self.fontMetrics().horizontalAdvance("Create from URDF") + 96)
+            side_width = max(0, self.width() - preview_width - 18)
+            self.resizeDocks(
+                [project_dock, properties_dock],
+                [min(250, int(side_width * 0.4)), min(370, int(side_width * 0.6))],
+                Qt.Orientation.Horizontal,
+            )
+            self.resizeDocks([bottom_dock], [180], Qt.Orientation.Vertical)
 
     def _build_actions(self) -> None:
         file_menu = self.menuBar().addMenu("&File")
-        create_action = QAction("Create from &URDF…", self)
+        create_action = QAction("Create from &URDF", self)
         create_action.setShortcut("Ctrl+N")
         create_action.triggered.connect(self._create_from_urdf_dialog)
         file_menu.addAction(create_action)
 
-        open_action = QAction("&Open Robot Pack…", self)
+        open_action = QAction("&Open Robot Pack", self)
         open_action.setShortcut("Ctrl+O")
         open_action.triggered.connect(self._open_dialog)
         file_menu.addAction(open_action)
@@ -362,7 +522,7 @@ class MainWindow(QMainWindow):
         self.save_action.triggered.connect(self._save)
         file_menu.addAction(self.save_action)
 
-        self.export_action = QAction("&Export As…", self)
+        self.export_action = QAction("&Export As", self)
         self.export_action.setShortcut("Ctrl+Shift+S")
         self.export_action.setEnabled(False)
         self.export_action.triggered.connect(self._export_dialog)
@@ -436,6 +596,10 @@ class MainWindow(QMainWindow):
         color = self._appearance.theme.accent
         for action, icon in self._icon_actions:
             action.setIcon(studio_icon(icon, color))
+        for button, icon, primary in self._welcome_buttons:
+            button.setIcon(
+                studio_icon(icon, self._appearance.theme.on_accent if primary else color)
+            )
         self._decorate_tree()
 
     def _decorate_tree(self) -> None:
@@ -485,11 +649,13 @@ class MainWindow(QMainWindow):
         """Open a Robot Pack and populate all editor panels."""
         self._logger.info("Opening Robot Pack: %s", Path(path))
         try:
-            project = StudioProject.open(path)
+            with BusyDialog("Opening RobotPack…", self, str(path)) as loading:
+                project = loading.run(lambda: StudioProject.open(path))
+                loading.set_stage("Preparing the module preview…", project.pack.manifest.name)
+                self._set_project(project)
         except Exception as error:
             self._show_error("Could not open Robot Pack", error)
             return
-        self._set_project(project)
         self._logger.info(
             "Opened Robot Pack '%s' from %s",
             project.pack.id,
@@ -611,6 +777,7 @@ class MainWindow(QMainWindow):
             if asset is not None:
                 self.viewport.render_module(asset, module)
                 self.preview_stack.setCurrentWidget(self.viewport)
+                self.preview_hint.show()
                 return
 
     def _render_module(self, module_id: str) -> None:
@@ -623,51 +790,53 @@ class MainWindow(QMainWindow):
             self._logger.debug("Rendered module '%s'", module_id)
 
     def _create_from_urdf_dialog(self) -> None:
-        urdf_path, _ = QFileDialog.getOpenFileName(
+        urdf_path = _select_path(
             self,
             "Select a URDF",
-            "",
-            "URDF files (*.urdf *.xml);;All files (*)",
-            options=_FILE_DIALOG_OPTIONS,
+            name_filter="URDF files (*.urdf *.xml);;All files (*)",
         )
         if not urdf_path:
             return
         asset_roots: tuple[str | Path, ...] = ()
         try:
-            preview = URDFImporter().load(urdf_path)
+            with BusyDialog("Inspecting URDF…", self, urdf_path) as loading:
+                preview = loading.run(lambda: URDFImporter().load(urdf_path))
         except Exception as error:
             self._show_error("Could not inspect URDF", error)
             return
         self._logger.info("Inspected URDF for import: %s", urdf_path)
         if any("mesh could not be resolved" in warning for warning in preview.warnings):
-            asset_root = QFileDialog.getExistingDirectory(
+            asset_root = _select_path(
                 self,
                 "Select the package or mesh asset root",
                 str(Path(urdf_path).parent),
-                options=_FILE_DIALOG_OPTIONS | QFileDialog.Option.ShowDirsOnly,
+                file_mode=QFileDialog.FileMode.Directory,
             )
             if not asset_root:
                 return
             asset_roots = (asset_root,)
-        destination, _ = QFileDialog.getSaveFileName(
+        destination = _select_path(
             self,
             "Choose a new Robot Pack folder",
             str(Path(urdf_path).with_suffix("")),
             "Robot Pack folder (*)",
-            options=_FILE_DIALOG_OPTIONS,
+            file_mode=QFileDialog.FileMode.AnyFile,
+            accept_mode=QFileDialog.AcceptMode.AcceptSave,
         )
         if not destination:
             return
         try:
-            project = StudioProject.create_from_urdf(
-                urdf_path,
-                destination,
-                asset_roots=asset_roots,
-            )
+            with BusyDialog("Creating RobotPack…", self, destination) as loading:
+                project = loading.run(
+                    lambda: StudioProject.create_from_urdf(
+                        urdf_path, destination, asset_roots=asset_roots
+                    )
+                )
+                loading.set_stage("Preparing the module preview…", project.pack.manifest.name)
+                self._set_project(project)
         except Exception as error:
             self._show_error("Could not create Robot Pack", error)
             return
-        self._set_project(project)
         warnings = next(iter(project.imported_assets.values())).warnings
         self._logger.info("Created draft Robot Pack: %s", project.loaded.root)
         if warnings:
@@ -677,10 +846,10 @@ class MainWindow(QMainWindow):
             self._logger.info("URDF import completed without warnings")
 
     def _open_dialog(self) -> None:
-        path = QFileDialog.getExistingDirectory(
+        path = _select_path(
             self,
             "Open Robot Pack",
-            options=_FILE_DIALOG_OPTIONS | QFileDialog.Option.ShowDirsOnly,
+            file_mode=QFileDialog.FileMode.Directory,
         )
         if path:
             self.open_project(path)
@@ -688,29 +857,36 @@ class MainWindow(QMainWindow):
     def _export_dialog(self) -> None:
         if self.project is None:
             return
-        destination, _ = QFileDialog.getSaveFileName(
+        destination = _select_path(
             self,
             "Export to a new Robot Pack folder",
             str(self.project.loaded.root.with_name(self.project.loaded.root.name + "_edited")),
             "Robot Pack folder (*)",
-            options=_FILE_DIALOG_OPTIONS,
+            file_mode=QFileDialog.FileMode.AnyFile,
+            accept_mode=QFileDialog.AcceptMode.AcceptSave,
         )
         if not destination:
             return
+        current = self.project
         try:
-            project = self.project.export(destination)
+            with BusyDialog("Exporting RobotPack…", self, destination) as loading:
+                project = loading.run(lambda: current.export(destination))
+                reopened = loading.run(lambda: StudioProject.open(project.loaded.root))
+                loading.set_stage("Preparing the exported pack…", reopened.pack.manifest.name)
+                self._set_project(reopened)
         except Exception as error:
             self._show_error("Could not export Robot Pack", error)
             return
-        self._set_project(StudioProject.open(project.loaded.root))
         self._logger.info("Exported Robot Pack to %s", destination)
         self.statusBar().showMessage(f"Exported {destination}", 8000)
 
     def _save(self) -> None:
         if self.project is None:
             return
+        current = self.project
         try:
-            self.project = self.project.save()
+            with BusyDialog("Saving RobotPack…", self, str(current.loaded.root)) as loading:
+                self.project = loading.run(current.save)
         except Exception as error:
             self._show_error("Could not save Robot Pack", error)
             return
@@ -916,7 +1092,7 @@ class MainWindow(QMainWindow):
         panel = QWidget()
         layout = QVBoxLayout(panel)
         layout.addWidget(QLabel(f"<b>Link</b><br>{link_name}"))
-        add_button = QPushButton("Add connector to this link…")
+        add_button = QPushButton("Add connector to this link")
         add_button.clicked.connect(lambda: self._add_connector_dialog(module_id, link_name))
         layout.addWidget(add_button)
         layout.addStretch(1)
@@ -1062,7 +1238,7 @@ class MainWindow(QMainWindow):
         panel = QWidget()
         layout = QVBoxLayout(panel)
         layout.addWidget(QLabel("Create reusable connector types before assigning connectors."))
-        add_button = QPushButton("Add connector type…")
+        add_button = QPushButton("Add connector type")
         add_button.clicked.connect(self._add_connector_type_dialog)
         layout.addWidget(add_button)
         layout.addStretch(1)
@@ -1077,7 +1253,7 @@ class MainWindow(QMainWindow):
         )
         guidance.setWordWrap(True)
         layout.addWidget(guidance)
-        add_button = QPushButton("Add model view…")
+        add_button = QPushButton("Add model view")
         add_button.clicked.connect(self._add_model_view_dialog)
         layout.addWidget(add_button)
         layout.addStretch(1)
@@ -1141,9 +1317,8 @@ class MainWindow(QMainWindow):
     def _add_model_view_dialog(self) -> None:
         if self.project is None:
             return
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Add model view")
-        layout = QFormLayout(dialog)
+        dialog = _FormDialog(self, "Add model view", "add-model-view", QSize(760, 700))
+        layout = dialog.form
         model_view_id = QLineEdit()
         model_view_id.setPlaceholderText("for example: smores_topology")
         name = QLineEdit()
@@ -1163,12 +1338,6 @@ class MainWindow(QMainWindow):
         layout.addRow("Available at runtime", runtime_mode)
         layout.addRow("Default view", default_view)
         layout.addRow("Builder configuration", configuration)
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
-        layout.addRow(buttons)
         model_view: ModelViewSpec | None = None
         while dialog.exec() == int(QDialog.DialogCode.Accepted):
             try:
@@ -1494,9 +1663,8 @@ class MainWindow(QMainWindow):
     def _add_connector_type_dialog(self) -> None:
         if self.project is None:
             return
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Add connector type")
-        layout = QFormLayout(dialog)
+        dialog = _FormDialog(self, "Add connector type", "add-connector-type", QSize(680, 620))
+        layout = dialog.form
         type_id = QLineEdit()
         type_id.setPlaceholderText("for example: smores_ep")
         name = QLineEdit()
@@ -1513,12 +1681,6 @@ class MainWindow(QMainWindow):
         layout.addRow("Active connector", active)
         layout.addRow("Gender", gender)
         layout.addRow("Custom metadata", metadata)
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
-        layout.addRow(buttons)
         connector_type: ConnectorTypeSpec | None = None
         while dialog.exec() == int(QDialog.DialogCode.Accepted):
             try:
@@ -1556,9 +1718,10 @@ class MainWindow(QMainWindow):
                 "Select Connector Types and create a reusable type before adding a connector.",
             )
             return
-        dialog = QDialog(self)
-        dialog.setWindowTitle(f"Add connector to {link_name}")
-        layout = QFormLayout(dialog)
+        dialog = _FormDialog(
+            self, f"Add connector to {link_name}", "add-connector", QSize(720, 720)
+        )
+        layout = dialog.form
         connector_id = QLineEdit()
         connector_id.setPlaceholderText("for example: front_face")
         connector_type = QComboBox()
@@ -1578,12 +1741,6 @@ class MainWindow(QMainWindow):
         layout.addRow("Docking axis", docking)
         layout.addRow("Approach axis", approach)
         layout.addRow("Custom fields", metadata)
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
-        layout.addRow(buttons)
         connector: ConnectorSpec | None = None
         while dialog.exec() == int(QDialog.DialogCode.Accepted):
             try:

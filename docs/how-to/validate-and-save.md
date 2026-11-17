@@ -15,7 +15,7 @@ part of this handoff.
 
 The URDF importer does not create a model-view recipe. Add one explicitly:
 
-1. Select **Model Views** in Project and click **Add model view…**.
+1. Select **Model Views** in Project and click **Add model view**.
 2. In **Add model view**, enter these values:
 
 | Field | Value |
@@ -83,13 +83,13 @@ Use **YAML Preview** to confirm that the current documents contain:
 - `front` and `rear` on `base_link` with opposite docking and approach axes.
 - The runtime-enabled, default `module_topology` recipe.
 
-You can reopen the saved directory with **File → Open Robot Pack…** (`Ctrl+O`)
+You can reopen the saved directory with **File → Open Robot Pack** (`Ctrl+O`)
 to verify the persisted project. Reopening replaces the current document, so
 save pending changes first. A restarted runtime will read these same files.
 
 ## Export another copy when needed
 
-Use **File → Export As…** (`Ctrl+Shift+S`) to create a new self-contained
+Use **File → Export As** (`Ctrl+Shift+S`) to create a new self-contained
 directory. In **Export to a new Robot Pack folder**, choose a new workspace
 folder name, such as `workshop_cube_copy`; it must not already exist.
 Successful export opens that copy as the current project.

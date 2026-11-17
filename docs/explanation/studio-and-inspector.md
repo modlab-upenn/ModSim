@@ -16,11 +16,26 @@ simulation reaches a responsive GUI.
 
 ## Builder document ownership
 
-`modsim_robotics_studio.app.main()` resolves the selected pack before creating
-the application, configures session logging, and constructs `MainWindow`.
-The standalone launcher accepts the same explicit pack names or paths as the
-CLI. Launching the window does not initialize the user's library or choose an
-implicit robot.
+`modsim_robotics_studio.app.main()` resolves a supplied pack selector, configures
+session logging, and initializes the shared theme and application icon. It
+shows `StartupSplash` and calls `play_intro()` before importing and constructing
+`MainWindow`. The Qt event loop animates the supplied SVG logo for approximately
+1.1 seconds before that heavier initialization. `present(window)` shows the
+prepared main window after at least three seconds have elapsed since the splash
+first appeared. Initialization time counts toward this minimum. The splash can
+pause while GUI-thread imports or VTK construction run; its animation is a
+branding sequence, independent of measured application progress. Closing the
+splash cancels the handoff, and startup failure closes it immediately.
+With no selector it passes
+`initial_path=None`, leaving the Builder at its welcome screen without a
+`StudioProject`. The standalone launcher and CLI support both this blank
+authoring state and explicit pack names or paths. Launching the window does not
+initialize the user's library or choose an implicit robot.
+
+The blank Builder provides **Open Robot Pack** and **Create from URDF** while
+Save and Export As remain disabled. It logs to
+`<working-directory>/.modsim/logs/studio.log` unless `MODSIM_STUDIO_LOG` overrides
+the path. Opening or importing a pack later in the session keeps that same log.
 
 `MainWindow` owns widgets, selection, dialogs, and the current `StudioProject`.
 `StudioProject` is a GUI-independent frozen dataclass in `project.py`. It holds
@@ -69,9 +84,19 @@ classDiagram
 Opening a pack first uses `RobotPackLoader`, then imports every declared URDF
 through `URDFImporter`. **Create from URDF** instead calls
 `StudioProject.create_from_urdf()`, which delegates draft generation to
-`DraftPackBuilder`. This preserves the distinction between the mechanical
-asset and authored connector semantics described in the
-[RobotPack pipeline](robot-pack-pipeline.md).
+`DraftPackBuilder`. Successful import writes a new draft directory immediately,
+then installs the resulting project in the window and enables Save and Export
+As. Later semantic edits remain in memory until persisted. This preserves the
+distinction between the mechanical asset and authored connector semantics
+described in the [RobotPack pipeline](robot-pack-pipeline.md).
+
+Document parsing and persistence run through `BusyDialog.run()` in a temporary
+worker. A window-modal branded panel guards the active document while a nested
+Qt event loop services painting and timers. Only GUI-independent importer and
+`StudioProject` work enters that worker. Results return to `MainWindow` before
+widgets, project selection, or VTK scenes change. The worker finishes before
+the action returns; exceptions propagate to the existing user-error handler.
+Preview construction remains on the GUI thread with its own loading stage.
 
 Editors call methods such as `update_module_metadata()`, `update_connector()`,
 `update_connector_type()`, and `update_model_view()`. These methods revalidate
@@ -110,7 +135,9 @@ Xacro or fetch remote assets, and leaves texture-image handling deferred.
 | `main_window.py` | Project tree, property editors, validation actions, dialogs, and dirty-state handling. |
 | `viewport.py` | PyVista/VTK geometry, layers, picking, and camera behavior. |
 | `user_errors.py`, `session_logging.py` | Actionable input errors and session diagnostics outside saved pack contents. |
-| `appearance.py`, `chrome.py`, `icons.py`, `visual_colors.py` | Shared palettes, native chrome, icons, and stable category colors. |
+| `appearance.py`, `chrome.py`, `icons.py`, `visual_colors.py` | Production palettes, shared header/theme picker, branded toolbar glyphs, and stable category colors. |
+| `_branding.py`, `_desktop.py`, `_loading.py`, `_splash_animation.py`, `assets/branding/` | Packaged assets and their provenance, desktop identity and icon registration, outlined logos and SVG animation, timed startup splash, document loading, and runtime loading panel. |
+| `_window_sizing.py` | Completed-layout and font-aware sizing in logical pixels, parent/pointer monitor selection, desktop bounds, and local normal-geometry/dock-layout preferences. |
 
 The Builder exposes **File**, **Validate**, and **View** menus. It currently
 has no **Run** button or embedded Runtime Inspector. Simulation starts through
@@ -120,8 +147,11 @@ separate child described below is specifically the native MuJoCo viewer host.
 
 ## Selecting a live execution owner
 
-`runtime_app.main()` creates `RuntimeInspectorWindow`. A zero-delay Qt timer
-starts the configured demonstration after the window is shown. The window
+`runtime_app.main()` uses the same animated intro and three-second minimum
+splash before presenting `RuntimeInspectorWindow`. The window's first
+`showEvent` schedules the configured demonstration through a zero-delay Qt
+timer, guarded against starting it again. Constructing a hidden window does
+not start execution. The window
 chooses its controller from `RuntimeInspectorConfig.viewer_enabled`:
 
 ```mermaid
@@ -135,6 +165,15 @@ flowchart TD
   F --> G[Immutable RuntimeInspectorFrame]
   G --> H[Presenter and retained GUI widgets]
 ```
+
+After the branding splash hands off, the window keeps its runtime loading
+artwork visible until its presenter accepts and
+displays a valid frame. Status messages describe initialization without
+inventing a completion percentage. Stop remains available. Terminal paths
+stop the animation even if no frame arrives. Once a frame is presented, the
+normal workspace tabs take over without an additional minimum display time;
+no new loading state enters `WorldState` or
+the runtime protocol.
 
 These are alternative ownership paths. Semantic-only inspection, including
 `--no-viewer`, uses `RuntimeInspectorThreadController` and

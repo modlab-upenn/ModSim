@@ -5,7 +5,8 @@ sidebar_label: Source map
 
 Use this map to locate a responsibility after reading the
 [architecture overview](index.md). It inventories **every Python file under
-`src/` in this documentation revision**, grouped by its owning subsystem. The
+`src/` in this documentation revision**: 115 files across the core package
+(79), MuJoCo adapter (7), and Studio (29), grouped by their owning subsystem. The
 architecture chapters explain how those files cooperate; the
 [API reference](../reference/python-api.mdx) describes individual public objects
 in the currently published API slice.
@@ -237,14 +238,30 @@ The optional adapter owns compiled mechanics, native handles, actuators, constra
 
 Studio consumes core APIs and immutable runtime frames. It owns widgets, cameras, themes, and user interaction. See [studio applications architecture](studio-and-inspector.md).
 
+Both application entry points create the Qt application, configure the shared
+desktop identity, choose a theme-matched application icon, and paint the startup
+splash. Its animated intro precedes the heavier main-window imports and
+construction; the prepared window is presented after the splash's three-second
+minimum, with initialization time included. Linux desktop
+registration runs before any native window is created. The shared loading
+helpers also keep Qt-free document work
+off the GUI thread during Builder open, import, Save, and Export As operations;
+widget and viewport updates remain on the GUI thread. Inspector runtime ownership
+still belongs to its worker or process controller, independently of loading UI.
+
 | File | Responsibility | Useful entry points |
 | --- | --- | --- |
 | `__init__.py` | ModSim Studio desktop application. | Package exports |
 | `__main__.py` | Run ``modsim-robotics-studio`` with ``python -m modsim_robotics_studio``. | Module launcher |
+| `_branding.py` | Private package-relative production assets, authoritative theme palettes, proportional SVG rendering, application icons, and Qt application identity. | `asset_path`<br/>`theme_palette`<br/>`vector_pixmap`<br/>`application_icon`<br/>`configure_application_identity` |
+| `_desktop.py` | Qt-free Windows process identity before Qt startup and Linux per-user launcher/icon registration using the current Python environment. | `APPLICATION_ID`<br/>`configure_native_process_identity`<br/>`register_desktop_entry` |
+| `_loading.py` | Private shared wordmark, startup splash, live loading panels, and guarded background document operations. | `BrandLogo`<br/>`StartupSplash`<br/>`LoadingPanel`<br/>`BusyDialog` |
+| `_splash_animation.py` | Private SVG-layer animation that assembles the supplied symbol, reveals the outlined wordmark, and pulses the completed startup logo. | `AnimatedBrandLogo` |
+| `_window_sizing.py` | Shared logical-pixel window sizing, monitor bounds, font-aware preferences, normal geometry restoration, and main-window dock persistence. | `WindowSizingPolicy`<br/>`manage_window` |
 | `app.py` | ModSim Studio process entry point. | `main`<br/>`cli` |
 | `appearance.py` | Application-wide Studio colors and local user appearance preferences. | `StudioTheme`<br/>`ThemeManager` |
 | `chrome.py` | Shared native Studio header, theme picker, and compact property widgets. | `ThemePicker`<br/>`StudioHeader`<br/>`VectorEdit` |
-| `icons.py` | Small original line icons; no third-party artwork or icon dependency. | `studio_icon` |
+| `icons.py` | Theme-matched packaged toolbar glyphs, in-memory color selection, and small fallback glyphs for search, joints, and files. | `studio_icon` |
 | `launcher.py` | Dependency-friendly launcher for the optional ``modsim-robotics-studio`` command. | `cli` |
 | `main_window.py` | Main ModSim Studio Robot Pack Builder window. | `MainWindow` |
 | `project.py` | GUI-independent document model for ModSim Studio. | `StudioProject` |

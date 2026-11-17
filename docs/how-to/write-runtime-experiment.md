@@ -52,11 +52,7 @@ def main() -> None:
             on_event(event)
 
         connection = next(
-            (
-                event.connection_id
-                for event in dock_events
-                if isinstance(event, DockCommitted)
-            ),
+            (event.connection_id for event in dock_events if isinstance(event, DockCommitted)),
             None,
         )
         if connection is None:

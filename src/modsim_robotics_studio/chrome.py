@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from html import escape
 
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
@@ -20,6 +20,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from modsim_robotics_studio._branding import application_icon
+from modsim_robotics_studio._loading import BrandLogo
 from modsim_robotics_studio.appearance import THEMES, ThemeManager, theme_manager
 from modsim_robotics_studio.icons import studio_icon
 
@@ -59,12 +61,10 @@ class StudioHeader(QToolBar):
         self.setMovable(False)
         self.setFloatable(False)
         self._manager = theme_manager()
-        self._logo = QLabel()
-        self._logo.setFixedSize(36, 32)
+        self._logo = BrandLogo()
+        self._logo.setFixedSize(210, 44)
+        self._logo.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.addWidget(self._logo)
-        brand = QLabel("ModSim Studio")
-        brand.setObjectName("Brand")
-        self.addWidget(brand)
         self.addSeparator()
         workspace_label = QLabel(workspace)
         workspace_label.setObjectName("Workspace")
@@ -81,8 +81,7 @@ class StudioHeader(QToolBar):
         self._manager.changed.connect(self._refresh_logo)
 
     def _refresh_logo(self) -> None:
-        icon = studio_icon("cube", self._manager.theme.accent, 30)
-        self._logo.setPixmap(icon.pixmap(QSize(30, 30)))
+        icon = application_icon(self._manager.theme.id)
         window = self.parentWidget()
         if window is not None:
             window.setWindowIcon(icon)

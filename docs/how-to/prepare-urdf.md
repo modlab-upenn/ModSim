@@ -3,19 +3,19 @@ title: Prepare a module URDF
 sidebar_label: Prepare a URDF
 ---
 
-Start with a local URDF describing one reusable module. It supplies links,
+Start by creating a URDF file for a single reusable module. It supplies links,
 geometry, joints, and inertial properties. Studio will add the connector
 semantics after import.
 
-This guide provides a complete cube model so that the remaining steps have a
-known size, mass, and coordinate frame. You can follow it without CAD files,
-meshes, ROS, or a source checkout.
+This guide provides an example model of a cube with a
+known size, mass, and coordinate frame. This does not require making a CAD model or any additional installations as the motivation is to understand the workflow and the process. 
+
+Generally you would use the CAD model of the robot and export the URDF from the CAD tool.
 
 ## Create the example model
 
 In a text editor, save the following as **`workshop_cube.urdf`** in an ordinary
-working folder, such as `Documents/modsim_models`. Save plain XML, not a rich
-text document or a file ending in `.urdf.txt`.
+working folder, such as `Documents/modsim_models`. Check to make sure that the file is not saved with a .txt extension and is a URDF extension.
 
 ```xml
 <?xml version="1.0"?>
@@ -61,9 +61,9 @@ visual and collision boxes make its appearance and contact geometry easy to
 compare. The URDF robot name makes the imported pack and module IDs
 `workshop_cube`, distinct from the installed `generic_cube` starter.
 
-## Prepare a model of your own
+## Using your own URDF models
 
-For an existing robot, check these parts before importing:
+For an existing robot, check these parts of your URDF before importing:
 
 | Part | What to check |
 | --- | --- |

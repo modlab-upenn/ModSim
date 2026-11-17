@@ -14,7 +14,7 @@ not measured limits or tolerances for a physical connector.
 
 ## Create the reusable type
 
-Select **Connector Types** in Project and click **Add connector type…**.
+Select **Connector Types** in Project and click **Add connector type**.
 In **Add connector type**, enter:
 
 | Field | Value |
@@ -69,11 +69,13 @@ Leaving **Declare docking policy** unchecked uses the current defaults:
 automatic latching off, measured alignment, and no declared cooldown or break
 force. The docking demonstration sends the required explicit request.
 
+Click on Apply Connector Type to save the changes. 
+
 ## Place the front and rear interfaces
 
 Expand **Module Types → Workshop Cube → Links** and select **base_link**. If
 you kept the importer's display name, the module row is `workshop_cube` instead.
-Click **Add connector to this link…**.
+Click **Add connector to this link**.
 
 In **Add connector to base_link**, enter the first column below and click
 **OK**. Then select `base_link` again, reopen the dialog, and add the second.

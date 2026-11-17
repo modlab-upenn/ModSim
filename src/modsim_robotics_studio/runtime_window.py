@@ -4,15 +4,18 @@
 from __future__ import annotations
 
 import logging
+from functools import partial
 
-from PySide6.QtCore import Qt, QTimer, Slot
-from PySide6.QtGui import QCloseEvent
+from PySide6.QtCore import QSize, Qt, QTimer, Slot
+from PySide6.QtGui import QCloseEvent, QShowEvent
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
     QSplitter,
     QStackedWidget,
     QTabWidget,
@@ -22,8 +25,11 @@ from PySide6.QtWidgets import (
 
 from modsim_robotics.runtime import RuntimeInspectorConfig, RuntimeInspectorFrame
 from modsim_robotics.runtime.reconfiguration import ReconfigurationPhase
+from modsim_robotics_studio._loading import LoadingPanel
+from modsim_robotics_studio._window_sizing import manage_window
 from modsim_robotics_studio.appearance import theme_manager
 from modsim_robotics_studio.chrome import StudioHeader
+from modsim_robotics_studio.icons import studio_icon
 from modsim_robotics_studio.runtime_events import RuntimeEventLogWidget
 from modsim_robotics_studio.runtime_graph import TopologyGraphWidget
 from modsim_robotics_studio.runtime_lattice import CubicLatticeWidget
@@ -46,6 +52,21 @@ from modsim_robotics_studio.visual_colors import CategoryColors
 
 _LOGGER = logging.getLogger("modsim_robotics.runtime_inspector")
 _FRAME_BATCH_DELAY_MS = 8
+
+
+def _size_current_page(container: QStackedWidget | QTabWidget, _index: int = -1) -> None:
+    """Keep inactive views from reserving workspace space."""
+    for index in range(container.count()):
+        page = container.widget(index)
+        if page is None:
+            continue
+        policy = (
+            QSizePolicy.Policy.Expanding
+            if page is container.currentWidget()
+            else QSizePolicy.Policy.Ignored
+        )
+        page.setSizePolicy(policy, policy)
+    container.updateGeometry()
 
 
 class RuntimeInspectorWindow(QMainWindow):
@@ -72,8 +93,8 @@ class RuntimeInspectorWindow(QMainWindow):
         self._frame_batch_timer.timeout.connect(self._flush_pending_frames)
 
         self.setWindowTitle(f"ModSim Runtime Inspector — {config.pack_path.name}")
-        self.resize(1180, 820)
         self.header = StudioHeader(self, "Runtime Inspector")
+        self.header.setObjectName("StudioHeader")
         self.addToolBar(self.header)
 
         self.run_state = QLabel("Starting simulation…")
@@ -192,11 +213,40 @@ class RuntimeInspectorWindow(QMainWindow):
         log_split.setSizes([400, 250])
         self.workspace_tabs.addTab(log_split, "Event log")
 
+        self.loading_panel = LoadingPanel("Runtime Inspector", self)
+        self.loading_panel.set_steps(
+            (
+                "Prepare runtime execution",
+                "Load and validate Robot Pack",
+                "Initialize simulation backend",
+                "Receive first simulation state",
+            )
+        )
+        self.loading_panel.set_stage(
+            "Preparing runtime…", "The runtime workspace will appear with its first state update."
+        )
+        self.workspace_stack = QStackedWidget()
+        self.workspace_stack.addWidget(self.loading_panel)
+        self.workspace_stack.addWidget(self.workspace_tabs)
+        for container in (
+            self.view_stack,
+            self.planning_stack,
+            self.target_view_stack,
+            self.decisions_stack,
+            self.workspace_tabs,
+            self.workspace_stack,
+        ):
+            container.currentChanged.connect(partial(_size_current_page, container))
+            _size_current_page(container)
+        self.workspace_scroll = QScrollArea()
+        self.workspace_scroll.setWidgetResizable(True)
+        self.workspace_scroll.setWidget(self.workspace_stack)
+
         central = QWidget()
         central_layout = QVBoxLayout(central)
         central_layout.setContentsMargins(10, 10, 10, 10)
         central_layout.addWidget(header)
-        central_layout.addWidget(self.workspace_tabs, 1)
+        central_layout.addWidget(self.workspace_scroll, 1)
         self.setCentralWidget(central)
         self.statusBar().showMessage("Runtime has not started")
 
@@ -222,8 +272,14 @@ class RuntimeInspectorWindow(QMainWindow):
         self.lattice.snap_cells_changed.connect(self._set_snap_cells_visible)
         self.lattice.orientation_axes_changed.connect(self._set_orientation_axes_visible)
         self.lattice.orbit_requested.connect(self._orbit_lattice)
+        theme_manager().changed.connect(self._refresh_action_icons)
+        self._refresh_action_icons()
+        self._window_sizing = manage_window(self, "runtime-inspector", preferred=QSize(1180, 820))
 
-        QTimer.singleShot(0, self.start)
+    def showEvent(self, event: QShowEvent) -> None:
+        super().showEvent(event)
+        if not self._started:
+            QTimer.singleShot(0, self.start)
 
     @property
     def last_error(self) -> str | None:
@@ -242,6 +298,10 @@ class RuntimeInspectorWindow(QMainWindow):
             return
         self._started = True
         self.stop_button.setEnabled(True)
+        self.loading_panel.set_busy(True)
+        self.loading_panel.set_stage(
+            "Starting runtime…", "Preparing the Robot Pack, scenario, and simulation backend."
+        )
         self.statusBar().showMessage("Starting runtime…")
         self._controller.start()
 
@@ -251,6 +311,10 @@ class RuntimeInspectorWindow(QMainWindow):
         if not self._controller.is_running():
             return
         self._shutdown_requested = True
+        self.loading_panel.set_busy(False)
+        self.loading_panel.finish_steps("stopped")
+        if self._latest_frame is None:
+            self.loading_panel.set_stage("Stopping runtime…", "Waiting for backend shutdown.")
         self.stop_button.setEnabled(False)
         self.pause_button.setEnabled(False)
         self.status_label.setText("Stopping runtime…")
@@ -260,6 +324,7 @@ class RuntimeInspectorWindow(QMainWindow):
 
     def stop_and_wait(self, timeout_ms: int = 10_000) -> bool:
         """Stop the worker and wait for backend shutdown during app teardown."""
+        self.loading_panel.set_busy(False)
         return self._controller.stop_and_wait(timeout_ms)
 
     @Slot(object)
@@ -288,6 +353,10 @@ class RuntimeInspectorWindow(QMainWindow):
         frame = self._presenter.frame
         if frame is None:
             return
+        if self._latest_frame is None:
+            self.loading_panel.set_busy(False)
+            self.loading_panel.finish_steps("complete")
+            self.workspace_stack.setCurrentWidget(self.workspace_tabs)
         self._latest_frame = frame
         self._update_run_state()
         if frame.planning is not None:
@@ -308,6 +377,18 @@ class RuntimeInspectorWindow(QMainWindow):
     def _receive_status(self, message: str) -> None:
         self.status_label.setText(message)
         self.statusBar().showMessage(message)
+        if self._latest_frame is None and not self._shutdown_requested:
+            detail = "Waiting for the first runtime state update."
+            if message.startswith("Loading and validating Robot Pack"):
+                self.loading_panel.set_step(1)
+                detail = "Reading the Robot Pack and checking simulation requirements."
+            elif message.startswith(f"Starting {self._config.backend} backend"):
+                self.loading_panel.set_step(2)
+                detail = "Loading mechanical assets and preparing the simulation scenario."
+            elif message.startswith("Running "):
+                self.loading_panel.set_step(3)
+                detail = "Building the initial model view, metrics, and event log."
+            self.loading_panel.set_stage(message, detail)
 
     @Slot()
     def _toggle_playback(self) -> None:
@@ -322,7 +403,7 @@ class RuntimeInspectorWindow(QMainWindow):
         requested = not self._playback_paused
         self._playback_pending = requested
         self.pause_button.setEnabled(False)
-        self.pause_button.setText("Pausing…" if requested else "Resuming…")
+        self.pause_button.setText("Pausing" if requested else "Resuming")
         self.statusBar().showMessage(self.pause_button.text())
         self._controller.set_paused(requested)
 
@@ -332,6 +413,7 @@ class RuntimeInspectorWindow(QMainWindow):
         self._playback_pending = None
         self._playback_available = True
         self.pause_button.setText("Resume" if paused else "Pause")
+        self._refresh_action_icons()
         self.pause_button.setEnabled(
             self._controller.is_running()
             and not self._close_pending
@@ -350,6 +432,10 @@ class RuntimeInspectorWindow(QMainWindow):
     def _runtime_failed(self, message: str) -> None:
         self._last_error = message
         self._shutdown_requested = True
+        self.loading_panel.set_busy(False)
+        self.loading_panel.finish_steps("failed")
+        if self._latest_frame is None:
+            self.loading_panel.set_stage("Runtime could not start", message)
         self.stop_button.setEnabled(False)
         self.pause_button.setEnabled(False)
         self.status_label.setText(message)
@@ -368,9 +454,24 @@ class RuntimeInspectorWindow(QMainWindow):
         self.stop_button.setEnabled(False)
         self.pause_button.setEnabled(False)
         self._finished = True
+        self.loading_panel.set_busy(False)
+        if self._latest_frame is None and self._last_error is None:
+            self.loading_panel.finish_steps("stopped")
+            self.loading_panel.set_stage(
+                "Runtime stopped", "The runtime ended before its first state update."
+            )
         self._update_run_state()
         if self._close_pending:
             QTimer.singleShot(0, self.close)
+
+    @Slot()
+    def _refresh_action_icons(self) -> None:
+        theme = theme_manager().theme
+        self.pause_button.setIcon(
+            studio_icon("play" if self._playback_paused else "pause", theme.on_accent)
+        )
+        self.stop_button.setIcon(studio_icon("stop", theme.danger))
+        self.labels_button.setIcon(studio_icon("visibility", theme.text))
 
     @Slot(str, str)
     def _select_entity(self, kind: str, entity_id: str) -> None:
@@ -594,6 +695,7 @@ class RuntimeInspectorWindow(QMainWindow):
             self.request_stop()
             event.ignore()
             return
+        self.loading_panel.set_busy(False)
         event.accept()
 
 

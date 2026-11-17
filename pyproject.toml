@@ -103,6 +103,10 @@ select = ["B", "E", "F", "I", "RUF", "SIM", "UP"]
 [tool.pyright]
 include = ["src", "tests"]
 exclude = [
+  "src/modsim_robotics_studio/_branding.py",
+  "src/modsim_robotics_studio/_loading.py",
+  "src/modsim_robotics_studio/_splash_animation.py",
+  "src/modsim_robotics_studio/_window_sizing.py",
   "src/modsim_robotics_studio/app.py",
   "src/modsim_robotics_studio/appearance.py",
   "src/modsim_robotics_studio/chrome.py",
@@ -123,6 +127,13 @@ exclude = [
   "tests/test_mblocks_planning_widgets.py",
   "tests/test_runtime_widgets.py",
   "tests/test_studio_appearance.py",
+  "tests/test_studio_brand_theme.py",
+  "tests/test_studio_empty_start.py",
+  "tests/test_studio_file_dialogs.py",
+  "tests/test_studio_loading.py",
+  "tests/test_splash_animation.py",
+  "tests/test_window_sizing.py",
+  "tests/test_runtime_brand_loading.py",
   "tests/test_studio_viewport.py",
   "tests/test_runtime_worker.py",
   # MuJoCo ships no type stubs, so strict mode reports every engine call as

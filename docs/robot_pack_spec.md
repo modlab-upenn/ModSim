@@ -111,7 +111,7 @@ backends still receive a pack directory. Copy packs into a workspace when
 developing a variant that should have its own identity or version.
 
 Use `modsim-robotics pack list` to list installed pack IDs, versions, and paths.
-The CLI commands `studio`, `runtime`, `run`, `dock`, `views`, `pack inspect`, and
+The CLI commands `runtime`, `run`, `dock`, `views`, `pack inspect`, and
 `pack validate` require an explicit pack selector, supplied positionally or with
 `--pack`. A name such as `generic_cube` resolves in the configured library;
 `generic_cube@0.1.0` requests a specific version. Multiple matches cause an
@@ -121,7 +121,11 @@ version-qualified name or an explicit path to disambiguate.
 An absolute path or a relative path such as `./my_robot_pack` bypasses library
 configuration. `--home PATH` selects the home for library lookup. The standalone
 `modsim-robotics-studio` launcher accepts the same selectors and home selection.
-Omitting a selector reports an error even when only the starter is installed.
+`modsim-robotics studio` and `modsim-robotics-studio` open a blank Builder when no
+selector is supplied. That authoring window can create a pack from URDF or open
+an existing directory without initializing a library. A supplied selector still
+resolves the chosen name or path. The pack-reading and runtime commands listed
+above still reject an omitted selector even when only the starter is installed.
 There is no implicit default robot, and these commands never run setup implicitly.
 
 Setup prints shell configuration guidance but does not edit a shell profile or

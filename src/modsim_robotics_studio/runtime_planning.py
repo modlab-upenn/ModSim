@@ -30,6 +30,7 @@ from modsim_robotics.planning.models import PlanningSnapshot, Pose2
 from modsim_robotics.runtime.inspection import RuntimeInspectorFrame
 from modsim_robotics_studio.appearance import theme_manager
 from modsim_robotics_studio.chrome import LegendWidget
+from modsim_robotics_studio.runtime_events import TableRowSizing
 from modsim_robotics_studio.visual_colors import action_colors, visual_colors
 
 
@@ -66,7 +67,7 @@ class ActionHistory(QWidget):
         self.plot.enableAutoRange(x=False, y=False)
         self.plot.setLabel("bottom", "Simulation time", units="s")
         self.plot.getAxis("bottom").enableAutoSIPrefix(False)
-        self.plot.getAxis("left").setWidth(105)
+        self.plot.getAxis("left").setWidth(None)
         self.plot.getViewBox().invertY(True)
         self.plot.setToolTip(
             "One row per docking action. Wheel zooms time only; drag pans time. "
@@ -204,6 +205,7 @@ class PlanningWorkspace(QWidget):
         self.workspace.setLabel("left", "World Y", units="m")
         self.workspace.showGrid(x=True, y=True, alpha=0.15)
         self.action_table = QTableWidget(0, 4)
+        self._action_row_sizing = TableRowSizing(self.action_table)
         self.action_table.setHorizontalHeaderLabels(["Module → parent", "Stage", "State", "Reason"])
         stage_header = self.action_table.horizontalHeaderItem(1)
         assert stage_header is not None
@@ -212,9 +214,8 @@ class PlanningWorkspace(QWidget):
             "earlier groups finish before dependent groups start."
         )
         header = self.action_table.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        for column, width in enumerate((185, 60, 95)):
-            header.resizeSection(column, width)
+        for column in range(3):
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
         header.setStretchLastSection(True)
         self.action_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.action_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -225,6 +226,7 @@ class PlanningWorkspace(QWidget):
         self.timeline = self.history.plot
         self.legend = LegendWidget("Workspace legend")
         self.decisions = QTableWidget(0, 3, self)
+        self._decision_row_sizing = TableRowSizing(self.decisions)
         self.decisions.setHorizontalHeaderLabels(["Time (s)", "Decision", "Explanation"])
         self.decisions.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.decisions.horizontalHeader().setStretchLastSection(True)

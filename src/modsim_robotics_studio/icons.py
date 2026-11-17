@@ -1,8 +1,23 @@
-"""Small original line icons; no third-party artwork or icon dependency."""
+"""Theme-matched toolbar glyphs from the supplied ModSim branding packs."""
+
+from functools import lru_cache
 
 from PySide6.QtCore import QByteArray, Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
+
+from modsim_robotics_studio._branding import asset_path
+from modsim_robotics_studio.appearance import theme_manager
+
+_BRAND_ALIASES = {
+    "cube": "modules",
+    "folder": "folder-open",
+    "link": "connect",
+    "connector": "dock",
+    "graph": "composer",
+    "fit": "fit-view",
+    "palette": "settings",
+}
 
 _PATHS = {
     "cube": '<path d="m12 2 9 5v10l-9 5-9-5V7Zm0 10 9-5M12 12 3 7m9 5v10M7.5 4.5l9 5"/>',
@@ -21,17 +36,31 @@ _PATHS = {
 }
 
 
-def studio_icon(name: str, color: str, size: int = 20) -> QIcon:
-    """Render a scalable, recolorable icon into a high-DPI Qt pixmap."""
-    svg = (
+@lru_cache(maxsize=128)
+def _icon_svg(theme_id: str, name: str, color: str) -> str:
+    if name not in {"search", "joint", "file"}:
+        path = asset_path(theme_id, f"ui/svg/currentcolor/{_BRAND_ALIASES.get(name, name)}.svg")
+        return path.read_text(encoding="utf-8").replace("currentColor", color)
+    return (
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" '
-        f'fill="none" stroke="{QColor(color).name()}" stroke-width="1.6" '
+        f'fill="none" stroke="{color}" stroke-width="1.8" '
         f'stroke-linecap="round" stroke-linejoin="round">{_PATHS[name]}</svg>'
     )
-    pixmap = QPixmap(size * 2, size * 2)
-    pixmap.fill(Qt.GlobalColor.transparent)
-    painter = QPainter(pixmap)
-    QSvgRenderer(QByteArray(svg.encode())).render(painter)
-    painter.end()
-    pixmap.setDevicePixelRatio(2.0)
-    return QIcon(pixmap)
+
+
+def studio_icon(name: str, color: str, size: int = 20) -> QIcon:
+    """Render a recolorable toolbar icon for 100 to 400% display scaling."""
+    svg = _icon_svg(theme_manager().theme.id, name, QColor(color).name())
+    renderer = QSvgRenderer(QByteArray(svg.encode()))
+    icon = QIcon()
+    for scale in (1, 2, 3, 4):
+        pixmap = QPixmap(size * scale, size * scale)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        try:
+            renderer.render(painter)
+        finally:
+            painter.end()
+        pixmap.setDevicePixelRatio(float(scale))
+        icon.addPixmap(pixmap)
+    return icon

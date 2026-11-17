@@ -37,6 +37,7 @@ from modsim_robotics.planning.mblocks.models import LatticeState
 from modsim_robotics.runtime.inspection import RuntimeInspectorFrame
 from modsim_robotics_studio.appearance import theme_manager
 from modsim_robotics_studio.chrome import LegendWidget
+from modsim_robotics_studio.runtime_events import TableRowSizing
 from modsim_robotics_studio.runtime_planning import ActionHistory
 from modsim_robotics_studio.visual_colors import visual_colors
 
@@ -129,10 +130,12 @@ class LatticePlanningWorkspace(QWidget):
         self.plot.addItem(self.pivot_marker)
         self.legend = LegendWidget("Planner legend")
         self.moves = QTableWidget(0, 4)
+        self._move_row_sizing = TableRowSizing(self.moves)
         self.moves.setHorizontalHeaderLabels(["Module", "Destination", "Turn", "Reason"])
         self.moves.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.moves.horizontalHeader().setStretchLastSection(True)
         self.candidates = QTableWidget(0, 2)
+        self._candidate_row_sizing = TableRowSizing(self.candidates)
         self.candidates.setHorizontalHeaderLabels(["Module", "Eligibility at last settled state"])
         self.candidates.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.candidates.horizontalHeader().setStretchLastSection(True)
@@ -157,6 +160,7 @@ class LatticePlanningWorkspace(QWidget):
         layout.addWidget(self.legend)
         layout.addWidget(vertical)
         self.decisions = QTableWidget(0, 3)
+        self._decision_row_sizing = TableRowSizing(self.decisions)
         self.decisions.setHorizontalHeaderLabels(["Time (s)", "Decision", "Explanation"])
         self.decisions.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.decisions.horizontalHeader().setStretchLastSection(True)

@@ -14,11 +14,15 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 pytest.importorskip("pyqtgraph")
 
-from PySide6.QtCore import QPointF, Qt
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QSettings, QSize, Qt
+from PySide6.QtGui import QFont
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication, QStyle, QStyleOptionButton
 
 from modsim_robotics.runtime.inspection import RuntimeEventRow, RuntimeInspectorFrame
 from modsim_robotics.runtime.inspector_runner import RuntimeInspectorConfig
+from modsim_robotics_studio import runtime_window
+from modsim_robotics_studio._window_sizing import manage_window
 from modsim_robotics_studio.appearance import THEMES, theme_manager
 from modsim_robotics_studio.runtime_events import (
     RuntimeEventLogWidget,
@@ -464,6 +468,51 @@ def test_event_table_rejects_unsorted_or_duplicate_sequences() -> None:
         model.set_events((duplicate, duplicate))
 
 
+def test_runtime_tables_resize_default_rows_when_the_font_changes(
+    application: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(RuntimeInspectorWindow, "start", lambda _self: None)
+    window = RuntimeInspectorWindow(
+        RuntimeInspectorConfig(pack_path=tmp_path / "pack", backend="mock")
+    )
+    rows = tuple(
+        RuntimeEventRow(sequence=index, time_s=index * 0.01, kind="DockCommitted")
+        for index in range(10_000)
+    )
+    tables = (
+        window.events.table,
+        window.planning.action_table,
+        window.planning.decisions,
+        window.lattice_planning.moves,
+        window.lattice_planning.candidates,
+        window.lattice_planning.decisions,
+    )
+    try:
+        window.events.set_events(rows)
+        for point_size in (18, 9):
+            for table in tables:
+                font = QFont(table.font())
+                font.setPointSize(point_size)
+                table.setFont(font)
+            application.processEvents()
+            for table in tables:
+                assert (
+                    table.verticalHeader().defaultSectionSize() >= table.fontMetrics().height() + 4
+                )
+            for index in (0, 5_000, 9_999):
+                assert (
+                    window.events.table.rowHeight(index)
+                    >= window.events.table.fontMetrics().height() + 4
+                )
+            assert window.events.model.events == rows
+    finally:
+        window.close()
+        window.deleteLater()
+        application.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
 def test_runtime_window_keeps_target_speed_visible_across_presentations(
     application: QApplication,
     monkeypatch: pytest.MonkeyPatch,
@@ -490,6 +539,136 @@ def test_runtime_window_keeps_target_speed_visible_across_presentations(
         assert window.source_label.text() == "generic_cube@0.1.0 | sample=1"
     finally:
         window.close()
+
+
+@pytest.mark.parametrize("window_size", [QSize(1280, 720), QSize(800, 600)])
+@pytest.mark.parametrize("font_scale", [1.0, 1.5, 2.0])
+def test_runtime_workspace_scrolls_without_hiding_playback_controls(
+    application: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    window_size: QSize,
+    font_scale: float,
+) -> None:
+    theme_manager()
+    original_font = QFont(application.font())
+    enlarged_font = QFont(original_font)
+    enlarged_font.setPointSizeF(original_font.pointSizeF() * font_scale)
+    application.setFont(enlarged_font)
+    monkeypatch.setattr(RuntimeInspectorWindow, "start", lambda _self: None)
+    window = RuntimeInspectorWindow(
+        RuntimeInspectorConfig(pack_path=tmp_path / "pack", backend="mock")
+    )
+    try:
+        window.show()
+        # Let the native first-exposure/configure events and their queued size
+        # correction settle before simulating a later, explicit user resize.
+        assert QTest.qWaitForWindowExposed(window)
+        QTest.qWait(1)
+        # The initial show applies the monitor-aware policy; subsequent user
+        # resizing remains free so this test can inspect constrained layouts.
+        window.resize(window_size)
+        application.processEvents()
+        assert window.size() == window_size
+        assert window.workspace_stack.currentWidget() is window.loading_panel
+
+        window.workspace_stack.setCurrentWidget(window.workspace_tabs)
+        window.workspace_tabs.setTabVisible(1, True)
+        for stack, page, button in (
+            (window.view_stack, window.graph, window.graph.legend.toggle),
+            (window.view_stack, window.lattice, window.lattice.fit_button),
+            (window.target_view_stack, window.target_graph, window.target_graph.legend.toggle),
+            (window.target_view_stack, window.target_lattice, window.target_lattice.fit_button),
+            (window.planning_stack, window.planning, window.planning.history.fit_button),
+            (
+                window.planning_stack,
+                window.lattice_planning,
+                window.lattice_planning.history.fit_button,
+            ),
+        ):
+            window.workspace_tabs.setCurrentIndex(1 if stack is window.planning_stack else 0)
+            if stack is window.target_view_stack:
+                window.target_panel.show()
+            stack.setCurrentWidget(page)
+            viewport = window.workspace_scroll.viewport()
+            # Nested splitters and stacks post layout requests as each view
+            # becomes visible. Scroll against the settled content geometry.
+            for _ in range(10):
+                application.processEvents()
+                window.workspace_scroll.ensureWidgetVisible(button)
+                application.processEvents()
+                button_rect = QRect(button.mapTo(viewport, QPoint()), button.size())
+                if viewport.rect().contains(button_rect):
+                    break
+            assert viewport.rect().contains(button_rect)
+            for control in (window.pause_button, window.labels_button, window.stop_button):
+                assert window.rect().contains(
+                    QRect(control.mapTo(window, QPoint()), control.size())
+                )
+                option = QStyleOptionButton()
+                option.initFrom(control)
+                contents = control.style().subElementRect(
+                    QStyle.SubElement.SE_PushButtonContents, option, control
+                )
+                assert contents.height() >= control.fontMetrics().height()
+
+        planning_scroll = window.workspace_scroll.verticalScrollBar().maximum()
+        window.workspace_tabs.setCurrentIndex(2)
+        application.processEvents()
+        assert window.events.isVisible()
+        assert window.workspace_scroll.verticalScrollBar().maximum() <= planning_scroll
+        assert window.size() == window_size
+    finally:
+        window.close()
+        window.deleteLater()
+        application.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        application.setFont(original_font)
+
+
+def test_runtime_window_restores_normal_size_without_reopening_maximized(
+    application: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = QSettings(str(tmp_path / "window-sizes.ini"), QSettings.Format.IniFormat)
+    monkeypatch.setattr(
+        runtime_window,
+        "manage_window",
+        lambda window, key, **options: manage_window(window, key, settings=settings, **options),
+    )
+    monkeypatch.setattr(RuntimeInspectorWindow, "start", lambda _self: None)
+    config = RuntimeInspectorConfig(pack_path=tmp_path / "pack", backend="mock")
+    first = RuntimeInspectorWindow(config)
+    second: RuntimeInspectorWindow | None = None
+    try:
+        first.show()
+        application.processEvents()
+        assert not first.isMaximized()
+        available = first.screen().availableGeometry()
+        assert first.width() < available.width()
+        assert first.height() < available.height()
+
+        first.resize(first.size() - QSize(12, 12))
+        application.processEvents()
+        normal_size = first.size()
+        first.showMaximized()
+        application.processEvents()
+        first.close()
+        application.processEvents()
+
+        second = RuntimeInspectorWindow(config)
+        second.show()
+        application.processEvents()
+        assert not second.isMaximized()
+        assert second.size() == normal_size
+        assert settings.allKeys()
+    finally:
+        first.close()
+        first.deleteLater()
+        if second is not None:
+            second.close()
+            second.deleteLater()
+        application.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
 def test_runtime_window_stop_keeps_results_and_shows_shutdown_progress(
@@ -553,7 +732,7 @@ def test_runtime_window_pause_control_waits_for_authoritative_acknowledgement(
         application.processEvents()
         assert requested == [True]
         assert not window.pause_button.isEnabled()
-        assert window.pause_button.text() == "Pausing…"
+        assert window.pause_button.text() == "Pausing"
 
         window._receive_playback_state(True)
         assert window.pause_button.isEnabled()

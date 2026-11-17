@@ -245,9 +245,13 @@ Library location and per-command selection within D1:
 - [x] Verify relative and absolute library locations and preserved configurations,
   including ignoring legacy `[defaults].robot_pack`.
 - [x] Verify ID and `ID@VERSION` selection, ambiguity errors instead of latest
-  selection, and errors when a robot selector is omitted.
+  selection, and errors when a robot selector is omitted from read/runtime commands.
 - [x] Verify every pack-reading CLI and standalone Studio selector, `--pack`, and
   `--home`, including explicit paths that bypass library configuration.
+- [x] Document blank `studio` and standalone Studio launches for URDF authoring,
+  preserving explicit selectors for existing packs and all read/runtime commands.
+- [x] Verify the blank Builder launch, import/cancel transitions, session logging,
+  and unchanged required-selector behavior together with the implementation.
 - [x] Rebuild the distributions and repeat listing, named selection, and mock
   docking outside the checkout.
 - [x] Recheck the documentation build and the tutorial's updated command outputs.
@@ -316,7 +320,8 @@ Namespace verification after alignment:
 Superseded default-pack trial evidence:
 
 The following checks covered an earlier default-robot design. The user corrected
-that design: configuration locates the library and each launch selects a robot.
+that design: configuration locates the library and pack-consuming commands select
+a robot explicitly. Studio also supports a blank authoring window.
 These results are historical verification, not completion evidence for the
 current library-selection update.
 
@@ -347,10 +352,26 @@ current library-selection update.
 Setup only prints persistence instructions. No user shell profiles, persistent
 environment settings, or public release state were changed.
 
-Current library-selection evidence: contracts and tutorial commands now describe
-`[paths].robot_packs`, explicit names or paths, version selection, local listing,
+Library-selection evidence before the blank Builder refinement: contracts and
+tutorial commands describe `[paths].robot_packs`, explicit names or paths, version selection, local listing,
 and missing or ambiguous selector errors. New setup records only the library
 location; legacy default-robot settings are preserved but ignored.
+
+The Studio authoring refinement permits an omitted selector to open the existing
+welcome screen, with Open and Create from URDF actions. It does not choose a
+robot, run setup, or relax selector requirements for inspection and runtime.
+The import guide now begins with the blank Builder; import still writes its
+initial draft immediately, and Save persists subsequent semantic edits.
+
+Blank Builder verification: 249 focused CLI, selection, launcher, logging,
+project, and GUI tests passed. They cover omitted selectors with and without
+an installed starter, explicit home selection, optional-dependency errors,
+unchanged pack/runtime selection requirements, canceled import dialogs, and
+real URDF import followed by a GUI edit, Save, and independent reload. The GUI
+tests use real Qt controls and the importer/loader/writer with a viewport stub;
+native GPU rendering remains part of the desktop walkthrough. Ruff, core and
+Studio Pyright, API documentation policy, and the strict-link documentation
+build passed.
 
 - The non-MuJoCo regression suite passed **862 tests**, with 121 marked physics
   cases deselected. Included focused checks cover 70 storage/discovery cases and
@@ -821,6 +842,178 @@ Evidence: remote community-library design and implementation remain planned.
 Installed-pack discovery with `pack list` belongs to D1; no remote catalog,
 download command, or remotely created repository is claimed by the current
 installation workflow.
+
+## G1 Apply native application branding
+
+The supplied ModSim production packs now drive both desktop applications.
+This is native Studio work; the Docusaurus theme and deployment workflow remain
+separate tasks.
+
+- [x] Package the Light, Dark, and Midnight palettes, outlined wordmarks,
+  application icons, toolbar glyphs, and robot artwork with provenance/hashes.
+- [x] Apply shared branding to the Builder and Runtime Inspector, preserving
+  theme preferences and restoring the legacy `graphite` setting as `dark`.
+- [x] Paint startup splashes before heavy window/plotting imports.
+- [x] Add responsive document loading feedback and runtime first-frame feedback,
+  with real stages and indeterminate progress.
+- [x] Update the Studio/runtime contracts and source map for the new ownership.
+- [x] Build a local wheel and source archive and verify their assets.
+- [ ] Review the desktop rendering and interactions with the user, including
+  the native 3D viewport and platform window icons.
+
+Verification: **895 non-MuJoCo tests passed**, with 121 marked physics cases
+deselected. This includes viewport behavior, theme migration, splash cleanup,
+responsive document work, header/text layout, runtime first-frame transitions,
+and failure/stop paths. Ruff lint/format, core and Studio Pyright, the lock
+check, API documentation policy, documentation TypeScript, and the strict-link
+Docusaurus build passed.
+
+The wheel and source archive under ignored `dist/branding-preview/` passed the
+release content/metadata verifier. All 120 copied brand files match the supplied
+source and manifest in both artifacts. An installed copy of the wheel rendered
+each theme's icons, wordmark, and splash, and a real mock runtime presented its
+docking result. That GUI check reused the development environment's optional
+dependencies; a fresh dependency-resolving install could not complete because
+PyPI was inaccessible and the available caches lacked required wheels.
+
+Offscreen captures were inspected for all three themes. Builder welcome
+captures used a viewport stub; a real VTK desktop capture could not initialize
+OpenGL in this headless session. The native desktop walkthrough remains open.
+No package publication or deployment was performed.
+
+Ubuntu dock follow-up: setting a Qt window icon alone left native Wayland
+windows without a matching desktop identity. Both launchers now set
+`io.github.modlab_upenn.ModSim` before creating any splash or window. Linux
+GUI launches register an idempotent per-user desktop entry and a stable Midnight
+app icon. The entry opens the blank Builder using the most recently launched
+GUI's Python environment; its virtualenv interpreter path is preserved.
+Registration errors are logged and do not prevent a window from opening.
+
+Follow-up verification: **905 non-MuJoCo tests passed**, including eight desktop
+metadata cases and two Qt identity/failure cases. Core/Studio type checks,
+Ruff, API policy, the documentation build, and wheel/source artifact checks
+passed. The desktop entry and icon were installed for the current Ubuntu user;
+`desktop-file-validate` and GIO resolved them. A brief native Wayland test
+window emitted the matching `set_app_id` value. That probe used a neutral Qt
+platform theme to bypass an incompatible GTK settings schema in the agent's
+environment. Existing application processes need to be closed and relaunched;
+native 3D viewing and the full desktop walkthrough remain for user review.
+
+Cross-platform/high-DPI follow-up: Windows launches now set the process's
+AppUserModelID before QApplication construction. Linux keeps its registered
+desktop identity, while macOS uses Qt's runtime Dock/window icon support.
+Branded Windows executables/shortcuts and macOS Finder/Launchpad entries still
+require native distribution packaging; this wheel does not create them.
+Windows/macOS native shell behavior has not been exercised on this Linux host.
+
+The packaged asset set now includes the three original 1024-pixel app PNGs,
+bringing the verified copied inventory to 123 files. SVG wordmarks and app
+icons stay scalable; toolbar icons provide 1x/2x/3x/4x variants. Loading artwork
+and splash canvases now allocate physical pixels for the destination display,
+and wordmarks refresh when their display scale changes. The highest-resolution
+supplied robot artwork remains 1920x1080; no native 4K art is claimed.
+
+Runtime initialization now shows four visible milestones driven by existing
+status callbacks: prepare execution, load/validate the pack, initialize the
+backend, and receive the first simulation state. The first accepted frame
+completes startup; stopping or failure remains distinct. Progress stays
+indeterminate and no artificial display delay is added.
+
+Verification: **922 non-MuJoCo tests passed**, with 121 marked physics cases
+deselected. Focused Windows-target type checks and platform-isolated native
+identity tests passed, along with core/Studio Pyright, Ruff, API policy, the
+documentation build, and artifact checks. Normal and 2x captures of the
+startup sequence and narrow splash were inspected. All 123 copied assets match
+their supplied hashes in the source tree, wheel, and source archive. The
+registered Ubuntu icon was updated to the original 1024-pixel image.
+
+UI readability follow-up: the shared field padding left only 4–12 pixels of
+usable text height in inline editors that needed an 18-pixel font. Compact
+item editors, matching list/tree/table palettes, native Fusion combo/spin
+primitives, and palette-aware file-navigation arrows now keep file-browser
+views and renaming readable. Existing hidden-folder preferences, filename
+filters, and accepted/cancelled selections are preserved.
+
+Both applications retain system font sizing and scale semantic labels in
+points. Builder welcome buttons use their actual text size hints, sidebars
+can shrink, validation content wraps/scrolls, and loading panels remain
+reachable at larger fonts. Inspector workspace content scrolls independently
+of its persistent status/playback controls; inactive pages no longer force
+oversized windows. Runtime table rows track font/style changes without
+scanning the event model. Owned action/button labels no longer include
+ellipsis suffixes, and the authored walkthrough labels were updated.
+
+Verification: **949 non-MuJoCo tests passed**, with 121 marked physics cases
+deselected. Coverage includes real file/folder rename commit and cancellation
+in list/detail/icon views, 100%/150%/200% DPR processes, three themes, enlarged
+fonts, 800x600/1280x720 Inspector layouts, small Builder geometry, and 10,000
+retained event rows. Native Ubuntu Wayland dialog rendering was also inspected
+using temporary files and a neutral Qt platform theme to bypass the agent
+environment's GTK schema mismatch. Ruff, core/Studio Pyright, API policy, the
+documentation build, and rebuilt wheel/source artifact checks passed. Native
+Windows/macOS rendering and the complete user desktop walkthrough remain open.
+
+Animated splash follow-up: at the user's explicit request, both GUI launchers
+now retain their branded startup window for at least three seconds. The
+approved SVG symbol assembles in staggered layers, its wordmark reveals, and
+the completed logo gently pulses. A responsive 1.1-second intro runs before
+the heavier GUI imports/construction; initialization counts toward the total
+three-second minimum and only the remaining time is awaited before handoff.
+Qt/VTK construction stays on its owning GUI thread. Clicks do not dismiss the
+intro; explicit close cancels startup, and failures close it immediately.
+
+Inspector autorun is now scheduled on its first show event so simulation does
+not start or finish while the branding window covers a hidden Inspector.
+Actual backend/RobotPack loading milestones and first-frame readiness remain
+separate from this decorative introduction. The new animation module brings
+the source inventory to 114 files (28 Studio files).
+
+Verification: **958 non-MuJoCo tests passed**, with 121 marked physics cases
+deselected. Tests cover the real three-second minimum, responsive event
+processing, slow-startup fast path, cancellation, hidden-runtime deferral,
+timer shutdown, SVG shape preservation across themes, and 2x animation frames.
+A failed-startup cleanup issue involving a timer closure and deferred QObject
+destruction was reproduced and fixed by disconnecting the callback before
+disposal; the complete combined test order now passes. Ruff, core/Studio
+Pyright, API policy, the documentation build, and distribution content checks
+passed. A three-second animated preview was captured locally for user review.
+
+Shared window-sizing follow-up: the Builder, Runtime Inspector, file browser,
+creation forms, startup splash, and operation feedback now use one internal
+logical-pixel policy. New windows account for completed layouts and body-font
+metrics, with defaults limited to 88% of usable screen width and 86% of usable
+height. Normal geometry and main-window dock arrangement are remembered in
+local Qt preferences; maximized/fullscreen state is not restored. Temporary
+loading windows do not persist geometry. Creation forms scroll independently
+of their always-visible confirmation controls.
+
+Monitor selection uses the visible parent or pre-show pointer screen, then
+reconciles fresh defaults against the monitor assigned by the native desktop.
+Native Ubuntu Wayland testing exposed delayed `wl_surface.enter` after the
+first expose and configure events overwriting immediate resizes. The policy
+therefore applies corrections through an owned, deferred timer, preserving
+saved dimensions and explicit user changes. Geometry persistence uses outer
+frames consistently to avoid repeated decoration-size shrinkage. Weak window
+references and signal cleanup prevent retaining plotting widgets into Qt
+shutdown. The new module brings the source inventory to 115 files (29 Studio).
+
+Native checks covered the actual Builder controls with a viewport placeholder,
+the Runtime Inspector with execution disabled, the shared file picker, and a
+tall enlarged-font form on the current mixed-DPI Ubuntu desktop. VTK's native
+X11 preview was excluded from that Wayland control probe; its existing separate
+viewport tests remain in the regression suite. Windows and macOS desktop
+testing remains outstanding. The sizing regressions are included in the Studio
+CI job.
+
+Verification: **992 non-MuJoCo tests passed**, with 121 marked physics cases
+deselected. The 33 focused sizing cases cover remembered normal geometry,
+dialog accept/reject, ignored closes, font changes, negative/portrait monitor
+coordinates, disconnected displays, delayed native screen assignment, recreated
+window handles, user-size preservation, and scrollable confirmation forms.
+Ruff lint/format, core and Studio Pyright, API policy, and the Docusaurus build
+passed. The rebuilt preview wheel and source bundle passed distribution checks;
+the wheel matches all 115 Python sources and resolves its packaged branding
+when extracted outside the checkout.
 
 ## Deferred work
 

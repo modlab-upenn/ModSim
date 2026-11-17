@@ -1,0 +1,648 @@
+{
+  "collection": "Modsim_Branding/ModSim_Theme_Packs",
+  "copied_files_unmodified": true,
+  "themes": [
+    {
+      "theme": "light",
+      "source_pack": "ModSim_Light_Pack",
+      "version": "1.0",
+      "prepared": "2026-11-16",
+      "source_manifest_sha256": "45af3122d450db46e9731cb77bc69761daef3f5b887d120ab7ae2b6872bedd9d",
+      "files": [
+        {
+          "path": "README.md",
+          "bytes": 6498,
+          "sha256": "f402b8900896edf473a8a1af020e16dd76c173739ba68b4fac75f96693e4d2b9"
+        },
+        {
+          "path": "backgrounds/robot-background-1920x1080.png",
+          "bytes": 1181256,
+          "sha256": "d1830d983810bf84309ad9b10d63324acacc4a568548e22ebf4e083f0e0a3d3e"
+        },
+        {
+          "path": "backgrounds/theme-background.svg",
+          "bytes": 2321,
+          "sha256": "de0c3f94dda7d2d5ec6d950abf83de26f68f719c74f2ba2602143ec76396869f"
+        },
+        {
+          "path": "icons/platform/modsim.icns",
+          "bytes": 105871,
+          "sha256": "468a7c20b13124c572d26372119b02c0fdc2c9a839a4e0fd7497d63e9683ea4a"
+        },
+        {
+          "path": "icons/platform/modsim.ico",
+          "bytes": 26747,
+          "sha256": "6d5a51245166351287aded34380c6ec56bd5011d14920352a7177e4fc5d6a8ea"
+        },
+        {
+          "path": "icons/png/app/modsim-app-1024.png",
+          "bytes": 37619,
+          "sha256": "5d94eab982c277cdac377242e525825047378d05cb431f829f57a72a22a244af"
+        },
+        {
+          "path": "icons/png/app/modsim-app-256.png",
+          "bytes": 8000,
+          "sha256": "57e96b0beda645accba4804d78669b9a75423079cd8aa0ca5da9fd67490b8933"
+        },
+        {
+          "path": "icons/png/app/modsim-app-512.png",
+          "bytes": 16893,
+          "sha256": "0513ff9ecf8c62866a78a873fe626c2a1d05b02d65cb9807311deed486f7958a"
+        },
+        {
+          "path": "icons/png/symbol/modsim-symbol-256.png",
+          "bytes": 3993,
+          "sha256": "8d59abceb1148a0dca3e3d89d43010c8203bbbc557bbf91c8f47ca0fa68f7619"
+        },
+        {
+          "path": "icons/png/symbol/modsim-symbol-512.png",
+          "bytes": 8406,
+          "sha256": "f272e3d8b5fc19b6a61b358968732404afef11f62ec85847cb3e92c0820cce0e"
+        },
+        {
+          "path": "icons/svg/modsim-app.svg",
+          "bytes": 8314,
+          "sha256": "f5d3c5b031d9ffe169cfe19d8bea1fe70ac4be0ae6da6c937516bf884b236b03"
+        },
+        {
+          "path": "icons/svg/modsim-symbol.svg",
+          "bytes": 8213,
+          "sha256": "92bd648900479fd9cfe4e5a015eee2edd0ae5d9ecf63817def088bb90b272b9f"
+        },
+        {
+          "path": "logos/svg/modsim-horizontal-tagline.svg",
+          "bytes": 27527,
+          "sha256": "0c1add1c2e42723de42d911cc376e8fe45efd933fc8beea35afbfc27b7103a68"
+        },
+        {
+          "path": "logos/svg/modsim-horizontal.svg",
+          "bytes": 20903,
+          "sha256": "c90f5ff8f9dea98bee49e59405dea7976526c1db54abbfa09a82acd373092d8e"
+        },
+        {
+          "path": "patterns/module-pattern.svg",
+          "bytes": 16621,
+          "sha256": "f7c17cc975aee7d97081ff8fd5e7ec82c5c10d1860077855de9a7ad6ef265124"
+        },
+        {
+          "path": "theme/colors.json",
+          "bytes": 369,
+          "sha256": "8394d49ab785f6acc9e779d35ee7735724100e62c9ae3f3a2899f5a9fb5f8c00"
+        },
+        {
+          "path": "ui/svg/accent/check.svg",
+          "bytes": 303,
+          "sha256": "8c507b49e57e4afe998433fde9da166c9e8b80c3a9ef0160804e8f2ec23c0c26"
+        },
+        {
+          "path": "ui/svg/currentcolor/camera.svg",
+          "bytes": 350,
+          "sha256": "346dc098bae276dd126827b81814768aa66d7f432e7ccdcae83dbeefefb0fa04"
+        },
+        {
+          "path": "ui/svg/currentcolor/check.svg",
+          "bytes": 308,
+          "sha256": "c4f185b4962d645ce37101a37ea84c8161b50485b42bd3d64dccac277e006c83"
+        },
+        {
+          "path": "ui/svg/currentcolor/close.svg",
+          "bytes": 314,
+          "sha256": "6568844f74b43c652702e4d8f382cbb46acd15ba253fb0a274b686abb5cd6ac5"
+        },
+        {
+          "path": "ui/svg/currentcolor/composer.svg",
+          "bytes": 435,
+          "sha256": "bdc636bffa3229f8f32e2728a51bcc81c1e9347bfea0ed2c3cbbd6867abf2ab8"
+        },
+        {
+          "path": "ui/svg/currentcolor/connect.svg",
+          "bytes": 455,
+          "sha256": "9c74388c0369124a1d77bd43f9494ba322d6620da24736062d6bde1f452e24a2"
+        },
+        {
+          "path": "ui/svg/currentcolor/disconnect.svg",
+          "bytes": 417,
+          "sha256": "8f8f8d2e05ea5b6e1637125ba52414d0e363371d7f8d76fe189455b02586384e"
+        },
+        {
+          "path": "ui/svg/currentcolor/dock.svg",
+          "bytes": 351,
+          "sha256": "57c0bf19255c15ce6dd7ef253de0841b8e0d8c1140f5760cf7401e9e9ccf89df"
+        },
+        {
+          "path": "ui/svg/currentcolor/fit-view.svg",
+          "bytes": 381,
+          "sha256": "ea772411c601ce11994e97d460effda40e4877329d44149058439fef24e12e49"
+        },
+        {
+          "path": "ui/svg/currentcolor/folder-open.svg",
+          "bytes": 361,
+          "sha256": "5d5ec6442b046006e4a507a1f02983b279a677e96d0bb42ca8e2416db6675730"
+        },
+        {
+          "path": "ui/svg/currentcolor/grid.svg",
+          "bytes": 372,
+          "sha256": "b84b6be8b08774e5c9da32f126ad284a60856e4ec68b8c17aec54e2ea10bd586"
+        },
+        {
+          "path": "ui/svg/currentcolor/info.svg",
+          "bytes": 340,
+          "sha256": "3fd30b5b3e5ec83868606d70ef5f52bc052203235dcacbfffd5b4460ce60e6fc"
+        },
+        {
+          "path": "ui/svg/currentcolor/modules.svg",
+          "bytes": 365,
+          "sha256": "f60e14c575505c5ac99e14191e6ec7b979871fbc89ec29bf5a64e4d90b87756c"
+        },
+        {
+          "path": "ui/svg/currentcolor/pause.svg",
+          "bytes": 309,
+          "sha256": "2b33087a5326da4a8543a31fa4d2c8a62356034e0f9171d1fc43825efe60e601"
+        },
+        {
+          "path": "ui/svg/currentcolor/play.svg",
+          "bytes": 309,
+          "sha256": "6e9a8b3a52e09707d67f099bfd6dff2a67ad9edbba5e1a61d3f4dd623b0f90da"
+        },
+        {
+          "path": "ui/svg/currentcolor/reset.svg",
+          "bytes": 323,
+          "sha256": "ad9da245c6419e9140769c55ce0fa2019c47e49fc76f37b917f4147bf37c23ac"
+        },
+        {
+          "path": "ui/svg/currentcolor/results.svg",
+          "bytes": 330,
+          "sha256": "9876ded80e990fd748fe903e4b51dd5b708a57a9cfb132fe51074f206b37f7dc"
+        },
+        {
+          "path": "ui/svg/currentcolor/save.svg",
+          "bytes": 336,
+          "sha256": "06e326593736be882abcfe1a15607db4089c897771bd69ed0ed621f68e18b084"
+        },
+        {
+          "path": "ui/svg/currentcolor/settings.svg",
+          "bytes": 432,
+          "sha256": "ee15cd3936f8f52920f1a86af54e9237252f588ef7f36b81b61b008b872bc787"
+        },
+        {
+          "path": "ui/svg/currentcolor/stop.svg",
+          "bytes": 332,
+          "sha256": "307b7874c28e2beb0a24cf86f2a758cb9c07039de1540c9a92cc57d2b54209d6"
+        },
+        {
+          "path": "ui/svg/currentcolor/undock.svg",
+          "bytes": 354,
+          "sha256": "793999b0dbd8fd1f6db142f98bd05b739634cf8cc8afb3b51c9a21c0adbc33ba"
+        },
+        {
+          "path": "ui/svg/currentcolor/visibility.svg",
+          "bytes": 378,
+          "sha256": "72f5720ab4dbd82c040c09dc3cef58f8e6a44f8a4ed19e84d51ff41df093400f"
+        },
+        {
+          "path": "ui/svg/currentcolor/warning.svg",
+          "bytes": 389,
+          "sha256": "3e3f36014f1e604de3148f14d3cd4b239cf6b346bfc3961b81108bc5510b62c8"
+        },
+        {
+          "path": "ui/svg/currentcolor/zoom-in.svg",
+          "bytes": 361,
+          "sha256": "5f91db0f985bc9e01e5469ceb3fb0b058f9d0a7383ede4d273d7df7f1b927fdc"
+        },
+        {
+          "path": "ui/svg/currentcolor/zoom-out.svg",
+          "bytes": 353,
+          "sha256": "514f39ec688b6ed106ebb017c68b0ee13e598bb050a2bf0e3e7d084032289e0c"
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "source_pack": "ModSim_Dark_Pack",
+      "version": "1.0",
+      "prepared": "2026-11-16",
+      "source_manifest_sha256": "cc4c075a0007455180d3990c61b278af735be09cd5f1bd6707c0d65c6ac1d36c",
+      "files": [
+        {
+          "path": "README.md",
+          "bytes": 6494,
+          "sha256": "23b5b984b45b891324247d30ff15e11b444bd21effc6dcfa69f67c54c46854f9"
+        },
+        {
+          "path": "backgrounds/robot-background-1920x1080.png",
+          "bytes": 1179186,
+          "sha256": "d9653099b1bcd4def5a11187b009c5fe33628cc9aa75bb23c3d34f58094e9288"
+        },
+        {
+          "path": "backgrounds/theme-background.svg",
+          "bytes": 2320,
+          "sha256": "ec6e3aa7fda5753bab806aef7cbbf05f5e62563f9b66cd74b1fbcdb001c02af7"
+        },
+        {
+          "path": "icons/platform/modsim.icns",
+          "bytes": 114874,
+          "sha256": "de3a07f99d697b5ddc28a08f4e3829a55048fcba8df76c7929ead69cf1591be0"
+        },
+        {
+          "path": "icons/platform/modsim.ico",
+          "bytes": 29436,
+          "sha256": "316ed0879fbded691d0b40e0680c41cbe0cc3f222063a2c3fd1cdad1f9d32e44"
+        },
+        {
+          "path": "icons/png/app/modsim-app-1024.png",
+          "bytes": 38966,
+          "sha256": "d056498c7edc84e84d9123bf9123a68114ce86eacf7ff928e91c54d4238c2e9f"
+        },
+        {
+          "path": "icons/png/app/modsim-app-256.png",
+          "bytes": 8234,
+          "sha256": "b95298e7a22bfec4c0b94c9d8a600fda502f1333c71de28c8660bff1c7afac72"
+        },
+        {
+          "path": "icons/png/app/modsim-app-512.png",
+          "bytes": 17477,
+          "sha256": "6d1b84e61547e7834bcd68b36aead3fcea1a0e12dac7291fa0c9bd6ad8431c48"
+        },
+        {
+          "path": "icons/png/symbol/modsim-symbol-256.png",
+          "bytes": 3999,
+          "sha256": "32df1c234451bcbb0349af6e4f8b233fb58b6475bdce07fb1fe1edd256de3af0"
+        },
+        {
+          "path": "icons/png/symbol/modsim-symbol-512.png",
+          "bytes": 8361,
+          "sha256": "b5d2187c0837839f9f01677d386974c49d5e80fb0b5123c3a3880e4683c06878"
+        },
+        {
+          "path": "icons/svg/modsim-app.svg",
+          "bytes": 8313,
+          "sha256": "839cfcdd516a4a99d5d64722175b716584e338082210afdec2261c9da0a21270"
+        },
+        {
+          "path": "icons/svg/modsim-symbol.svg",
+          "bytes": 8212,
+          "sha256": "95e875a05cb44470cf0d536a6b8cacd228bc1d9a8cbbbaa0928c85e36372b661"
+        },
+        {
+          "path": "logos/svg/modsim-horizontal-tagline.svg",
+          "bytes": 27526,
+          "sha256": "c72699873c7cf945d54268049ec79c29d65ea3deb4c022aca802e4f867b7e55c"
+        },
+        {
+          "path": "logos/svg/modsim-horizontal.svg",
+          "bytes": 20902,
+          "sha256": "546ed18aaf52fb1ced7b7980cd586500b395609d5dd51a0ece437ed4058ac90e"
+        },
+        {
+          "path": "patterns/module-pattern.svg",
+          "bytes": 16621,
+          "sha256": "1d547003a5a929e7cb50fba4f432aed50b8e5bc921985993bb5ac875e7f984d3"
+        },
+        {
+          "path": "theme/colors.json",
+          "bytes": 367,
+          "sha256": "9cb3531e41d90937748b07f3d91c2dd53315fcae2471dccd5662c5e9d8607383"
+        },
+        {
+          "path": "ui/svg/accent/check.svg",
+          "bytes": 303,
+          "sha256": "b31a8c96c8f8eafd582cdb613b8d50e29cb601e2c4329baf49b03e383cc4be37"
+        },
+        {
+          "path": "ui/svg/currentcolor/camera.svg",
+          "bytes": 350,
+          "sha256": "346dc098bae276dd126827b81814768aa66d7f432e7ccdcae83dbeefefb0fa04"
+        },
+        {
+          "path": "ui/svg/currentcolor/check.svg",
+          "bytes": 308,
+          "sha256": "c4f185b4962d645ce37101a37ea84c8161b50485b42bd3d64dccac277e006c83"
+        },
+        {
+          "path": "ui/svg/currentcolor/close.svg",
+          "bytes": 314,
+          "sha256": "6568844f74b43c652702e4d8f382cbb46acd15ba253fb0a274b686abb5cd6ac5"
+        },
+        {
+          "path": "ui/svg/currentcolor/composer.svg",
+          "bytes": 435,
+          "sha256": "bdc636bffa3229f8f32e2728a51bcc81c1e9347bfea0ed2c3cbbd6867abf2ab8"
+        },
+        {
+          "path": "ui/svg/currentcolor/connect.svg",
+          "bytes": 455,
+          "sha256": "9c74388c0369124a1d77bd43f9494ba322d6620da24736062d6bde1f452e24a2"
+        },
+        {
+          "path": "ui/svg/currentcolor/disconnect.svg",
+          "bytes": 417,
+          "sha256": "8f8f8d2e05ea5b6e1637125ba52414d0e363371d7f8d76fe189455b02586384e"
+        },
+        {
+          "path": "ui/svg/currentcolor/dock.svg",
+          "bytes": 351,
+          "sha256": "57c0bf19255c15ce6dd7ef253de0841b8e0d8c1140f5760cf7401e9e9ccf89df"
+        },
+        {
+          "path": "ui/svg/currentcolor/fit-view.svg",
+          "bytes": 381,
+          "sha256": "ea772411c601ce11994e97d460effda40e4877329d44149058439fef24e12e49"
+        },
+        {
+          "path": "ui/svg/currentcolor/folder-open.svg",
+          "bytes": 361,
+          "sha256": "5d5ec6442b046006e4a507a1f02983b279a677e96d0bb42ca8e2416db6675730"
+        },
+        {
+          "path": "ui/svg/currentcolor/grid.svg",
+          "bytes": 372,
+          "sha256": "b84b6be8b08774e5c9da32f126ad284a60856e4ec68b8c17aec54e2ea10bd586"
+        },
+        {
+          "path": "ui/svg/currentcolor/info.svg",
+          "bytes": 340,
+          "sha256": "3fd30b5b3e5ec83868606d70ef5f52bc052203235dcacbfffd5b4460ce60e6fc"
+        },
+        {
+          "path": "ui/svg/currentcolor/modules.svg",
+          "bytes": 365,
+          "sha256": "f60e14c575505c5ac99e14191e6ec7b979871fbc89ec29bf5a64e4d90b87756c"
+        },
+        {
+          "path": "ui/svg/currentcolor/pause.svg",
+          "bytes": 309,
+          "sha256": "2b33087a5326da4a8543a31fa4d2c8a62356034e0f9171d1fc43825efe60e601"
+        },
+        {
+          "path": "ui/svg/currentcolor/play.svg",
+          "bytes": 309,
+          "sha256": "6e9a8b3a52e09707d67f099bfd6dff2a67ad9edbba5e1a61d3f4dd623b0f90da"
+        },
+        {
+          "path": "ui/svg/currentcolor/reset.svg",
+          "bytes": 323,
+          "sha256": "ad9da245c6419e9140769c55ce0fa2019c47e49fc76f37b917f4147bf37c23ac"
+        },
+        {
+          "path": "ui/svg/currentcolor/results.svg",
+          "bytes": 330,
+          "sha256": "9876ded80e990fd748fe903e4b51dd5b708a57a9cfb132fe51074f206b37f7dc"
+        },
+        {
+          "path": "ui/svg/currentcolor/save.svg",
+          "bytes": 336,
+          "sha256": "06e326593736be882abcfe1a15607db4089c897771bd69ed0ed621f68e18b084"
+        },
+        {
+          "path": "ui/svg/currentcolor/settings.svg",
+          "bytes": 432,
+          "sha256": "ee15cd3936f8f52920f1a86af54e9237252f588ef7f36b81b61b008b872bc787"
+        },
+        {
+          "path": "ui/svg/currentcolor/stop.svg",
+          "bytes": 332,
+          "sha256": "307b7874c28e2beb0a24cf86f2a758cb9c07039de1540c9a92cc57d2b54209d6"
+        },
+        {
+          "path": "ui/svg/currentcolor/undock.svg",
+          "bytes": 354,
+          "sha256": "793999b0dbd8fd1f6db142f98bd05b739634cf8cc8afb3b51c9a21c0adbc33ba"
+        },
+        {
+          "path": "ui/svg/currentcolor/visibility.svg",
+          "bytes": 378,
+          "sha256": "72f5720ab4dbd82c040c09dc3cef58f8e6a44f8a4ed19e84d51ff41df093400f"
+        },
+        {
+          "path": "ui/svg/currentcolor/warning.svg",
+          "bytes": 389,
+          "sha256": "3e3f36014f1e604de3148f14d3cd4b239cf6b346bfc3961b81108bc5510b62c8"
+        },
+        {
+          "path": "ui/svg/currentcolor/zoom-in.svg",
+          "bytes": 361,
+          "sha256": "5f91db0f985bc9e01e5469ceb3fb0b058f9d0a7383ede4d273d7df7f1b927fdc"
+        },
+        {
+          "path": "ui/svg/currentcolor/zoom-out.svg",
+          "bytes": 353,
+          "sha256": "514f39ec688b6ed106ebb017c68b0ee13e598bb050a2bf0e3e7d084032289e0c"
+        }
+      ]
+    },
+    {
+      "theme": "midnight",
+      "source_pack": "ModSim_Midnight_Pack",
+      "version": "1.0",
+      "prepared": "2026-11-16",
+      "source_manifest_sha256": "b31231d2e47157b22866a5fc247509b332f905ec1abc316f2c28fb3e37b2bfa9",
+      "files": [
+        {
+          "path": "README.md",
+          "bytes": 6510,
+          "sha256": "fdaa505a4c244de739b6e0919038316724e7ae0b8cdc0fcdf14e589f355a6470"
+        },
+        {
+          "path": "backgrounds/robot-background-1920x1080.png",
+          "bytes": 1179120,
+          "sha256": "cb33b0098c4805789178fa32916da913157b409aa4d60439eba14b3d0ae32a8e"
+        },
+        {
+          "path": "backgrounds/theme-background.svg",
+          "bytes": 2324,
+          "sha256": "07315dd50bc79f8f7b8117273636b919a503e42887c2def298e1d960a218dc4d"
+        },
+        {
+          "path": "icons/platform/modsim.icns",
+          "bytes": 112211,
+          "sha256": "d509f4b423840b3e32627cc56ab3ca8dc7aa5e437d18e4b62437469c4f79a07b"
+        },
+        {
+          "path": "icons/platform/modsim.ico",
+          "bytes": 28409,
+          "sha256": "ab99b5c5fedab95eabe3094e7992c3d6934f81a00c53e7b57721e5005a035f0a"
+        },
+        {
+          "path": "icons/png/app/modsim-app-1024.png",
+          "bytes": 38526,
+          "sha256": "42b7f376755e66941ac95ee0332e0cf15e5db870f37a04c96e289559eb803428"
+        },
+        {
+          "path": "icons/png/app/modsim-app-256.png",
+          "bytes": 8073,
+          "sha256": "675765da2b5aead0dc5557c5fd74cc0a891ae5541d4f0d20da871a3352e8a7b4"
+        },
+        {
+          "path": "icons/png/app/modsim-app-512.png",
+          "bytes": 17241,
+          "sha256": "514a5c0ff8ebd027c1da82c85776e28b4e00b2ee57db49fbb80eed65019d2a97"
+        },
+        {
+          "path": "icons/png/symbol/modsim-symbol-256.png",
+          "bytes": 4009,
+          "sha256": "feebcf85cd1a93dd9133b23d366a7ff8bc787cbb3f28de89e0fbce17a19d740f"
+        },
+        {
+          "path": "icons/png/symbol/modsim-symbol-512.png",
+          "bytes": 8421,
+          "sha256": "37071c152004ed5833571ec0fe12642dc2daad64010ba06bcf620a9138b7ad1a"
+        },
+        {
+          "path": "icons/svg/modsim-app.svg",
+          "bytes": 8317,
+          "sha256": "ba71067197bc799a2faf571bc285dbe1304634be5b5c84143725116197b56de4"
+        },
+        {
+          "path": "icons/svg/modsim-symbol.svg",
+          "bytes": 8216,
+          "sha256": "0aea0a2f779294766c91c828c88883e00e51569b124f3885ab9009f9b9f1a2ce"
+        },
+        {
+          "path": "logos/svg/modsim-horizontal-tagline.svg",
+          "bytes": 27530,
+          "sha256": "c9050d7a9d673d76a9f0bfe0158135b08dfba80b5708b997529f61e6ae4c8b7e"
+        },
+        {
+          "path": "logos/svg/modsim-horizontal.svg",
+          "bytes": 20906,
+          "sha256": "3d556ee28dcfcf488dacdc4df4c452723676fcd989ce1f55665999a050b4327d"
+        },
+        {
+          "path": "patterns/module-pattern.svg",
+          "bytes": 16621,
+          "sha256": "8146cfc81ff1f4d1d4b909a6039c3da8a7cdd72ea88254b205ad5f74c6ad19b7"
+        },
+        {
+          "path": "theme/colors.json",
+          "bytes": 375,
+          "sha256": "ef11545ead5e1c4132b9f671c86a9e5912718b2fdb0bfd9a771f19558dff31b8"
+        },
+        {
+          "path": "ui/svg/accent/check.svg",
+          "bytes": 303,
+          "sha256": "b31a8c96c8f8eafd582cdb613b8d50e29cb601e2c4329baf49b03e383cc4be37"
+        },
+        {
+          "path": "ui/svg/currentcolor/camera.svg",
+          "bytes": 350,
+          "sha256": "346dc098bae276dd126827b81814768aa66d7f432e7ccdcae83dbeefefb0fa04"
+        },
+        {
+          "path": "ui/svg/currentcolor/check.svg",
+          "bytes": 308,
+          "sha256": "c4f185b4962d645ce37101a37ea84c8161b50485b42bd3d64dccac277e006c83"
+        },
+        {
+          "path": "ui/svg/currentcolor/close.svg",
+          "bytes": 314,
+          "sha256": "6568844f74b43c652702e4d8f382cbb46acd15ba253fb0a274b686abb5cd6ac5"
+        },
+        {
+          "path": "ui/svg/currentcolor/composer.svg",
+          "bytes": 435,
+          "sha256": "bdc636bffa3229f8f32e2728a51bcc81c1e9347bfea0ed2c3cbbd6867abf2ab8"
+        },
+        {
+          "path": "ui/svg/currentcolor/connect.svg",
+          "bytes": 455,
+          "sha256": "9c74388c0369124a1d77bd43f9494ba322d6620da24736062d6bde1f452e24a2"
+        },
+        {
+          "path": "ui/svg/currentcolor/disconnect.svg",
+          "bytes": 417,
+          "sha256": "8f8f8d2e05ea5b6e1637125ba52414d0e363371d7f8d76fe189455b02586384e"
+        },
+        {
+          "path": "ui/svg/currentcolor/dock.svg",
+          "bytes": 351,
+          "sha256": "57c0bf19255c15ce6dd7ef253de0841b8e0d8c1140f5760cf7401e9e9ccf89df"
+        },
+        {
+          "path": "ui/svg/currentcolor/fit-view.svg",
+          "bytes": 381,
+          "sha256": "ea772411c601ce11994e97d460effda40e4877329d44149058439fef24e12e49"
+        },
+        {
+          "path": "ui/svg/currentcolor/folder-open.svg",
+          "bytes": 361,
+          "sha256": "5d5ec6442b046006e4a507a1f02983b279a677e96d0bb42ca8e2416db6675730"
+        },
+        {
+          "path": "ui/svg/currentcolor/grid.svg",
+          "bytes": 372,
+          "sha256": "b84b6be8b08774e5c9da32f126ad284a60856e4ec68b8c17aec54e2ea10bd586"
+        },
+        {
+          "path": "ui/svg/currentcolor/info.svg",
+          "bytes": 340,
+          "sha256": "3fd30b5b3e5ec83868606d70ef5f52bc052203235dcacbfffd5b4460ce60e6fc"
+        },
+        {
+          "path": "ui/svg/currentcolor/modules.svg",
+          "bytes": 365,
+          "sha256": "f60e14c575505c5ac99e14191e6ec7b979871fbc89ec29bf5a64e4d90b87756c"
+        },
+        {
+          "path": "ui/svg/currentcolor/pause.svg",
+          "bytes": 309,
+          "sha256": "2b33087a5326da4a8543a31fa4d2c8a62356034e0f9171d1fc43825efe60e601"
+        },
+        {
+          "path": "ui/svg/currentcolor/play.svg",
+          "bytes": 309,
+          "sha256": "6e9a8b3a52e09707d67f099bfd6dff2a67ad9edbba5e1a61d3f4dd623b0f90da"
+        },
+        {
+          "path": "ui/svg/currentcolor/reset.svg",
+          "bytes": 323,
+          "sha256": "ad9da245c6419e9140769c55ce0fa2019c47e49fc76f37b917f4147bf37c23ac"
+        },
+        {
+          "path": "ui/svg/currentcolor/results.svg",
+          "bytes": 330,
+          "sha256": "9876ded80e990fd748fe903e4b51dd5b708a57a9cfb132fe51074f206b37f7dc"
+        },
+        {
+          "path": "ui/svg/currentcolor/save.svg",
+          "bytes": 336,
+          "sha256": "06e326593736be882abcfe1a15607db4089c897771bd69ed0ed621f68e18b084"
+        },
+        {
+          "path": "ui/svg/currentcolor/settings.svg",
+          "bytes": 432,
+          "sha256": "ee15cd3936f8f52920f1a86af54e9237252f588ef7f36b81b61b008b872bc787"
+        },
+        {
+          "path": "ui/svg/currentcolor/stop.svg",
+          "bytes": 332,
+          "sha256": "307b7874c28e2beb0a24cf86f2a758cb9c07039de1540c9a92cc57d2b54209d6"
+        },
+        {
+          "path": "ui/svg/currentcolor/undock.svg",
+          "bytes": 354,
+          "sha256": "793999b0dbd8fd1f6db142f98bd05b739634cf8cc8afb3b51c9a21c0adbc33ba"
+        },
+        {
+          "path": "ui/svg/currentcolor/visibility.svg",
+          "bytes": 378,
+          "sha256": "72f5720ab4dbd82c040c09dc3cef58f8e6a44f8a4ed19e84d51ff41df093400f"
+        },
+        {
+          "path": "ui/svg/currentcolor/warning.svg",
+          "bytes": 389,
+          "sha256": "3e3f36014f1e604de3148f14d3cd4b239cf6b346bfc3961b81108bc5510b62c8"
+        },
+        {
+          "path": "ui/svg/currentcolor/zoom-in.svg",
+          "bytes": 361,
+          "sha256": "5f91db0f985bc9e01e5469ceb3fb0b058f9d0a7383ede4d273d7df7f1b927fdc"
+        },
+        {
+          "path": "ui/svg/currentcolor/zoom-out.svg",
+          "bytes": 353,
+          "sha256": "514f39ec688b6ed106ebb017c68b0ee13e598bb050a2bf0e3e7d084032289e0c"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "theme": "dark",
+  "name": "Dark",
+  "background": "#17191F",
+  "surface": "#22252D",
+  "raised": "#2D323C",
+  "border": "#454D5C",
+  "text": "#EEF2F6",
+  "muted": "#A8B2BF",
+  "blue": "#6FA4DF",
+  "teal": "#35B3A3",
+  "slate": "#8EABC8",
+  "reticle": "#C9D8EC",
+  "accent": "#35B3A3",
+  "accent_text": "#10201E",
+  "focus": "#8CBCEE",
+  "selection": "#344958"
+}

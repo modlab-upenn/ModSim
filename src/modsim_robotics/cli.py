@@ -198,14 +198,31 @@ def _resolve_cli_pack(
         raise typer.Exit(code=1) from error
 
 
-@app.command("studio")
+@app.command("studio", help="Open a blank Studio workspace, or load a selected RobotPack.")
 def studio_command(
     pack_path: PackPathArg = None,
     pack_override: PackPathOpt = None,
     home: HomeOpt = None,
 ) -> None:
-    """Launch the optional native ModSim Studio application."""
-    resolved_pack = _resolve_cli_pack(pack_path, pack_override, home)
+    """Launch the Builder with an empty workspace or a selected RobotPack.
+
+    Args:
+        pack_path: Installed pack ID, version-qualified ID, or explicit path.
+            None opens the welcome screen unless pack_override is supplied.
+        pack_override: Alternative pack selector supplied with --pack. It cannot
+            be combined with pack_path.
+        home: ModSim home used for named pack lookup. A blank launch does not
+            read or initialize its RobotPack library.
+
+    Raises:
+        typer.Exit: After the application exits, or when selection or optional
+            Studio dependencies prevent startup.
+    """
+    resolved_pack = (
+        _resolve_cli_pack(pack_path, pack_override, home)
+        if pack_path is not None or pack_override is not None
+        else None
+    )
     try:
         from modsim_robotics_studio.app import main as studio_main
     except ImportError as error:

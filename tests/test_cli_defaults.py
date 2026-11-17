@@ -1,4 +1,4 @@
-"""Commands require a named or explicit pack from the selected user library."""
+"""Pack commands require selection; Studio can also open an empty workspace."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from modsim_robotics.runtime import RuntimeInspectorConfig
 from modsim_robotics.user_data import initialize_user_home, resolve_robot_pack
 
 runner = CliRunner()
-READ_COMMANDS = (
+PACK_REQUIRED_COMMANDS = (
     ("pack", "inspect"),
     ("pack", "validate"),
     ("views",),
@@ -26,8 +26,8 @@ READ_COMMANDS = (
     ("run", "--duration", "0.002"),
     ("runtime", "--backend", "mock", "--no-viewer"),
     ("run", "--gui", "--backend", "mock", "--no-viewer"),
-    ("studio",),
 )
+READ_COMMANDS = (*PACK_REQUIRED_COMMANDS, ("studio",))
 
 
 @pytest.fixture(autouse=True)
@@ -39,14 +39,13 @@ def application_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 @pytest.fixture
-def gui_launches(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
+def gui_launches(monkeypatch: pytest.MonkeyPatch) -> list[Path | None]:
     """Capture GUI dispatch without importing native desktop dependencies."""
-    paths: list[Path] = []
+    paths: list[Path | None] = []
     studio = ModuleType("modsim_robotics_studio.app")
     runtime = ModuleType("modsim_robotics_studio.runtime_app")
 
     def studio_main(pack_path: Path | None) -> int:
-        assert pack_path is not None
         paths.append(pack_path)
         return 0
 
@@ -110,7 +109,7 @@ def test_named_pack_selection_resolves_once_and_preserves_setup_json(
     assert (application_home / "config.toml").read_bytes() == configuration
 
 
-@pytest.mark.parametrize("command", READ_COMMANDS)
+@pytest.mark.parametrize("command", PACK_REQUIRED_COMMANDS)
 def test_pack_choice_is_required_even_when_only_one_pack_is_installed(
     application_home: Path, gui_launches: list[Path], command: tuple[str, ...]
 ) -> None:
@@ -123,6 +122,53 @@ def test_pack_choice_is_required_even_when_only_one_pack_is_installed(
     assert "pack" in result.stderr.lower()
     assert not gui_launches
     assert (application_home / "config.toml").read_bytes() == configuration
+
+
+@pytest.mark.parametrize("initialized", [False, True])
+@pytest.mark.parametrize("override_home", [False, True])
+def test_studio_without_a_selector_opens_blank_without_reading_the_library(
+    application_home: Path,
+    tmp_path: Path,
+    gui_launches: list[Path | None],
+    monkeypatch: pytest.MonkeyPatch,
+    initialized: bool,
+    override_home: bool,
+) -> None:
+    selected_home = tmp_path / "other-home" if override_home else application_home
+    configuration = None
+    if initialized:
+        initialize_user_home(selected_home)
+        configuration = (selected_home / "config.toml").read_bytes()
+
+    def unexpected_resolution(
+        pack_path: str | Path | None = None, *, home: Path | None = None
+    ) -> Path:
+        raise AssertionError("Blank Studio must not resolve a pack or read its library")
+
+    monkeypatch.setattr(cli, "resolve_robot_pack", unexpected_resolution)
+    arguments = ["studio"]
+    if override_home:
+        arguments.extend(["--home", str(selected_home)])
+
+    result = runner.invoke(cli.app, arguments)
+
+    assert result.exit_code == 0, result.output
+    assert gui_launches == [None]
+    assert selected_home.exists() == initialized
+    if initialized:
+        assert (selected_home / "config.toml").read_bytes() == configuration
+
+
+def test_blank_studio_explains_missing_optional_dependencies(
+    application_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(sys.modules, "modsim_robotics_studio.app", None)
+
+    result = runner.invoke(cli.app, ["studio"])
+
+    assert result.exit_code == 2
+    assert "modsim-robotics[studio]" in result.stderr
+    assert not application_home.exists()
 
 
 @pytest.mark.parametrize("command", READ_COMMANDS)

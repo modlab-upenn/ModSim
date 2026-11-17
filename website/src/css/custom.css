@@ -341,6 +341,11 @@ body:has(.modsim-diagram-dialog[open]) {
   width: 100%;
 }
 
+/* Blank Markdown heading cells opt a table into a headerless presentation. */
+.theme-doc-markdown table thead:not(:has(th:not(:empty))) {
+  display: none;
+}
+
 .theme-doc-markdown table th:first-child,
 .theme-doc-markdown table td:first-child {
   min-width: 7.5rem;

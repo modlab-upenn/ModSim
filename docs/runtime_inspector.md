@@ -200,7 +200,7 @@ Assembly colors come from distinct categorical hues, shared between live and
 target topology and the lattice view. Up to nine visible assemblies receive
 separate colors; larger populations reuse that palette, with module labels and
 connections identifying membership. Colors survive presentation updates where
-possible and use darker inks in Light Studio. Selection has a magenta outline;
+possible and use darker inks in ModSim Light. Selection has a magenta outline;
 pending target connections are dashed violet, reached connections are solid
 green, and ordinary committed edges are neutral.
 
@@ -211,7 +211,7 @@ on time only; a separate scrollbar moves through module rows. **Follow time**
 automatically fits the elapsed run and turns off when the user navigates manually.
 **Fit all** restores the time range without rescaling the row dimension.
 State colors are consistent in the history, route overlays, and action table:
-pending is neutral, waiting gold, navigating blue (navy in Light Studio), aligning
+pending is neutral, waiting gold, navigating blue (navy in ModSim Light), aligning
 violet, approaching cyan, holding orange, retreating magenta, complete green,
 and failed red. On the XY map, violet dashed outlines mark goals, cyan strokes
 show headings, and orange trails show travelled paths. Shape and line-style
@@ -809,14 +809,73 @@ and is cleared when a selected connection disappears.
 
 ## Appearance
 
-The Inspector shares Studio's Graphite Workbench, Light Studio, and Midnight
-Panels themes. Use the **Theme** picker in the header; see `studio.md` for
+The Inspector shares Studio's ModSim Light, ModSim Dark, and ModSim Midnight
+production themes, outlined wordmark, application icon, and toolbar glyphs.
+Use the **Theme** picker in the header; see [Studio appearance](studio.md#appearance-and-workspace) for
 preference storage and behavior across separate processes. Colors apply to
 the controls, event table, topology graph, and lattice presentation, including
 backgrounds, grids, and labels. Switching themes preserves selection, pan/zoom,
 projection, label visibility, event history, and playback state. It repaints
 the latest immutable presentation without sending a runtime command or
 restarting the simulation. The native MuJoCo viewer uses its own appearance.
+
+The Inspector preserves the system body-font size and uses proportional point
+sizes for headings and status text. It uses the shared
+[window-sizing policy](studio.md#startup-and-loading-feedback): a new window
+fits within 88% of the usable screen width and 86% of its height, accounting
+for its contents and font metrics. Subsequent launches restore the last normal
+size and position, constrained to the available monitor; maximized state is
+not restored. Geometry preferences remain local to the desktop application.
+The runtime workspace
+scrolls while the header, status, and **Stop** control remain outside that
+scrolling area. The active graph, planner, and tab determine workspace sizing.
+Event and planner table row heights follow font metrics and are refreshed on
+font or style changes; frame updates retain those sizing metrics.
+
+On Linux, the Inspector and Builder share the desktop identity
+`io.github.modlab_upenn.ModSim` and the registered ModSim dock icon. Identity and
+per-user desktop registration are configured before the splash or main window
+is created. Activating the shared application launcher opens the blank Builder
+using the Python environment of the most recent GUI launch; launch a runtime
+with its explicit pack selector through the commands above. See
+[Linux dock and application launcher](studio.md#linux-dock-and-application-launcher)
+for file locations and registration-failure behavior.
+
+Windows configures the shared process AppUserModelID before `QApplication` is
+constructed. Qt also supplies runtime application icons on Windows and macOS;
+persistent Windows launcher branding and macOS Finder/Launchpad branding require
+native packaging. See [Windows and macOS application identity](studio.md#windows-and-macos-application-identity)
+for the current scope and platform-validation limits. SVG wordmarks and toolbar
+icons support high-DPI displays; the loading artwork remains a 1920×1080 raster
+source, scaled to physical display pixels.
+
+The launcher shows the shared animated ModSim splash before importing the
+plotting workspace. Normal startup keeps it visible for at least three seconds
+from first display, including the approximately 1.1-second logo intro and window
+initialization. Slow initialization counts toward that minimum. Clicking the
+splash leaves it open; closing it cancels startup, and startup failure closes it
+immediately. See [Startup and loading feedback](studio.md#startup-and-loading-feedback)
+for the animation and timing behavior.
+
+The runtime starts only when the main window is first shown. Its workspace
+then shows a themed loading panel until
+the presenter accepts and displays its first valid runtime frame. The panel
+shows four startup milestones:
+
+1. **Prepare runtime execution**
+2. **Load and validate Robot Pack**
+3. **Initialize simulation backend**
+4. **Receive first simulation state**
+
+Actual worker or process status callbacks advance these steps. The first
+accepted frame completes the sequence and replaces the loading panel with the
+normal tabs. This runtime-readiness stage has no minimum display time; the
+three-second minimum belongs to the earlier branding splash. The progress bar remains
+indeterminate because initialization does not report a measurable percentage.
+The header and **Stop** control remain available during initialization. Stopping,
+failed initialization, or a run ending before its first frame stops the animation
+and displays the corresponding stopped or failed state. This feedback preserves
+execution ownership, frame validation, and event ordering.
 
 ## Process, thread, and data boundary
 

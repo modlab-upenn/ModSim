@@ -7,30 +7,32 @@ Import a mechanical model into a new self-contained RobotPack. The Builder
 copies the URDF and resolved mesh assets, creates the YAML documents and URDF
 name mapping, and opens the resulting draft.
 
-Before starting, complete [Prepare a URDF](prepare-urdf.md) and the Studio setup
-from [Installation](installation.md). This page uses `workshop_cube.urdf` and
-the default destination `~/.modsim/workspaces/workshop_cube`.
+Before starting, complete [Prepare a URDF](prepare-urdf.md) and install the Studio
+dependencies from [Installation](installation.md). This page uses
+`workshop_cube.urdf` and the default destination
+`~/.modsim/workspaces/workshop_cube`.
 
 ## Open the Builder
 
 Launch Studio from your active Python environment:
 
 ```bash
-modsim-robotics studio generic_cube
+modsim-robotics studio
 ```
 
-Studio requires a pack selector at launch. Opening the installed starter gives
-you a Builder window from which to import the new model. The import creates
-another pack; leave the starter unchanged.
+The Builder opens at **Build your Robot Pack**, with **Open Robot Pack** and
+**Create from URDF** buttons. No pack is loaded; Save and Export As remain
+disabled until you open or create one. A blank launch does not require an
+installed starter or RobotPack library setup.
 
-If Studio cannot resolve `generic_cube`, complete `modsim-robotics setup` in the
-same ModSim home. If several versions are installed, launch with
-`generic_cube@0.1.0` or the installed starter's explicit path.
+To open an existing pack directly, supply its installed name or explicit path
+when launching Studio. Omitting the selector opens this blank authoring window;
+it does not choose a default robot.
 
 ## Create the draft
 
-1. Choose **File → Create from URDF…** (`Ctrl+N`), or click **Import URDF** in
-   the toolbar.
+1. Click **Create from URDF** on the welcome screen, choose
+   **File → Create from URDF** (`Ctrl+N`), or click **Import URDF** in the toolbar.
 2. In **Select a URDF**, browse to `workshop_cube.urdf` and select it.
 3. For the mesh-free cube, Studio proceeds directly to the destination dialog.
    For another model with unresolved mesh references, it first opens
@@ -47,6 +49,13 @@ The destination dialog initially suggests the source filename without its
 extension. Replace that suggestion with your workspace destination. Use your
 actual home directory in the dialog; do not enter a literal `~` path and assume
 that the file picker expands it.
+
+Enable **Show hidden files and folders** in the picker if `.modsim` is hidden
+in your home directory. Studio remembers this choice across its file dialogs.
+
+If you have not run setup, create the parent `workspaces` directory with your
+file manager, or choose another existing working folder. Leave the final
+`workshop_cube` directory uncreated so the importer can create it.
 
 Canceling a dialog before completion leaves the import unfinished. If Studio
 reports **Could not inspect URDF** or **Could not create Robot Pack**, read the

@@ -26,7 +26,9 @@ modsim-robotics pack inspect generic_cube@0.1.0
 A bare ID selects an unambiguous installed pack. `ID@VERSION` requests that
 version; duplicate matches still need an explicit path. `--home PATH` changes
 the library home for a command, and `--pack` can supply a selector instead of
-the positional argument. Missing or ambiguous selectors report an error.
+the positional argument. Pack-reading and runtime commands report missing or
+ambiguous selectors. `modsim-robotics studio` can instead open a blank Builder
+for importing a URDF; supplying a selector opens that pack directly.
 
 Workspace directories are opened explicitly:
 

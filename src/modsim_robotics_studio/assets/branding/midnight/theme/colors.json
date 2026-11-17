@@ -1,0 +1,18 @@
+{
+  "theme": "midnight",
+  "name": "Midnight",
+  "background": "#0B1521",
+  "surface": "#102236",
+  "raised": "#172E46",
+  "border": "#2E4B68",
+  "text": "#C5CCD3",
+  "muted": "#9EB1C5",
+  "blue": "#6997CC",
+  "teal": "#35B3A3",
+  "slate": "#4C7099",
+  "reticle": "#6997CC",
+  "accent": "#35B3A3",
+  "accent_text": "#0B1521",
+  "focus": "#8CBCEE",
+  "selection": "#1C3E58"
+}

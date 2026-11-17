@@ -1,0 +1,18 @@
+{
+  "theme": "light",
+  "name": "Light",
+  "background": "#F8FBFE",
+  "surface": "#FFFFFF",
+  "raised": "#EEF4FA",
+  "border": "#CCD9E8",
+  "text": "#10263C",
+  "muted": "#52677D",
+  "blue": "#1E4E8C",
+  "teal": "#0B7D73",
+  "slate": "#6B8FB4",
+  "reticle": "#1E4E8C",
+  "accent": "#0B7D73",
+  "accent_text": "#FFFFFF",
+  "focus": "#1E4E8C",
+  "selection": "#DDEDF8"
+}

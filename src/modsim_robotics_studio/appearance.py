@@ -7,16 +7,23 @@ runtime model. Both Studio entry points use the same explicit settings scope.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 
 from PySide6.QtCore import QObject, QSettings, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QFontDatabase, QPalette
+from PySide6.QtGui import QColor, QFontDatabase, QFontInfo, QPalette
 from PySide6.QtWidgets import QApplication
+
+from ._branding import application_icon, asset_path, theme_palette
+from .visual_colors import visual_colors
 
 
 @dataclass(frozen=True, kw_only=True)
 class StudioTheme:
-    """Semantic color tokens shared by Qt chrome and embedded renderers."""
+    """Semantic color tokens shared by Qt chrome and embedded renderers.
+
+    Brand surfaces and interaction colors come from the selected production
+    palette. ``focus`` is its blue keyboard-focus color, distinct from the
+    teal ``accent``. Status colors retain the graph's categorical meanings.
+    """
 
     id: str
     name: str
@@ -28,6 +35,7 @@ class StudioTheme:
     text: str
     muted: str
     accent: str
+    focus: str
     on_accent: str
     selection: str
     viewport: str
@@ -40,75 +48,46 @@ class StudioTheme:
     radius: int = 7
 
 
+def _brand_theme(theme_id: str) -> StudioTheme:
+    """Map the approved pack palette to the application's semantic tokens."""
+    palette = {
+        key: value.lower() if value.startswith("#") else value
+        for key, value in theme_palette(theme_id).items()
+    }
+    status = visual_colors(theme_id)
+    return StudioTheme(
+        id=theme_id,
+        name=f"ModSim {palette['name']}",
+        shell=palette["background"],
+        surface=palette["surface"],
+        raised=palette["raised"],
+        field=palette["surface"],
+        border=palette["border"],
+        text=palette["text"],
+        muted=palette["muted"],
+        accent=palette["accent"],
+        focus=palette["focus"],
+        on_accent=palette["accent_text"],
+        selection=palette["selection"],
+        viewport=palette["background"],
+        viewport_top=palette["surface"],
+        grid=palette["raised"],
+        grid_major=palette["slate"],
+        # The brand packs define chrome colors, not error/diagnostic hues.
+        # Keep the established categorical meanings and light-theme contrast.
+        success=status["green"],
+        warning=status["gold"],
+        danger=status["red"],
+        radius=6,
+    )
+
+
 THEMES: dict[str, StudioTheme] = {
-    "graphite": StudioTheme(
-        id="graphite",
-        name="Graphite Workbench",
-        shell="#191c21",
-        surface="#23272e",
-        raised="#2d333d",
-        field="#1b2027",
-        border="#3b4350",
-        text="#e7edf5",
-        muted="#a6b2c2",
-        accent="#78b4fa",
-        on_accent="#111d2c",
-        selection="#30475f",
-        viewport="#13171c",
-        viewport_top="#29333d",
-        grid="#303943",
-        grid_major="#65778a",
-        success="#79d7ae",
-        warning="#f2c66d",
-        danger="#ff939b",
-        radius=5,
-    ),
-    "light": StudioTheme(
-        id="light",
-        name="Light Studio",
-        shell="#f5f0e7",
-        surface="#fffcf7",
-        raised="#eee5d6",
-        field="#fffefa",
-        border="#cfc3b1",
-        text="#182b45",
-        muted="#5d655f",
-        accent="#183b6b",
-        on_accent="#ffffff",
-        selection="#e6dcc9",
-        viewport="#f8f3e8",
-        viewport_top="#fffcf5",
-        grid="#dfd5c3",
-        grid_major="#8b8172",
-        success="#157652",
-        warning="#8b5b0b",
-        danger="#be3349",
-    ),
-    "midnight": StudioTheme(
-        id="midnight",
-        name="Midnight Panels",
-        shell="#101923",
-        surface="#1a2735",
-        raised="#263747",
-        field="#14212e",
-        border="#344b5f",
-        text="#e6f0f7",
-        muted="#a0b5c8",
-        accent="#4ac6b2",
-        on_accent="#082922",
-        selection="#234b50",
-        viewport="#111c27",
-        viewport_top="#2b3d4e",
-        grid="#314657",
-        grid_major="#6b849a",
-        success="#6bddad",
-        warning="#efc473",
-        danger="#ff929b",
-        radius=8,
-    ),
+    identifier: _brand_theme(identifier) for identifier in ("light", "dark", "midnight")
 }
 DEFAULT_THEME = "midnight"
 _SETTINGS_KEY = "appearance/theme"
+_THEME_ALIASES = {"graphite": "dark"}
 
 
 class ThemeManager(QObject):
@@ -122,22 +101,37 @@ class ThemeManager(QObject):
         self._application = application
         self._settings = settings if settings is not None else QSettings("ModSim", "Studio")
         saved = self._settings.value(_SETTINGS_KEY, DEFAULT_THEME)
-        self.theme = THEMES.get(str(saved), THEMES[DEFAULT_THEME])
+        identifier = _THEME_ALIASES.get(str(saved), str(saved))
+        self.theme = THEMES.get(identifier, THEMES[DEFAULT_THEME])
         # Set this before constructing dialogs. Per-dialog options alone can
         # arrive after Qt has created a GTK helper and loaded its native icons.
         application.setAttribute(Qt.ApplicationAttribute.AA_DontUseNativeDialogs)
         application.setStyle("Fusion")
         families = QFontDatabase.families()
-        font = QFontDatabase.systemFont(QFontDatabase.SystemFont.GeneralFont)
-        for family in ("Inter", "Segoe UI", "Noto Sans", "DejaVu Sans"):
-            if family in families:
-                font = QFont(family, 10)
-                break
+        # Retain the platform/user font's size, weight, and other accessibility
+        # settings. Reconstructing a 10 pt font overrides those preferences.
+        font = application.font()
+        if font.family() not in families:
+            for family in ("Inter", "Segoe UI", "Noto Sans", "DejaVu Sans"):
+                if family in families:
+                    font.setFamily(family)
+                    break
         application.setFont(font)
         self._apply()
 
     def set_theme(self, theme_id: str, *, persist: bool = True) -> None:
-        """Select a known theme; only explicit choices write a user preference."""
+        """Apply a theme and optionally save the user's explicit choice.
+
+        Args:
+            theme_id: ``light``, ``dark``, or ``midnight``. The legacy
+                ``graphite`` name selects ``dark``.
+            persist: Whether to save the canonical ID in local Qt settings.
+                Restoring a preference never rewrites it implicitly.
+
+        Raises:
+            KeyError: The requested theme ID is unknown.
+        """
+        theme_id = _THEME_ALIASES.get(theme_id, theme_id)
         theme = THEMES[theme_id]
         if persist:
             self._settings.setValue(_SETTINGS_KEY, theme_id)
@@ -164,6 +158,7 @@ class ThemeManager(QObject):
             (QPalette.ColorRole.ToolTipBase, theme.raised),
             (QPalette.ColorRole.ToolTipText, theme.text),
             (QPalette.ColorRole.Link, theme.accent),
+            (QPalette.ColorRole.BrightText, theme.on_accent),
             (QPalette.ColorRole.PlaceholderText, theme.muted),
             (QPalette.ColorRole.Light, theme.border),
             (QPalette.ColorRole.Mid, theme.border),
@@ -179,6 +174,7 @@ class ThemeManager(QObject):
             palette.setColor(QPalette.ColorGroup.Disabled, role, QColor(theme.muted))
         self._application.setPalette(palette)
         self._application.setStyleSheet(_stylesheet(theme))
+        self._application.setWindowIcon(application_icon(theme.id))
 
 
 def theme_manager() -> ThemeManager:
@@ -191,22 +187,36 @@ def theme_manager() -> ThemeManager:
 
 
 def _stylesheet(t: StudioTheme) -> str:
-    check = (Path(__file__).parent / "assets" / "check.svg").as_posix()
+    check = asset_path(t.id, "ui/svg/accent/check.svg").as_posix()
+    body_size = QApplication.font().pointSizeF()
+    if body_size <= 0:
+        body_size = QFontInfo(QApplication.font()).pointSizeF()
+    if body_size <= 0:
+        body_size = 10.0
     return f"""
-    QWidget {{ color: {t.text}; selection-background-color: {t.selection};
+    QWidget {{ selection-background-color: {t.selection};
                selection-color: {t.text}; }}
-    QMainWindow, QDialog {{ background: {t.shell}; }}
+    QMainWindow, QDialog, QWidget#BrandWelcome {{ background: {t.shell}; }}
     QMainWindow::separator {{ background: {t.shell}; width: 9px; height: 9px; }}
     QMainWindow::separator:hover, QSplitter::handle:hover {{ background: {t.accent}; }}
     QWidget#Panel, QWidget#StudioHeader, QWidget#InspectorContent {{ background: {t.surface}; }}
+    QWidget#BrandCard, QWidget#LoadingPanel {{ background: {t.surface};
+        border: 1px solid {t.border}; border-radius: 12px; }}
+    QWidget#LoadingCopy {{ background: transparent; border: 0; }}
     QLabel {{ background: transparent; }}
-    QLabel#Brand {{ font-size: 20px; font-weight: 650; }}
+    QLabel#Brand {{ font-size: {body_size * 1.45:.2f}pt; font-weight: 650; }}
+    QLabel#BrandTitle {{ font-size: {body_size * 1.7:.2f}pt; font-weight: 700; }}
+    QLabel#BrandSubtitle {{ color: {t.muted}; font-size: {body_size:.2f}pt; }}
+    QLabel#LoadingStage {{ color: {t.text}; font-size: {body_size * 1.15:.2f}pt;
+        font-weight: 600; }}
+    QLabel#LoadingDetail, QLabel#SplashVersion {{ color: {t.muted};
+        font-size: {body_size * 0.9:.2f}pt; }}
     QLabel#Workspace {{ color: {t.accent}; background: transparent; border: 0;
-        font-size: 14px; font-weight: 700; padding: 0 6px; }}
-    QLabel#SectionTitle {{ font-size: 15px; font-weight: 600; }}
+        font-size: {body_size:.2f}pt; font-weight: 700; padding: 0 6px; }}
+    QLabel#SectionTitle {{ font-size: {body_size * 1.1:.2f}pt; font-weight: 600; }}
     QLabel#Muted, QLabel#Breadcrumb {{ color: {t.muted}; }}
     QLabel#Hint {{ color: {t.muted}; background: {t.surface}; padding: 6px 10px; }}
-    QLabel#ValidationSummary {{ font-size: 15px; font-weight: 600; }}
+    QLabel#ValidationSummary {{ font-size: {body_size * 1.1:.2f}pt; font-weight: 600; }}
     QLabel#ValidationSummary[state="success"] {{ color: {t.success}; }}
     QLabel#ValidationSummary[state="warning"] {{ color: {t.warning}; }}
     QLabel#ValidationSummary[state="error"] {{ color: {t.danger}; }}
@@ -226,42 +236,50 @@ def _stylesheet(t: StudioTheme) -> str:
     QPushButton, QToolButton {{ background: {t.raised}; border: 1px solid {t.border};
         border-radius: {t.radius}px; padding: 7px 12px; }}
     QToolButton {{ padding: 6px 9px; }}
-    QPushButton:hover, QToolButton:hover {{ background: {t.selection}; border-color: {t.accent}; }}
+    QPushButton:hover, QToolButton:hover {{ background: {t.selection}; border-color: {t.focus}; }}
     QPushButton:pressed, QToolButton:pressed {{ background: {t.selection}; }}
     QPushButton:checked, QToolButton:checked {{ background: {t.selection};
         border-color: {t.accent}; color: {t.text}; }}
     QPushButton[primary="true"], QToolButton[primary="true"] {{
         background: {t.accent}; color: {t.on_accent}; border-color: {t.accent}; font-weight: 600; }}
     QPushButton[primary="true"]:hover, QToolButton[primary="true"]:hover {{
-        background: {t.selection}; color: {t.text}; }}
+        background: {t.accent}; color: {t.on_accent}; border-color: {t.focus}; }}
     QPushButton[danger="true"] {{ color: {t.danger}; background: {t.surface}; }}
     QPushButton:disabled, QToolButton:disabled {{ color: {t.muted}; background: {t.surface};
         border-color: {t.border}; }}
-    QPushButton:focus, QToolButton:focus {{ border: 1px solid {t.accent}; }}
-    QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QPlainTextEdit {{
-        background: {t.field}; border: 1px solid {t.border}; border-radius: 4px;
-        padding: 6px; }}
-    QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus {{ border-color: {t.accent}; }}
-    QLineEdit:disabled, QComboBox:disabled {{ color: {t.muted}; background: {t.surface}; }}
-    QComboBox {{ padding-right: 22px; min-height: 18px; }}
-    QComboBox::drop-down {{ border: 0; width: 22px; }}
+    QPushButton:focus, QToolButton:focus {{ border: 1px solid {t.focus}; }}
+    QLineEdit, QPlainTextEdit, QTextEdit {{ color: {t.text}; background: {t.field};
+        border: 1px solid {t.border}; border-radius: 4px; padding: 5px; }}
+    QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus {{ border-color: {t.focus}; }}
+    QLineEdit:disabled, QPlainTextEdit:disabled, QTextEdit:disabled {{
+        color: {t.muted}; background: {t.surface}; }}
+    QComboBox, QSpinBox, QDoubleSpinBox {{ min-height: 1.3em; }}
     QComboBox QAbstractItemView {{ background: {t.surface}; border: 1px solid {t.border};
         padding: 4px; selection-background-color: {t.selection}; }}
     QCheckBox {{ spacing: 7px; padding: 3px 0; }}
     QCheckBox::indicator {{ width: 14px; height: 14px; background: {t.field};
         border: 1px solid {t.border}; border-radius: 3px; }}
-    QCheckBox::indicator:checked {{ background: {t.accent}; border-color: {t.accent};
+    QCheckBox::indicator:checked {{ background: {t.on_accent}; border-color: {t.accent};
         image: url("{check}"); }}
-    QCheckBox::indicator:hover, QCheckBox::indicator:focus {{ border-color: {t.accent}; }}
+    QCheckBox::indicator:hover, QCheckBox::indicator:focus {{ border-color: {t.focus}; }}
     QCheckBox::indicator:disabled {{ background: {t.raised}; border-color: {t.border}; }}
-    QTreeView, QTableView {{ background: {t.surface}; alternate-background-color: {t.raised};
-        border: 0; gridline-color: {t.border}; outline: 0; }}
+    QTreeView, QTableView, QListView {{ color: {t.text}; background: {t.surface};
+        alternate-background-color: {t.raised}; border: 0; gridline-color: {t.border};
+        selection-background-color: {t.selection}; selection-color: {t.text}; outline: 0; }}
     QTreeView {{ padding: 6px; show-decoration-selected: 1; }}
-    QTreeView::item {{ padding: 5px 3px; border-radius: 4px; }}
-    QTreeView::item:selected, QTableView::item:selected {{
+    QTreeView::item {{ padding: 0 3px; border-radius: 4px; }}
+    QTreeView::item:selected, QTableView::item:selected, QListView::item:selected {{
         background: {t.selection}; color: {t.text}; }}
-    QTreeView::item:hover {{ background: {t.raised}; }}
-    QTableView::item {{ padding: 5px; }}
+    QTreeView::item:hover:!selected, QListView::item:hover:!selected {{
+        background: {t.raised}; }}
+    QTreeView::item:disabled, QTableView::item:disabled, QListView::item:disabled {{
+        color: {t.muted}; }}
+    QTableView::item {{ padding: 0 3px; }}
+    QAbstractItemView QLineEdit, QAbstractSpinBox QLineEdit {{
+        color: {t.text}; background: {t.field}; border: 0; border-radius: 0;
+        padding: 0 1px; margin: 0; min-height: 0; }}
+    QAbstractItemView QLineEdit:disabled, QAbstractSpinBox QLineEdit:disabled {{
+        color: {t.muted}; }}
     QHeaderView::section {{ background: {t.surface}; color: {t.muted};
         border: 0; border-bottom: 1px solid {t.border}; padding: 8px; }}
     QTabWidget::pane {{ border: 1px solid {t.border}; background: {t.surface}; }}
@@ -269,7 +287,8 @@ def _stylesheet(t: StudioTheme) -> str:
         border-bottom: 3px solid transparent; padding: 10px 20px; }}
     QTabBar::tab:selected {{ color: {t.text}; background: {t.raised};
         border-bottom-color: {t.accent}; }}
-    QTabBar::tab:hover {{ color: {t.text}; }}
+    QTabBar::tab:hover {{ color: {t.text}; background: {t.raised}; }}
+    QTabBar::tab:disabled {{ color: {t.muted}; }}
     QMenuBar, QMenu {{ background: {t.surface}; }}
     QMenuBar::item {{ padding: 5px 10px; background: transparent; }}
     QMenuBar::item:selected, QMenu::item:selected {{ background: {t.selection}; }}
@@ -278,6 +297,11 @@ def _stylesheet(t: StudioTheme) -> str:
     QMenu::separator {{ height: 1px; background: {t.border}; margin: 5px; }}
     QStatusBar {{ background: {t.surface}; color: {t.muted}; border-top: 1px solid {t.border}; }}
     QStatusBar::item {{ border: 0; }}
+    QProgressBar {{ background: {t.raised}; color: {t.text};
+        border: 1px solid {t.border}; border-radius: 5px; text-align: center;
+        min-height: 10px; }}
+    QProgressBar::chunk {{ background: {t.accent}; border-radius: 4px; }}
+    QProgressBar#LoadingProgress {{ min-height: 7px; max-height: 7px; border: 0; }}
     QSplitter::handle {{ background: {t.shell}; height: 8px; width: 8px; }}
     QScrollBar:vertical {{ background: {t.surface}; width: 10px; margin: 0; }}
     QScrollBar:horizontal {{ background: {t.surface}; height: 10px; margin: 0; }}

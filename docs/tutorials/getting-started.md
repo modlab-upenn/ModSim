@@ -88,7 +88,7 @@ the docking example will exercise the description in a runtime session.
 Try a small edit in a separate workspace so that the installed starter stays
 available for the simulation:
 
-1. Choose **File → Export As…** (`Ctrl+Shift+S`).
+1. Choose **File → Export As** (`Ctrl+Shift+S`).
 2. In **Export to a new Robot Pack folder**, browse to the `workspaces` directory
    inside your ModSim home and enter a **new** folder name, `practice_cube`.
    With the default home, the destination is

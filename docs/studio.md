@@ -25,11 +25,23 @@ in editable mode:
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install -e ".[studio,dev]"
+.venv/bin/modsim-robotics studio
+```
+
+With no pack selector, the Builder opens a blank **Build your Robot Pack**
+welcome screen. Choose **Create from URDF** to author a new pack, or
+**Open Robot Pack** to open an existing directory. Save and Export As are
+disabled until a project exists. A blank launch does not require library setup
+or select an implicit robot.
+
+To explore the installed starter instead, prepare the library and select it:
+
+```bash
 .venv/bin/modsim-robotics setup
 .venv/bin/modsim-robotics studio generic_cube
 ```
 
-Select the robot for each launch. `generic_cube` resolves by ID in the installed
+When supplied, `generic_cube` resolves by ID in the installed
 library, whose directory is configured by `[paths].robot_packs` in the ModSim
 home's `config.toml`. Use `modsim-robotics pack list` to see IDs, versions, and
 paths, or qualify the name as `generic_cube@0.1.0`. Ambiguous names report an
@@ -70,17 +82,19 @@ semantic window; explicit `--viewer` with that backend is rejected.
 
 The standalone `modsim-robotics-studio` command and `python -m modsim_robotics_studio` are
 equivalent and accept the same positional selector, `--pack`, and `--home PATH`
-selection. Both require a robot name or path; neither silently opens a default.
+selection. Both open the blank Builder when the selector is omitted. Supplied
+names and paths use the same explicit resolution rules; neither opens a default.
 Running through `.venv/bin/python -m modsim_robotics_studio` is useful while
 developing because the editable install uses the current source tree.
 
 ## Appearance and workspace
 
-Both applications share a native Studio design with three built-in palettes:
+Both applications use the supplied ModSim production branding, with three
+theme packs:
 
-- **Midnight Panels** (default): navy surfaces with teal accents;
-- **Graphite Workbench**: charcoal surfaces with blue accents; and
-- **Light Studio**: warm ivory surfaces, sand borders, and navy blue accents.
+- **ModSim Midnight** (default): deep navy surfaces and teal actions;
+- **ModSim Dark**: charcoal surfaces, pale text, and teal actions; and
+- **ModSim Light**: cool white surfaces, navy text, and deep teal actions.
 
 Use the **Theme** picker at the top right of either window to switch immediately.
 The choice is stored in Qt user settings under organization `ModSim`, application
@@ -88,6 +102,8 @@ The choice is stored in Qt user settings under organization `ModSim`, applicatio
 their next launch. Windows within the same process update together; an already
 running separate process keeps its current theme until changed or relaunched.
 Appearance preferences are not written into Robot Packs or tracked project files.
+An existing `graphite` preference selects ModSim Dark without resetting other
+settings. The canonical theme IDs are `light`, `dark`, and `midnight`.
 
 The shared styling covers headers, menus, dialogs, fields, tables, tabs, and
 scrollbars. The authoring viewport background/grid and runtime graph colors
@@ -97,8 +113,98 @@ geometry, physics, and the native MuJoCo companion viewer are unchanged.
 Charts use separate categorical hues instead of variations of the UI accent.
 The same planner state or assembly keeps its color meaning across themes, with
 darker inks on the light background. Legends show the colors currently in use.
-The styling and small line icons are implemented in Studio itself using the
-existing PySide6 dependency; no external theme or icon package is required.
+Headers use the original outlined ModSim wordmark. Window/application icons,
+toolbar glyphs, and welcome artwork come from the matching production pack.
+Palette JSON and curated assets are included under
+`src/modsim_robotics_studio/assets/branding/`, with their provenance and hashes.
+The installed wheel does not read the original branding folder. Supporting
+text uses available system fonts; the outlined logo needs no font installation.
+PySide6 renders these assets without an additional theme or icon dependency.
+
+Studio preserves the operating system's body-font size and accessibility
+settings. Headings, workspace labels, and loading text use proportional point
+sizes. Combo boxes and spin boxes retain Fusion's native controls and arrows.
+List, tree, and table selections use the theme's foreground/background pair;
+inline editors use compact padding so their text fits inside the row.
+
+Wordmarks are rendered from SVG for the widget's display scale and refreshed
+when its device pixel ratio changes. Toolbar icons supply 1×, 2×, 3×, and 4×
+representations. Application icons use the scalable SVG with original 256,
+512, and 1024 px PNG representations. Splash and loading backgrounds are scaled
+to physical display pixels using the current device pixel ratio. Their source
+artwork is 1920×1080; displaying it on a 4K screen does not add image detail or
+make it native 4K artwork.
+
+### Linux dock and application launcher
+
+The Builder and Runtime Inspector share the desktop identity
+`io.github.modlab_upenn.ModSim`. Before creating their splash or main window,
+both configure that identity and register a per-user application launcher and
+icon. This lets Ubuntu and other Linux desktops associate the windows with
+ModSim rather than the Python executable. The dock uses the supplied Midnight
+1024 px app icon; window icons continue to follow the selected theme.
+
+The registration files are:
+
+```text
+<desktop-data>/applications/io.github.modlab_upenn.ModSim.desktop
+<desktop-data>/modsim-robotics/icons/modsim.png
+```
+
+`<desktop-data>` is the absolute `XDG_DATA_HOME` when configured, otherwise
+`~/.local/share`. Startup updates these files only when their contents change.
+Activating the application launcher opens the blank Builder using the Python
+environment of the most recent Builder or Inspector launch, preserving its
+virtual-environment executable path. Launch the Inspector with the runtime
+command and explicit RobotPack selector described above.
+
+If desktop registration cannot write its files, startup logs a warning and
+continues with the window icon. Registration is Linux-only and leaves RobotPacks
+and shell profiles untouched.
+
+### Windows and macOS application identity
+
+On Windows, both launchers set the process AppUserModelID to
+`io.github.modlab_upenn.ModSim` before constructing `QApplication`. This gives
+the running applications a shared taskbar identity. Qt supplies the running
+application and window icons on Windows and macOS as well as Linux.
+
+Persistent Windows launcher branding requires a native executable or shortcut
+with matching identity and icon metadata. Finder and Launchpad branding on
+macOS requires an `.app` bundle. The current Python installation does not create
+these native packages or shortcuts. Native desktop validation currently covers
+Linux; Windows and macOS integration still requires testing on those platforms.
+
+### Startup and loading feedback
+
+Both applications open a themed startup splash with an animated ModSim logo,
+version, and current initialization stage. The supplied SVG symbol assembles,
+the outlined wordmark appears, and the completed logo softly pulses. Normal
+startup keeps this window visible for at least three seconds from its first
+display. An approximately 1.1-second intro plays through the Qt event loop
+before the heavier window and plotting modules are imported and constructed.
+That intro and subsequent initialization count toward the three-second minimum;
+only the remaining time is waited before showing the prepared main window.
+Qt/VTK construction on the GUI thread can temporarily pause the animation.
+
+Clicking the splash leaves it open. Closing it cancels startup and keeps any
+prepared main window hidden. A startup failure closes it immediately. On a
+successful blank launch, the Builder presents the same background artwork with
+its two authoring actions. The pictured robot is illustrative brand art, not a
+preview of the loaded RobotPack.
+
+Opening, importing, saving, and exporting a pack show a modal loading panel.
+URDF parsing and document reads/writes run in a temporary worker while the Qt
+event loop keeps the panel responsive. Widget updates and VTK scene creation
+remain on the GUI thread. A loading stage is painted before preview generation;
+large VTK scene construction can still temporarily occupy that thread.
+The panel prevents document edits or dismissal during persistence, closes on
+success or failure, and leaves error reporting to the existing action handler.
+Progress is indeterminate because these operations do not report a measurable
+completion percentage. The startup splash's three-second minimum applies only
+to initial application branding; these document operations finish when their
+work completes. The Runtime Inspector's corresponding first-frame
+loading behavior is described in [the runtime contract](runtime_inspector.md#appearance).
 
 The Builder has an Open/Import/Save/Validate toolbar, a searchable project tree,
 and a scrollable Inspector. Connector pose inputs separate XYZ and RPY
@@ -107,6 +213,33 @@ connector custom metadata can be expanded when needed. The Validation tab
 shows the actual profile result and issue counts, with a read-only issue table
 when there are findings. Viewport layers and **Fit** are above the preview.
 Dock panels remain movable and can be restored through the **View** menu.
+
+Both applications and their file/creation dialogs use a shared window-sizing
+policy. New windows account for the completed layout and current font metrics,
+with opening dimensions capped at 88% of the target screen's usable width and
+86% of its usable height. They open as normal windows with visible desktop
+margins. Dialogs use their visible parent's monitor; independent windows start
+on the pointer's monitor, with the application screen as fallback. Qt handles
+the operating system's high-DPI scaling; these dimensions are logical pixels,
+not physical display pixels.
+
+Normal window size and position, along with main-window dock arrangement, are
+stored locally under `ModSim` / `Studio`, in `windows/<window-kind>/` preferences.
+Reopening restores the previous normal dimensions even if the window was
+closed while maximized. Remembered sizes may use more space than the new-window
+defaults, but are constrained to the current usable desktop with a small margin.
+Independent windows return to their saved monitor when it remains available;
+dialog geometry is adjusted to its parent's monitor. Monitor changes or
+disconnections keep the window within the available screen, subject to the
+desktop compositor's placement rules. Startup and operation-loading windows
+use the same bounds without persisting their temporary geometry.
+
+The Builder starts with preferred Project and Inspector sidebar widths while
+reserving space for the module preview. The welcome screen, Inspector forms,
+and validation area scroll within their assigned space. Creation-dialog forms
+wrap long rows and scroll while OK and Cancel remain outside the scroll area.
+Welcome actions allow room for their text at the current font size; validation
+and metadata table rows also follow their contents and font.
 
 The Builder prepares visual/collision geometry and diagnostic layers when a
 module is loaded, then retains their VTK graphics objects. Selecting links or
@@ -126,6 +259,20 @@ process aborts caused by incompatible GTK/pixbuf libraries inherited from a
 Snap-packaged terminal (for example, a loader requiring a newer system glibc).
 Native dialog helpers are disabled application-wide before dialogs are created;
 setting only the individual file-dialog option is too late on some Qt/GTK paths.
+
+Every picker includes a **Show hidden files and folders** checkbox, including
+URDF selection, package/mesh-root selection, opening a pack, choosing a new
+import folder, and Export As. Enable it to browse directories such as
+`~/.modsim`, or clear it to hide those entries again. The choice is shared
+between pickers and restored on the next launch as a local Studio preference;
+it is not stored in a RobotPack. Toggling visibility keeps the current folder,
+typed filename, and file-type filter.
+
+The file browser uses the same readable colors and compact inline editors in
+List, Detail, and icon presentations. **F2** starts a file or folder rename;
+**Enter** commits it and **Escape** cancels the edit. Back, Forward, and Parent
+navigation controls use palette-aware Qt arrows, including disabled states
+and right-to-left layouts.
 
 ## Current feature inventory
 
@@ -169,17 +316,15 @@ limitations.
 ## Session logging
 
 Each Studio launch starts a new local session log and rewrites the previous log
-rather than appending to it. Studio resolves the selected name or path before
-configuring session logging. The log is kept in a sidecar directory
+rather than appending to it. When a name or path is supplied, Studio resolves it
+before configuring session logging. The log is kept in a sidecar directory
 outside the atomically replaced pack folder:
 
 ```text
 <pack-parent>/.modsim/logs/<pack-folder-name>/studio.log
 ```
 
-Omitting the selector on a normal CLI launch reports a selection error. The
-low-level `resolve_session_log_path(None)` helper retains this
-fallback for direct or internal callers that do not supply a pack:
+A blank Studio launch uses the working-directory log:
 
 ```text
 <current-working-directory>/.modsim/logs/studio.log
@@ -228,7 +373,8 @@ session continues to use the working-directory log chosen at startup.
 
 ## URDF-to-Robot-Pack workflow
 
-1. Select **File → Create from URDF**.
+1. Launch `modsim-robotics studio` and select **Create from URDF** on the welcome
+   screen, or use **File → Create from URDF** in an open Builder.
 2. Choose an expanded `.urdf` or XML file.
 3. If meshes cannot be resolved, select the package or mesh asset root.
 4. Choose a new Robot Pack directory. Existing destinations are refused.

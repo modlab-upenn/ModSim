@@ -102,10 +102,19 @@ valid pack and configuration. Older configurations without `[paths].robot_packs`
 use the standard library directory; the old `[defaults].robot_pack` setting is
 ignored.
 
-The configuration says where packs are stored, not which robot to open. Select a
-pack on each Studio launch. If a name matches more than one installed pack, use
-a version such as `generic_cube@0.1.0` or an explicit path; ModSim does not
-silently choose the latest version or the only installed robot.
+The configuration says where packs are stored, not which robot to open. Supply a
+selector to open an existing pack in Studio. If a name matches more than one
+installed pack, use a version such as `generic_cube@0.1.0` or an explicit path;
+ModSim does not silently choose the latest version or the only installed robot.
+
+To author a new pack, open the blank Builder instead:
+
+```bash
+modsim-robotics studio
+```
+
+Choose **Create from URDF** on its welcome screen. This blank launch does not
+require an installed pack or library setup; see [Import a URDF](import-urdf.md).
 
 ### Keep the ModSim path in your shell
 
@@ -144,7 +153,8 @@ modsim-robotics studio --pack /absolute/path/to/another_robot_pack
 
 An absolute path or a relative path beginning with `./` bypasses library lookup
 without changing `config.toml`. The `--pack` option also accepts names such as
-`generic_cube`. A Studio launch with no pack selector reports a selection error.
+`generic_cube`. Omitting it opens the blank Builder. Commands that inspect,
+validate, generate views, dock, or run a pack still require an explicit selector.
 
 For terminal inspection, validation, and docking, use the separate
 [command-line guide](cli.md).

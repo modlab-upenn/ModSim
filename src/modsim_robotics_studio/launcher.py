@@ -11,16 +11,21 @@ from modsim_robotics.user_data import UserDataError, resolve_robot_pack
 
 
 def cli() -> None:
-    """Launch Studio or explain how to install its optional dependencies."""
+    """Launch a blank Builder or open an explicitly selected RobotPack.
+
+    Raises:
+        SystemExit: With the application exit status, or status 2 for invalid
+            options, an unresolved selector, or missing Studio dependencies.
+    """
     parser = argparse.ArgumentParser(
         prog="modsim-robotics-studio",
-        description="Open an installed RobotPack by ID, or supply an explicit pack path.",
+        description="Open a blank Studio workspace, or select a RobotPack by ID or path.",
     )
     parser.add_argument(
         "pack_path",
         nargs="?",
         metavar="PACK",
-        help="Installed pack ID, ID@VERSION, or explicit directory/manifest path.",
+        help="Installed pack ID, ID@VERSION, or explicit path; omit for a blank workspace.",
     )
     parser.add_argument("--pack", help="Select a pack ID, ID@VERSION, or explicit path.")
     parser.add_argument(
@@ -32,10 +37,10 @@ def cli() -> None:
     arguments = parser.parse_args()
     if arguments.pack_path is not None and arguments.pack is not None:
         parser.error("Pass either a positional RobotPack path or --pack, not both.")
+    selector = arguments.pack if arguments.pack is not None else arguments.pack_path
     try:
-        initial_path = resolve_robot_pack(
-            arguments.pack if arguments.pack is not None else arguments.pack_path,
-            home=arguments.home,
+        initial_path = (
+            resolve_robot_pack(selector, home=arguments.home) if selector is not None else None
         )
     except UserDataError as error:
         parser.error(str(error))
