@@ -33,6 +33,13 @@ events, identifiers, transforms, and docking metrics. Studio widgets, concrete
 simulator adapters, planners, and the remaining API will be added as we review
 each subsystem.
 
+To configure and start a simulation through the desktop application, follow
+[Run your RobotPack](../how-to/run-robot-pack.md). Studio's Runtime workspace
+performs Inspector-specific launch checks before using the execution runner;
+the core `RuntimeSession` API documented here does not require a model-view
+recipe or GUI. The [Studio architecture chapter](../explanation/studio-and-inspector.md)
+maps the shell, readiness checks, and embedded Inspector to their source files.
+
 ## How this reference stays current
 
 [Sphinx AutoAPI](https://github.com/readthedocs/sphinx-autoapi) parses the

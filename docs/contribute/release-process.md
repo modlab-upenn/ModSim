@@ -62,6 +62,15 @@ nonempty before any PyPI publication. Write it so it can be attached verbatim
 to the GitHub Release; record temporary preparation and publication status in
 this maintainer guide and the setup tracker.
 
+For a desktop change, also exercise the
+[Studio workflow checks](development-setup.md#exercise-the-studio-workflow)
+using the built wheel in a clean environment with its `studio` extra. Add
+`mujoco` for the native viewer check. Confirm that **Robot Pack → Runtime**,
+model-view selection or creation, launch validation, save-before-start, and
+playback/shutdown work from the installed artifact. The core installation
+smoke check below does not launch a GUI; an editable checkout can also conceal
+a missing packaged desktop module or asset.
+
 The MuJoCo extra currently requires `mujoco>=3.3.3,<4`. Check the documented
 minimum as part of compatibility verification when changing that bound.
 

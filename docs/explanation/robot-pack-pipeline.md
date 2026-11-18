@@ -21,7 +21,7 @@ inertia, and mesh references describe the imported robot. A URDF does not
 identify ModSim docking interfaces or decide which connector types can mate.
 
 **YAML supplies modular semantics.** `robot_pack.yaml` identifies the pack,
-selects its catalogs and assets, and declares model-view recipes. The referenced
+selects its catalogs and assets, and may declare model-view recipes. The referenced
 module, connector, capability, and mapping documents add the meaning that the
 runtime needs. A module's `asset_ref` names a declared URDF asset; a connector's
 `connector_type` names reusable compatibility and connection rules.
@@ -152,8 +152,9 @@ field path, and optional entity and repair information.
 | Boundary | Question it answers |
 | --- | --- |
 | Loader and schema | Can these documents form a valid typed RobotPack? |
-| Authoring validation | Which structural problems or incomplete fields should the author fix? |
-| Simulation validation | Is the description structurally complete enough to attempt a backend? |
+| Authoring validation / F6 | Which structural problems or incomplete fields should the author fix? |
+| Simulation metadata / F7 | Is the description structurally complete enough to attempt a backend? |
+| Runtime launch preflight / F8 | Can this installed application resolve the selected backend, demonstration inputs, and supported model view? |
 | Backend loading and execution | Can this implementation resolve the assets and execute the requested features? |
 
 The authoring profile permits specified incompleteness as warnings; the
@@ -161,6 +162,24 @@ simulation profile promotes those completeness issues to errors. Broken
 references, invalid paths, and invalid assets remain errors in both profiles.
 The validator does not parse URDFs to cross-check every authored link or joint
 name, run physics, or guarantee backend support for every schema feature.
+
+The separate `validate_runtime_launch()` helper in
+`modsim_robotics_studio/runtime_launch.py` combines that structural report with
+the current launch settings. It imports the selected backend factory without
+instantiating it, checks demonstration inputs, and generates a supported view
+from a small canonical sample world. Recipes remain optional in pack data:
+F6/F7 can pass for a pack that needs a model-view recipe before the Inspector
+can display it. The preflight does not prove that mechanical assets compile
+or that a simulation will succeed.
+
+Studio validates the current in-memory document first. On **Start simulation**,
+dirty edits require **Save and start** confirmation, and the saved files are
+reloaded and checked before creating an execution owner. This keeps the worker
+or native-viewer process aligned with persisted input. While that owner is
+active, Studio permits further in-memory edits but blocks Save, Export As,
+and pack replacement. Its current run continues from the saved snapshot.
+See [the Studio architecture](studio-and-inspector.md) for workspace and
+shutdown ownership.
 
 Models are frozen at the attribute level, but keyed catalogs are currently
 ordinary dictionaries. Treat loaded models as read-only and rebuild edited

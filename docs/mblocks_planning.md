@@ -9,7 +9,36 @@ is used.
 
 ## Launch
 
-From an editable checkout with the `studio` and `mujoco` extras installed:
+With the `studio` and `mujoco` extras installed, open the supplied pack in Studio:
+
+```bash
+.venv/bin/modsim-robotics studio examples/robot_packs/mblocks_3d
+```
+
+Switch to **Runtime**, select **MuJoCo**, the `mblocks_3d` module type, and one
+of these **Demonstration** entries:
+
+| Studio demonstration | CLI identifier | Simulation budget |
+| --- | --- | --- |
+| **Mblocks online lattice** | `mblocks_online_lattice` | 120 s |
+| **Mblocks online lattice large** | `mblocks_online_lattice_large` | 180 s |
+| **Mblocks online lattice elbow** (experimental) | `mblocks_online_lattice_elbow` | 240 s |
+
+These presets select `mblocks_physics_lattice`, a 0.0005 s timestep, enabled
+gravity/ground, and a 0.025 m initial height. Confirm **Model view** shows that
+recipe. Leave connector, gap, release, and retraction overrides at the preset
+values because the planner owns its staging and pivot sequence. Toggle
+**Native 3D viewer** as needed, click **Validate runtime**, then
+**Start simulation**. Unsaved recipe or pack edits require **Save and start**.
+
+Inspect **Runtime state**, **Planning**, and **Event log** in the embedded
+Inspector. Use **Stop** or close a native companion holding its final scene,
+then **Back to setup** to configure another run. The launch settings are
+session-local. Pack assets are supplied separately from the Python package;
+an exported or installed compatible M-Blocks pack can replace the repository
+path above. The named demonstration configuration ships with ModSim.
+
+For a reproducible standalone launch, the CLI remains available:
 
 ```bash
 .venv/bin/modsim-robotics runtime examples/robot_packs/mblocks_3d \
@@ -33,7 +62,8 @@ settled-position tolerance. Its timestep is 0.0005 s and its time budget is
 180 s. To watch it more slowly, append `--speed 0.5`: nominal playback lasts
 about 55 seconds. Slower playback does not change the physics timestep.
 
-This opens the Runtime Inspector and MuJoCo viewer. The CLI supplies gravity,
+These CLI commands open the standalone Runtime Inspector and MuJoCo viewer.
+Studio's presets and the CLI supply gravity,
 ground, 25 mm initial center height, a 0.0005 s step, the cubic-lattice view,
 and a 120 s time budget for the small demo. Completion stops execution early and leaves the result
 visible. `--no-viewer` keeps just the Inspector; `--speed 2` requests faster

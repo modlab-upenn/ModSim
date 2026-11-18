@@ -12,12 +12,19 @@ For documentation changes, begin with [Local development](local-development.md).
 It explains how to run the documentation application, edit Markdown, and check
 the rendered pages.
 
+For colors, logos, illustrations, and visual changes, follow the
+[Brand guidelines](branding.md). They describe the shared production assets and
+how to apply them consistently across the manual and desktop applications.
+
 For Python API pages and code-derived UML diagrams, follow
 [Documentation generation](documentation-generation.md). Edit Python docstrings
 and the diagram scope, then regenerate their output as part of the local build.
 
 For code changes, follow [Development setup](development-setup.md) to create a
 branch, install the editable package, run checks, and prepare a pull request.
+Its [Studio workflow checks](development-setup.md#exercise-the-studio-workflow)
+cover the authoring-to-runtime handoff, launch validation, playback controls,
+and worker/viewer shutdown.
 Public Python API changes must also follow
 [API documentation](api-documentation.md), including source docstrings, type
 annotations, scope registration, and the required documentation checks.
@@ -44,7 +51,7 @@ Read the relevant document in the repository before changing its behavior:
 | Core/backend boundary | `docs/backends.md` |
 | Generated model views | `docs/model_views.md` |
 | Live runtime visualization | `docs/runtime_inspector.md` |
-| Desktop authoring application | `docs/studio.md` |
+| Desktop shell, authoring, and embedded runtime workflow | `docs/studio.md` |
 
 Keep core code independent of desktop and simulator dependencies. Treat URDF
 as an imported mechanical asset, RobotPack YAML as the semantic description,

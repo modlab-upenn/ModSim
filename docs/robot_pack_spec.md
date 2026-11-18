@@ -245,6 +245,13 @@ does not store graph nodes, edges, poses, or other generated results in the
 Robot Pack. Builders derive those results from the Robot Pack and, for live
 views, the current runtime state.
 
+Omitting this sequence is valid for authoring and core/headless simulation.
+Studio's Runtime Inspector requires a runtime-enabled recipe because it
+displays the generated representation. Its **Model view** selector supplies an
+explicit recipe ID, so that recipe does not also need to be a default. A
+standalone Inspector launch uses a default runtime recipe unless
+`--model-view RECIPE_ID` selects one explicitly.
+
 ```yaml
 model_views:
   - id: smores_topology
@@ -277,6 +284,13 @@ a configuration option, and the initial builder currently accepts an empty
 and undocking change the view without rewriting the Robot Pack YAML. Additional
 generic or platform-specific builders can be registered without adding their
 output to the canonical hardware state.
+
+Studio's **Runtime → Add topology view** action adds a uniquely named generic
+recipe to the in-memory `StudioProject`; it does not write the pack immediately.
+The action marks the new recipe default only when the pack lacks an existing
+runtime default. Saving the pack, including through **Save and start**, persists
+that edit. Backend, demonstration, duration, and other launch selections remain
+session settings rather than additions to the Robot Pack schema.
 
 ## Module types
 
@@ -520,6 +534,21 @@ physics, parse referenced URDF files, cross-check authored source names against
 those files, or guarantee that a selected backend supports every requested
 feature.
 
+In Studio, F6 selects **Authoring Profile** and F7 selects
+**Simulation Metadata (Structural)**. Both are generic pack checks: neither
+requires a model-view recipe, resolves an installed builder, or selects the
+backend and demonstration that a user intends to launch.
+
+The separate **Runtime → Validate runtime** action, also accessible through
+**Validate → Runtime Launch** (F8), checks that specific launch. It combines
+simulation-profile results with backend dependency availability, configuration,
+module/connector or platform-preset requirements, and generation of a supported
+runtime model view. It never creates a physics backend or proves asset
+compilation or scenario success. **Start simulation** repeats these checks,
+saves confirmed document edits, and checks the saved files again before
+starting the Inspector's execution owner. The full desktop workflow is
+described in [the Studio contract](studio.md#author-and-run-in-one-window).
+
 Issues include a stable code, severity, document, JSON-pointer-style path,
 optional entity reference, and optional suggested fix. Invalid packs produce
 CLI exit status 1; valid packs produce 0.
@@ -604,6 +633,10 @@ Then open the draft in Studio or edit its YAML documents to:
    physical connection intent, and known load limits.
 4. Define advertised capabilities and their required connector types.
 5. Run inspect, authoring validation, and then simulation-profile validation.
+6. For a desktop run, switch to Studio's **Runtime** workspace, select the
+   backend, demonstration, and runtime model view, then **Validate runtime** and
+   **Start simulation**. Add a topology recipe explicitly if the pack lacks a
+   suitable view; a headless experiment does not require that recipe.
 
 `examples/robot_packs/generic_cube` is the minimal simulator-neutral format
 reference. `examples/robot_packs/smores_ep` is a complete real-platform example

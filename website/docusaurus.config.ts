@@ -45,6 +45,7 @@ const config: Config = {
             'contribute/index.md',
             'contribute/development-setup.md',
             'contribute/api-documentation.md',
+            'contribute/branding.md',
             'contribute/local-development.md',
             'contribute/documentation-generation.md',
             'contribute/release-process.md',
@@ -67,12 +68,12 @@ const config: Config = {
       respectPrefersColorScheme: true,
     },
     navbar: {
-      title: 'ModSim Docs',
+      title: 'Docs',
       logo: {
-        alt: 'ModSim modular robot mark',
+        alt: 'ModSim outlined wordmark',
         src: 'img/modsim-logo-light.svg',
         srcDark: 'img/modsim-logo-dark.svg',
-        width: 32,
+        width: 160,
         height: 32,
       },
       items: [

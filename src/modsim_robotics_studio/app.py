@@ -40,7 +40,7 @@ def _create_window(
 def main(initial_path: str | Path | None = None, *, home: str | Path | None = None) -> int:
     """Start Studio with a blank workspace or an explicitly selected pack.
 
-    Creates the session log, plays the animated startup intro, prepares the
+    Creates the session log, shows the timed cover intro, prepares the
     Builder, and reveals it after at least three seconds of splash display.
     The Qt event loop remains responsive during the branding waits.
 

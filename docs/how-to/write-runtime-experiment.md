@@ -3,15 +3,20 @@ title: Write a runtime experiment
 sidebar_label: Write a runtime experiment
 ---
 
-Create a scene and handle events directly when the scripted CLI demonstration
-is no longer enough. This example loads the saved workshop cube, creates two
-instances, docks their touching faces, advances the world, and releases the
+Create a scene and handle events directly when the named demonstrations in
+Studio or the CLI are no longer enough. This example loads the saved workshop
+cube, creates two instances, docks their touching faces, advances the world, and releases the
 connection. It runs without Studio or a display.
 
 Complete [Validate and save](validate-and-save.md) first. The base installation
 can run the example with the mock backend; install the
 [MuJoCo component](installation.md#install-mujoco) to run the same experiment
 with physics.
+
+This core-runtime workflow does not require a model-view recipe. The Inspector
+uses a generated view for presentation; the experiment below works directly
+with the canonical runtime state and events. Use this route for custom scene
+layouts or control loops beyond Studio's current demonstration presets.
 
 ## Save the experiment
 

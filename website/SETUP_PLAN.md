@@ -20,6 +20,10 @@ How-to sequence (S4, S7, S8). The first Python API slice and its contributor
 checks are implemented. The new chapters remain drafts for joint source reading
 and manual review. Some S2 command walkthrough tasks remain open.
 
+Studio now combines Robot Pack authoring and a configurable Runtime workspace
+in one shell. R1 tracks the documentation alignment for that handoff, including
+runtime preflight, model-view selection, save-before-start, and execution cleanup.
+
 Installation and distribution preparation are now part of this work. D1 covers
 installation without a checkout and preparing the bundled starter;
 D2 covers the release pipeline and maintainer setup. L1 tracks the separate
@@ -47,10 +51,11 @@ manual-edit and review tasks unchecked until the user confirms doing them.
 | D1 | Prepare no-checkout installation and the local starter | Studio-first documentation in progress | Earlier installation accepted; revised workflow pending |
 | D2 | Prepare checked release artifacts and publication workflow | Pre-release cleanup; account setup reported | Pending |
 | S7 | Write getting started and the codebase walkthrough | Getting started accepted; complete source map and experiment drafted | New pages pending |
-| S4 | Add and understand authored Mermaid diagrams | 23 themed architecture diagrams implemented | Pending |
+| S4 | Add and understand authored Mermaid diagrams | Themed class, flow, sequence, and state diagrams implemented | Pending |
 | S5 | Generate the first Python API reference | Readable native reference and contributor checks implemented | Pending |
 | S6 | Generate class and package diagrams from code | First runtime-state diagrams generated | Pending |
 | S8 | Expand explanations, guides, and authored reference | Architecture chapters and Studio authoring guides drafted | Pending |
+| R1 | Document the integrated Studio runtime workflow | Implemented; documentation and rendered-page checks complete | Desktop walkthrough pending |
 | S9 | Verify the complete local documentation workflow | Planned | Pending |
 | L1 | Design the independent community RobotPack library | Planned | Pending |
 
@@ -552,8 +557,10 @@ return anchors passed. An offscreen temporary-pack exercise verified Export As,
 module-name editing, Apply module metadata, Save, and both validation profiles;
 the installed starter's files stayed unchanged. A headless Inspector lifecycle
 verified the documented events and final counts. Code inspection confirmed
-quarter-speed playback. The Builder and Inspector remain separate windows;
-native viewport rendering and the full desktop walkthrough await user review.
+quarter-speed playback. At that stage the Builder and Inspector were separate
+windows; the [integrated workflow](#r1-integrated-studio-runtime-workflow) now
+supersedes that handoff. Native viewport rendering and the full desktop
+walkthrough await user review.
 Getting started is now sufficient for this pass. The codebase map is drafted;
 its source-reading order and the first API/UML pages are the next review work.
 The new How-to experiment now provides the Python example; its architecture
@@ -1014,6 +1021,77 @@ Ruff lint/format, core and Studio Pyright, API policy, and the Docusaurus build
 passed. The rebuilt preview wheel and source bundle passed distribution checks;
 the wheel matches all 115 Python sources and resolves its packaged branding
 when extracted outside the checkout.
+
+## G2 Align documentation with brand release 5.0
+
+Status: implemented locally; user visual review pending.
+
+- [x] Apply Light / Glacier & Steel and Midnight / Deep Navy & Cyan to the
+  existing Docusaurus light/dark modes, using the production JSON color roles.
+- [x] Replace navbar graphics and favicon with the supplied outlined artwork;
+  preserve the wordmark's 5:1 proportions and existing navigation behavior.
+- [x] Share the updated colors across API pages, code blocks, and Mermaid
+  diagrams while keeping reading surfaces plain.
+- [x] Package a small, hash-verified web asset subset with provenance.
+- [x] Add **Contribute → Branding**, including exact palette roles, logo rules,
+  approved cover examples, and the desktop/web update workflow.
+- [x] Update `THEME.md` and verify types, API policy, strict links, and the
+  production build.
+
+The brand asset release number remains independent of the Python package
+version. Existing page prose, content routes, self-hosted fonts, API layout,
+diagram controls, and application behavior are preserved. The public website
+branch and deployment remain separate work.
+
+Verification: all 17 mapped production color roles match the Light/Midnight
+JSON palettes, and all 11 copied web assets match their recorded source hashes.
+All 17 browser checks passed for overview, API, UML, and branding pages at
+desktop/mobile widths in both modes, including navigation, font/image loading,
+Mermaid recoloring, and theme persistence. Wide branding tables scroll within
+their containers on mobile while headers and hex values remain intact.
+The browser review results and captures are local development
+artifacts, not published assets.
+
+## R1 Integrated Studio runtime workflow
+
+Status: implemented locally; documentation alignment and checks complete.
+The complete desktop walkthrough remains for user review.
+
+- [x] Document the **Robot Pack** and **Runtime** tabs in one Studio shell, with
+  standalone Inspector commands retained in the CLI reference.
+- [x] Explain backend, demonstration, module-type, and model-view selection,
+  advanced SI-unit settings, and the native MuJoCo companion.
+- [x] Separate F6 authoring validation, F7 structural simulation metadata, and
+  F8/Runtime launch preflight, including their limits.
+- [x] Document explicit **Add topology view**, unsaved recipe edits,
+  **Save and start**, fresh disk validation, and saved-pack runtime execution.
+- [x] Describe **Pause**/**Resume**, **Stop**, retained results, **Back to setup**,
+  and the native viewer's final-scene hold until execution resources stop.
+- [x] Preserve authoring edits/dock visibility, session-only launch settings,
+  backend-comparison tuning, and persistence/project locks during a run.
+- [x] Align installation, tutorial, how-to, architecture, platform, contributor,
+  API-landing, and repository overview documentation with these behaviors.
+- [x] Complete documentation policy, type, link, and production-build checks
+  after the cross-manual review.
+- [ ] Walk through the finished desktop workflow with the user.
+
+Implementation verification recorded 568 GUI/runtime regression tests passing,
+then 14 focused workspace tests passing after the final backend-settings fix.
+Those checks included a real mock simulation, pause/resume, stopping and
+relaunching, missing-view recovery, save cancellation, disk revalidation,
+shutdown, restored docks, and 800×600 layouts at enlarged fonts. An integrated
+MuJoCo launch also produced runtime frames and events. Strict core/Studio
+Pyright, Ruff, and the earlier production documentation build passed.
+The source map now covers 117 Python files, including `runtime_launch.py` and
+`runtime_workspace.py`.
+
+Documentation verification passed API policy for 202 published objects,
+TypeScript, strict-link production build, and whitespace checks. All 229 relative
+documentation file links resolve across 42 active Markdown files. Browser review
+passed 60 checks over 15 relevant manual pages at 1440 px and 390 px in light and
+dark modes, including rendered Mermaid diagrams, expanded viewing/SVG download,
+theme application, page width, and absence of JavaScript or asset-load failures.
+Historical archives and the technical report remain outside the current manual.
 
 ## Deferred work
 

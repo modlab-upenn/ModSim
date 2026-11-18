@@ -60,9 +60,62 @@ Add optional environments only when the change needs them:
 uv sync --locked --extra dev --extra mujoco --extra studio --python 3.12
 ```
 
-The `mujoco` extra supplies physics dependencies. The `studio` extra supplies the
-desktop applications. GUI tests need a display or Xvfb. Documentation editing
+The `mujoco` extra supplies physics dependencies. The `studio` extra supplies
+Studio's Robot Pack and Runtime workspaces and the standalone Inspector. GUI
+tests need a display or Xvfb. Documentation editing
 has its own Node environment, described in [Local development](local-development.md).
+
+## Exercise the Studio workflow
+
+Start the editable application from this environment:
+
+```bash
+uv run --no-sync modsim-robotics studio
+```
+
+Use **Open Robot Pack** to open a pack, then switch between **Robot Pack** and
+**Runtime** in the same window. Use a temporary copy of the Generic Cube example
+when testing recipe edits and Save. The [runtime how-to](../how-to/run-robot-pack.md)
+describes the controls and their units.
+
+For a desktop or runtime change, check the full handoff:
+
+1. Run **Authoring Profile** (**F6**) and **Simulation Metadata (Structural)**
+   (**F7**) in the Robot Pack workspace. These are pack checks; they do not
+   establish that a selected Inspector launch will work.
+2. In **Runtime**, select **Mock**, **Dock undock**, the module type, and a runtime
+   model view. For a pack without a recipe, **Add topology view** must create an
+   unsaved edit without writing the pack automatically.
+3. Choose **Validate runtime**, or **Validate → Runtime Launch** (**F8**), and
+   inspect the launch-specific report. **Start simulation** rechecks the inputs
+   and asks **Save and start** when the pack has unsaved edits.
+4. Check incoming state/events, **Pause**/**Resume**, **Stop**, retained results,
+   and **Back to setup**. Switch back to Robot Pack to confirm that in-memory
+   edits and the authoring dock arrangement are preserved.
+5. With MuJoCo installed, repeat with **MuJoCo** and its **Native 3D viewer**
+   enabled. One child process owns physics and the companion viewer; Studio
+   receives immutable frames from that same simulation. Stop or close the native
+   viewer to release the execution resources before configuring the next run.
+6. Close Studio during a run and check that the worker or viewer child stops.
+   Saving, exporting, and replacing the open pack must stay disabled while a run
+   owns those resources; authoring edits can remain in memory for the next launch.
+
+Runtime settings last for the current Studio session. Switching backends preserves
+the scenario settings; changing the demonstration or choosing **Reset demonstration
+settings** applies preset defaults. The authored recipe is persisted by Save.
+
+The focused tests for this handoff are:
+
+```bash
+uv run --no-sync pytest tests/test_studio_runtime_launch.py tests/test_studio_runtime_workspace.py tests/test_runtime_brand_loading.py
+```
+
+Keep the core/backend boundary intact when extending this workflow. Launch
+preflight belongs in `modsim_robotics_studio/runtime_launch.py`, form state and
+embedded execution in `runtime_workspace.py`, and pack editing in `StudioProject`.
+`RuntimeInspectorRunner` retains simulation ownership through the existing
+worker/process controllers. Generic pack validation and core runtime APIs must
+remain usable without Qt or an Inspector model-view recipe.
 
 ## Make and check a focused change
 

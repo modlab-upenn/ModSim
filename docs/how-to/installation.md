@@ -6,8 +6,9 @@ slug: /installation
 
 To use ModSim we recommend creating a virtual environment and installing the modsim package with it dependancies.
 
-Getting started requires ModSim Studio for inspection and authoring. The
-installation commands below include its desktop dependencies; use a working
+Getting started requires ModSim Studio for inspection, authoring, and its
+integrated runtime workspace. The installation commands below include its
+desktop dependencies; use a working
 desktop display to open and edit RobotPacks.
 
 ## Setup a virtual environment
@@ -56,7 +57,9 @@ pip install "modsim-robotics[studio,mujoco]"
 
 This adds the physics dependencies to your Studio installation. You do not need
 to create another environment, reinstall Studio separately, or repeat RobotPack
-setup. Studio inspection and authoring do not require MuJoCo.
+setup. Studio inspection and authoring do not require MuJoCo. The **Mock**
+backend also runs supported kinematic demonstrations in Studio without it;
+choose **MuJoCo** for the physics examples.
 
 If you came from Getting started, return to
 [the docking example](../tutorials/getting-started.md#5-run-the-docking-example)
@@ -95,6 +98,12 @@ absolute directory. Setup places Generic Cube under
 ```bash
 modsim-robotics studio generic_cube
 ```
+
+Studio opens the pack in **Robot Pack**. Its **Runtime** workspace lets you
+choose a backend, demonstration, and model view, then validate and start a run
+without another terminal command. Follow
+[Getting started](../tutorials/getting-started.md#5-run-the-docking-example)
+for the first launch.
 
 Studio does not initialize the home automatically. Run setup explicitly once
 before using the bundled starter. Running setup again preserves an existing

@@ -62,7 +62,7 @@ metadata value does not turn an effort command into a speed controller.
 
 ## Validate, save, and reload
 
-Run **Authoring Profile** (`F6`) and **Simulation Readiness** (`F7`). Fix missing
+Run **Authoring Profile** (`F6`) and **Simulation Metadata (Structural)** (`F7`). Fix missing
 mode-specific limit metadata, click **Apply joint metadata**, and rerun the
 profile. Then **Save** (`Ctrl+S`). Follow
 [Validate and save](validate-and-save.md) for the complete handoff.

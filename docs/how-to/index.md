@@ -4,7 +4,8 @@ sidebar_label: How-to guides
 ---
 
 Use these guides to start with a module's URDF and build a RobotPack, author its docking
-interfaces in Studio, and run a two-module simulation. The example is a
+interfaces in Studio, and run a two-module simulation in the same window.
+Author in **Robot Pack**, then configure and launch in **Runtime**. The example is a
 standalone 0.1 m cube named `workshop_cube`; you can create it with an installed
 ModSim package and a text editor.
 
@@ -38,8 +39,8 @@ is committed only after the backend confirms that its constraint was created. Su
 | [Prepare a URDF](prepare-urdf.md) | A local mechanical model with geometry, collision shape, mass, and inertia. |
 | [Import the model](import-urdf.md) | A self-contained draft RobotPack open in the Builder. |
 | [Author connectors](author-connectors.md) | One reusable fixed connector type and two placed interfaces. |
-| [Validate and save](validate-and-save.md) | A saved, structurally valid pack with a default runtime view. |
-| [Run the pack](run-robot-pack.md) | A docking and undocking demonstration in the Runtime Inspector and MuJoCo viewer. |
+| [Validate and save](validate-and-save.md) | A saved, structurally valid pack with a topology recipe for the Inspector. |
+| [Run the pack](run-robot-pack.md) | A validated launch, docking and undocking in Studio's Runtime workspace, and a companion MuJoCo viewer. |
 
 
 ## Keep source, workspace, and library separate

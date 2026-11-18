@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from itertools import pairwise
 from pathlib import Path
 from threading import Event, get_ident
 
@@ -13,11 +14,14 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QElapsedTimer, Qt, QTimer
+from PySide6.QtCore import QElapsedTimer, QPoint, QRectF, Qt, QTimer
+from PySide6.QtGui import QColor, QFont, QPixmap
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QLabel, QMainWindow, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QMainWindow, QPushButton, QVBoxLayout, QWidget
 
 from modsim_robotics_studio._loading import BrandLogo, BusyDialog, LoadingPanel, StartupSplash
+from modsim_robotics_studio._splash_animation import AnimatedBrandLogo
+from modsim_robotics_studio.appearance import theme_manager
 from modsim_robotics_studio.chrome import StudioHeader
 
 
@@ -50,8 +54,9 @@ def test_startup_intro_stays_visible_for_three_seconds_and_services_events(
         assert elapsed.elapsed() >= 3_000
         assert window.isVisible() and not splash.isVisible()
         assert len(heartbeat) > 10
-        animation = splash.findChild(QTimer, "modsimLogoAnimation")
-        assert animation is not None and not animation.isActive()
+        assert splash.findChild(BrandLogo) is None
+        assert splash.findChild(AnimatedBrandLogo) is None
+        assert splash.findChild(QTimer, "modsimLogoAnimation") is None
     finally:
         timer.stop()
         window.close()
@@ -84,7 +89,7 @@ def test_completed_startup_does_not_add_another_three_second_wait(
         application.processEvents()
 
 
-def test_closing_startup_cancels_reveal_and_stops_animation(application: QApplication) -> None:
+def test_closing_startup_cancels_reveal_without_an_overlay_logo(application: QApplication) -> None:
     splash = StartupSplash("Runtime Inspector")
     window = QWidget()
     try:
@@ -92,8 +97,8 @@ def test_closing_startup_cancels_reveal_and_stops_animation(application: QApplic
         QTimer.singleShot(40, splash.close)
         assert not splash.present(window)
         assert not window.isVisible() and not splash.isVisible()
-        animation = splash.findChild(QTimer, "modsimLogoAnimation")
-        assert animation is not None and not animation.isActive()
+        assert splash.findChild(BrandLogo) is None
+        assert splash.findChild(AnimatedBrandLogo) is None
         assert not splash.play_intro()
     finally:
         splash.close()
@@ -135,6 +140,131 @@ def test_small_loading_panel_reserves_wrapped_title_height(application: QApplica
     finally:
         panel.close()
         panel.deleteLater()
+        application.processEvents()
+
+
+@pytest.mark.parametrize("size", [(460, 400), (720, 405), (1000, 650)])
+@pytest.mark.parametrize("point_size", [10.0, 18.0])
+@pytest.mark.parametrize("content_kind", ["runtime", "welcome"])
+def test_cover_fills_panel_and_controls_stay_in_the_faded_overlay(
+    application: QApplication,
+    size: tuple[int, int],
+    point_size: float,
+    content_kind: str,
+) -> None:
+    original = QFont(application.font())
+    font = QFont(original)
+    font.setPointSizeF(point_size)
+    application.setFont(font)
+    manager = theme_manager()
+    manager._apply()
+    panel = LoadingPanel(
+        "Build your Robot Pack" if content_kind == "welcome" else "Runtime Inspector"
+    )
+    buttons: list[QPushButton] = []
+    if content_kind == "runtime":
+        panel.set_steps(
+            (
+                "Prepare runtime execution",
+                "Load and validate Robot Pack",
+                "Initialize simulation backend",
+                "Receive first simulation state",
+            )
+        )
+        panel.set_stage(
+            "Initializing the backend", "Loading module geometry and connector metadata."
+        )
+    else:
+        panel.set_busy(False)
+        panel.set_stage("Import a URDF or open an existing Robot Pack to begin authoring.")
+        actions = QVBoxLayout()
+        for text in ("Create from URDF", "Open Robot Pack"):
+            button = QPushButton(text)
+            actions.addWidget(button)
+            buttons.append(button)
+        panel._content.insertLayout(panel._content.count() - 1, actions)
+    panel.resize(*size)
+    try:
+        panel.show()
+        application.processEvents()
+        panel.grab()  # Exercise the exact artwork rectangle used by painting.
+        application.processEvents()
+        cover = panel._cover_rect
+        controls = QRectF(panel.copy.geometry())
+        assert cover.width() > 0 and cover.height() > 0
+        assert cover.width() / cover.height() == pytest.approx(16 / 9, rel=0.01)
+        assert cover.contains(QRectF(panel.rect()))
+        assert panel._fade_rect.contains(controls)
+        assert panel.rect().contains(panel.copy.geometry())
+        assert panel.findChild(BrandLogo) is None
+        assert panel.findChild(AnimatedBrandLogo) is None
+        for widget in [
+            *panel.copy.findChildren(QLabel),
+            *buttons,
+            panel.progress,
+        ]:
+            if widget.isHidden():
+                continue
+            assert widget.isVisible()
+            if widget is not panel.progress:
+                assert widget.height() >= widget.minimumSizeHint().height()
+            rectangle = QRectF(widget.mapTo(panel, QPoint()), widget.size())
+            assert controls.contains(rectangle)
+            assert panel._fade_rect.contains(rectangle)
+        for button in buttons:
+            assert button.width() >= button.minimumSizeHint().width()
+    finally:
+        panel.close()
+        panel.deleteLater()
+        application.setFont(original)
+        manager._apply()
+        application.processEvents()
+
+
+def test_cover_fade_blends_smoothly_without_an_opaque_panel_edge(application: QApplication) -> None:
+    manager = theme_manager()
+    previous_theme = manager.theme.id
+    manager.set_theme("midnight", persist=False)
+    panel = LoadingPanel("Robot Pack Builder")
+    source = QColor("#808080")
+    backdrop = QPixmap(1920, 1080)
+    backdrop.fill(source)
+    panel._background = backdrop
+    panel._scaled_background = None
+    panel._background_scale = None
+    panel.resize(900, 506)
+    try:
+        panel.show()
+        application.processEvents()
+        image = panel.grab().toImage()
+        ratio = image.devicePixelRatio()
+        fade = panel._fade_rect
+        assert fade.top() > 20
+        assert fade.bottom() >= panel.height() - 1
+
+        def pixel(y: int) -> QColor:
+            # The controls have a 24px margin; this column sees only artwork
+            # and the full-width fade, never labels or progress animation.
+            return image.pixelColor(round(8 * ratio), round(y * ratio))
+
+        assert pixel(20) == source
+        assert pixel(int(fade.top()) - 8) == source
+        colors = [pixel(y) for y in range(int(fade.top()) + 4, panel.height() - 20)]
+        differences = [
+            sum(abs(channel - 128) for channel in color.getRgb()[:3]) for color in colors
+        ]
+        assert differences[-1] > 100
+        # A fade should change progressively, rather than introduce the hard
+        # color jump that made the previous floating rectangle conspicuous.
+        assert max(abs(after - before) for before, after in pairwise(differences)) < 20
+        assert all(after >= before - 3 for before, after in pairwise(differences))
+        blank_y = panel.copy.geometry().bottom() - 2
+        blank_x = panel.copy.geometry().right() - 8
+        assert image.pixelColor(round(blank_x * ratio), round(blank_y * ratio)) == pixel(blank_y)
+    finally:
+        panel.close()
+        panel.deleteLater()
+        manager.set_theme(previous_theme, persist=False)
         application.processEvents()
 
 

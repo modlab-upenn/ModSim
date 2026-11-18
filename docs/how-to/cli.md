@@ -5,8 +5,9 @@ slug: /cli
 ---
 
 Use these tasks for terminal import, structural checks, mock docking, generated
-JSON, and headless physics. The parallel
-[Studio workflow](index.md) follows the same pack through graphical authoring.
+JSON, and headless physics. The primary
+[Studio workflow](index.md) follows the same pack through graphical authoring
+and runtime inspection in one window.
 Complete [Installation](installation.md) and keep its Python environment active.
 
 Commands below use the workshop pack at the default ModSim home. Substitute
@@ -39,6 +40,24 @@ modsim-robotics pack inspect --pack ./my_robot_pack
 
 The selector resolver expands `~`. A relative path beginning with `./` bypasses
 library lookup. Configuration locates a library; it does not choose a robot.
+
+## Choose a launch workflow
+
+| Entry point | Behavior |
+| --- | --- |
+| `modsim-robotics studio PACK` | Open the combined application. Configure and validate in **Runtime**, then click **Start simulation**. Opening the pack does not start physics. |
+| `modsim-robotics runtime PACK` | Open a standalone Runtime Inspector and automatically start its configured demonstration. |
+| `modsim-robotics run PACK --gui` | Use the same standalone Inspector path and demo defaults as `runtime`. |
+| `modsim-robotics run PACK` | Execute the command's scene without an Inspector and report results in the terminal. |
+| `modsim-robotics run PACK --backend mujoco --view` | Show only the native MuJoCo viewer for the non-Inspector scene. |
+
+Inspector launches from Studio or the CLI require a supported runtime model-view
+recipe; opening Studio for authoring does not. Headless runs, `dock`, and the
+native-viewer-only `run --view` path do not require one. `--no-viewer` on an
+Inspector launch suppresses its native 3D
+companion; it does not make the Qt Inspector headless or remove its recipe
+requirement. `run --gui` and `run --view` are separate launch choices and cannot
+be combined.
 
 ## Import a URDF without the Builder
 
@@ -76,9 +95,12 @@ VALID workshop_cube@0.1.0 (simulation structural validation): 0 error(s), 0 warn
 ```
 
 These commands read disk rather than pending Builder edits. Authoring permits
-some missing simulation metadata as warnings; simulation readiness applies
-stricter structural checks. Neither command starts physics or proves the
-connectors can reach acceptance.
+some missing simulation metadata as warnings; the simulation profile applies
+stricter structural checks. Neither command starts physics, checks Inspector
+readiness, or proves the connectors can reach acceptance. In Studio these are
+**Authoring Profile** (`F6`) and **Simulation Metadata (Structural)** (`F7`);
+**Validate → Runtime Launch** (`F8`) checks the selected graphical launch
+separately. Generic pack validation does not require a model-view recipe.
 
 ## Check fixed docking with the mock backend
 
@@ -119,6 +141,29 @@ For the graphical demonstration with automatic `dock_undock` timing and
 synchronized playback controls, follow [Run your RobotPack](run-robot-pack.md).
 The headless command above requires no Qt window or display.
 
+## Launch the standalone Inspector
+
+When a terminal command is useful for reproducing a graphical run, use:
+
+```bash
+modsim-robotics runtime "~/.modsim/workspaces/workshop_cube" --backend mujoco --demo dock_undock --fixed-connector front --moving-connector rear --duration 6 --speed 0.25
+```
+
+Replacing `runtime` with `run` and adding `--gui` selects the same Inspector
+workflow. The named demo controls scene setup; ordinary headless `run` keeps
+its own defaults, so removing `--gui` is not a promise to replay an identical
+scene.
+
+The Inspector selects a default runtime recipe unless you pass
+`--model-view RECIPE_ID`. An explicit recipe must exist in the pack and enable
+runtime mode, but need not be the default. Use `--backend mock` for supported
+kinematic demos without MuJoCo; the native viewer is then disabled by default.
+MuJoCo opens its companion viewer by default, and `--no-viewer` suppresses it.
+
+This standalone command starts execution when the Inspector appears; it does
+not open Studio's editable setup form. To configure before starting, use
+`modsim-robotics studio` and the **Runtime** workspace instead.
+
 ## Read JSON and generated views
 
 Add `--output json` when collecting a machine-readable result:
@@ -144,6 +189,7 @@ modsim-robotics pack init --help
 modsim-robotics pack validate --help
 modsim-robotics dock --help
 modsim-robotics run --help
+modsim-robotics runtime --help
 modsim-robotics backends
 ```
 

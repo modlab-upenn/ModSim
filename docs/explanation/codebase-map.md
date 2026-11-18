@@ -5,8 +5,8 @@ sidebar_label: Source map
 
 Use this map to locate a responsibility after reading the
 [architecture overview](index.md). It inventories **every Python file under
-`src/` in this documentation revision**: 115 files across the core package
-(79), MuJoCo adapter (7), and Studio (29), grouped by their owning subsystem. The
+`src/` in this documentation revision**: 117 files across the core package
+(79), MuJoCo adapter (7), and Studio (31), grouped by their owning subsystem. The
 architecture chapters explain how those files cooperate; the
 [API reference](../reference/python-api.mdx) describes individual public objects
 in the currently published API slice.
@@ -18,6 +18,8 @@ in the currently published API slice.
 | How does a library name become a RobotPack? | `user_data.resolve_robot_pack`, then `RobotPackLoader.load`. |
 | Where is a Studio edit held before Save? | `StudioProject` and its replacement methods, then `MainWindow._apply_project_change`. |
 | How does importing URDF create semantic files? | `URDFImporter.load`, `DraftPackBuilder.build`, and `RobotPackWriter`. |
+| How do I launch a simulation from Studio? | `RuntimeWorkspace`, `validate_runtime_launch`, then the embedded `RuntimeInspectorWindow`. |
+| Why does F7 pass while a runtime launch is blocked? | Generic `RobotPackValidator` profiles, then the application-specific checks in `runtime_launch.py`. |
 | Where does the simulation loop live? | `RuntimeSession.create` and `step`, then the selected scenario's `step`. |
 | Why was a connector pair accepted or refused? | `DockingManager.run`, compatibility, acceptance, and guards. |
 | Where is a connection actually created in MuJoCo? | `MuJoCoBackendAdapter.create_physical_connection` and the weld/hinge pools. |
@@ -240,7 +242,7 @@ Studio consumes core APIs and immutable runtime frames. It owns widgets, cameras
 
 Both application entry points create the Qt application, configure the shared
 desktop identity, choose a theme-matched application icon, and paint the startup
-splash. Its animated intro precedes the heavier main-window imports and
+splash. Its responsive cover intro precedes the heavier main-window imports and
 construction; the prepared window is presented after the splash's three-second
 minimum, with initialization time included. Linux desktop
 registration runs before any native window is created. The shared loading
@@ -256,26 +258,28 @@ still belongs to its worker or process controller, independently of loading UI.
 | `_branding.py` | Private package-relative production assets, authoritative theme palettes, proportional SVG rendering, application icons, and Qt application identity. | `asset_path`<br/>`theme_palette`<br/>`vector_pixmap`<br/>`application_icon`<br/>`configure_application_identity` |
 | `_desktop.py` | Qt-free Windows process identity before Qt startup and Linux per-user launcher/icon registration using the current Python environment. | `APPLICATION_ID`<br/>`configure_native_process_identity`<br/>`register_desktop_entry` |
 | `_loading.py` | Private shared wordmark, startup splash, live loading panels, and guarded background document operations. | `BrandLogo`<br/>`StartupSplash`<br/>`LoadingPanel`<br/>`BusyDialog` |
-| `_splash_animation.py` | Private SVG-layer animation that assembles the supplied symbol, reveals the outlined wordmark, and pulses the completed startup logo. | `AnimatedBrandLogo` |
+| `_splash_animation.py` | Standalone SVG-layer animation helper. Current cover screens use the logo already in the artwork and do not instantiate this overlay. | `AnimatedBrandLogo` |
 | `_window_sizing.py` | Shared logical-pixel window sizing, monitor bounds, font-aware preferences, normal geometry restoration, and main-window dock persistence. | `WindowSizingPolicy`<br/>`manage_window` |
 | `app.py` | ModSim Studio process entry point. | `main`<br/>`cli` |
 | `appearance.py` | Application-wide Studio colors and local user appearance preferences. | `StudioTheme`<br/>`ThemeManager` |
 | `chrome.py` | Shared native Studio header, theme picker, and compact property widgets. | `ThemePicker`<br/>`StudioHeader`<br/>`VectorEdit` |
 | `icons.py` | Theme-matched packaged toolbar glyphs, in-memory color selection, and small fallback glyphs for search, joints, and files. | `studio_icon` |
 | `launcher.py` | Dependency-friendly launcher for the optional ``modsim-robotics-studio`` command. | `cli` |
-| `main_window.py` | Main ModSim Studio Robot Pack Builder window. | `MainWindow` |
+| `main_window.py` | Studio shell, Robot Pack authoring, workspace switching, and guarded persistence during runtime execution. | `MainWindow` |
 | `project.py` | GUI-independent document model for ModSim Studio. | `StudioProject` |
 | `runtime_app.py` | Process entry point for the standalone ModSim Runtime Inspector. | `main` |
 | `runtime_events.py` | Qt event-table widgets for immutable runtime event rows. | `RuntimeEventTableModel`<br/>`RuntimeEventLogWidget` |
 | `runtime_graph.py` | PyQtGraph renderer for immutable runtime graph presentations. | `TopologyGraphWidget` |
 | `runtime_lattice.py` | PyQtGraph renderer for immutable cubic-lattice presentations. | `LatticeViewBox`<br/>`CubicLatticeWidget` |
+| `runtime_launch.py` | Qt-free demonstration defaults, explicit topology-recipe addition, and runtime launch checks without physics. | `runtime_config_defaults`<br/>`add_default_topology_view`<br/>`validate_runtime_launch` |
 | `runtime_lattice_presenter.py` | Qt-free projection geometry for cubic-lattice Runtime Inspector views. | `LatticeProjection`<br/>`LatticeCamera`<br/>`PresentedGridLine` |
 | `runtime_mblocks_planning.py` | Retained planner graphics for the one-plane M-Blocks demonstration. | `LatticePlanningWorkspace` |
 | `runtime_planning.py` | Planar workspace, intent overlays, and execution history from immutable frames. | `ActionHistory`<br/>`PlanningWorkspace` |
 | `runtime_presenter.py` | Qt-free presentation state for the Studio Runtime Inspector. | `RuntimePresentationError`<br/>`RuntimeEventSequenceError`<br/>`GraphSelection` |
-| `runtime_process.py` | Execution controllers for the standalone Runtime Inspector. | `RuntimeViewerLaunchError`<br/>`RuntimeInspectorThreadController`<br/>`RuntimeInspectorProcessController` |
-| `runtime_window.py` | Standalone Qt window for immutable ModSim runtime inspection. | `RuntimeInspectorWindow` |
-| `runtime_worker.py` | Background execution for the standalone Studio Runtime Inspector. | `RuntimeInspectorWorker` |
+| `runtime_process.py` | Execution controllers shared by standalone and embedded Runtime Inspectors. | `RuntimeViewerLaunchError`<br/>`RuntimeInspectorThreadController`<br/>`RuntimeInspectorProcessController` |
+| `runtime_window.py` | Reusable standalone or embedded Inspector, retained results, and playback/lifecycle signals. | `RuntimeInspectorWindow` |
+| `runtime_worker.py` | Background execution for the Studio Runtime Inspector. | `RuntimeInspectorWorker` |
+| `runtime_workspace.py` | Runtime launch form, readiness display, saved-pack handoff, and one embedded Inspector's lifetime. | `RuntimeWorkspace` |
 | `session_logging.py` | Per-launch file logging for ModSim Studio. | `resolve_session_log_path`<br/>`configure_session_logging`<br/>`shutdown_session_logging` |
 | `user_errors.py` | Readable user and diagnostic formatting for Studio input failures. | `IdentifierInputError` |
 | `viewport.py` | Embedded PyVistaQt viewport for imported URDF and Robot Pack overlays. | `RobotViewport` |
@@ -314,6 +318,14 @@ For transport and presentation, use `test_runtime_inspection_protocol.py`,
 `test_runtime_runner.py`, `test_runtime_presenter.py`, and the optional widget
 checks. Planner tests distinguish geometric plans, executor behavior, and
 physical reference runs.
+
+For the combined Studio workflow, use `test_studio_runtime_launch.py` for
+headless preflight and CLI preset parity, `test_studio_runtime_workspace.py`
+for save-before-start, dock restoration, pause/stop/relaunch, and persistence
+guards, and `test_runtime_brand_loading.py` for the embedded Inspector's
+explicit-start and shutdown signals. These distinguish document validation
+from launch readiness and cover the saved-pack boundary between authoring
+and execution.
 
 Read the setup and assertions around one relevant test instead of treating the
 suite as prose documentation. Tests often make an important invariant concrete:

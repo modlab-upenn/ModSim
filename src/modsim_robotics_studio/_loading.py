@@ -8,10 +8,22 @@ from concurrent.futures import ThreadPoolExecutor
 from types import TracebackType
 from typing import Literal, TypeVar
 
-from PySide6.QtCore import QElapsedTimer, QEvent, QEventLoop, QPointF, QSize, Qt, QTimer
+from PySide6.QtCore import (
+    QElapsedTimer,
+    QEvent,
+    QEventLoop,
+    QObject,
+    QPointF,
+    QRectF,
+    QSize,
+    Qt,
+    QTimer,
+)
 from PySide6.QtGui import (
+    QBrush,
     QCloseEvent,
     QColor,
+    QLinearGradient,
     QMouseEvent,
     QPainter,
     QPaintEvent,
@@ -22,6 +34,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QAbstractButton,
     QApplication,
+    QBoxLayout,
     QDialog,
     QFrame,
     QLabel,
@@ -35,7 +48,6 @@ from PySide6.QtWidgets import (
 
 from modsim_robotics import __version__
 from modsim_robotics_studio._branding import asset_path, vector_pixmap
-from modsim_robotics_studio._splash_animation import AnimatedBrandLogo
 from modsim_robotics_studio._window_sizing import manage_window, target_screen
 from modsim_robotics_studio.appearance import theme_manager
 
@@ -134,11 +146,9 @@ class _StartupSteps(QWidget):
 
 
 class LoadingPanel(QWidget):
-    """Show approved robot artwork with live status and an indeterminate bar."""
+    """Show approved theme artwork with live status and an indeterminate bar."""
 
-    def __init__(
-        self, workspace: str, parent: QWidget | None = None, *, animated_logo: bool = False
-    ) -> None:
+    def __init__(self, workspace: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("LoadingPanel")
         self.setMinimumSize(460, 280)
@@ -146,19 +156,19 @@ class LoadingPanel(QWidget):
         self._background = QPixmap()
         self._scaled_background: QPixmap | None = None
         self._background_scale: tuple[int, int, float] | None = None
+        self._cover_rect = QRectF()
+        self._fade_rect = QRectF()
+        self._laying_out_copy = False
         self._steps: _StartupSteps | None = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
         layout.addStretch(1)
         self.copy = QWidget()
         self.copy.setObjectName("LoadingCopy")
-        self.copy.setMaximumWidth(340)
         content = QVBoxLayout(self.copy)
         self._content = content
         content.setContentsMargins(0, 0, 0, 0)
         content.setSpacing(12)
-        self.logo = AnimatedBrandLogo() if animated_logo else BrandLogo()
-        content.addWidget(self.logo)
         title = QLabel(workspace)
         title.setObjectName("BrandTitle")
         title.setWordWrap(True)
@@ -185,7 +195,7 @@ class LoadingPanel(QWidget):
         version.setObjectName("SplashVersion")
         content.addWidget(version)
         layout.addWidget(self.copy, 0, Qt.AlignmentFlag.AlignLeft)
-        layout.addStretch(1)
+        self.copy.installEventFilter(self)
         self._appearance.changed.connect(self._refresh)
         self._refresh()
         self.set_busy(True)
@@ -228,21 +238,65 @@ class LoadingPanel(QWidget):
             self._layout_copy()
 
     def _layout_copy(self) -> None:
-        width = max(190, min(340, int(self.width() * 0.35)))
-        button_width = max(
-            (
-                button.minimumSizeHint().width()
-                for button in self.copy.findChildren(QAbstractButton)
-                if not button.isHidden()
-            ),
-            default=0,
-        )
-        width = min(max(width, button_width), max(190, self.width() - 48))
-        self.copy.setFixedWidth(width)
-        content = self.copy.layout()
-        if content is not None:
-            # Respect wrapped text before the outer layout divides spare space.
-            self.copy.setFixedHeight(content.totalHeightForWidth(width))
+        if self._laying_out_copy:
+            return
+        self._laying_out_copy = True
+        try:
+            layout = self.layout()
+            content = self.copy.layout()
+            if layout is None or content is None:
+                return
+            margins = layout.contentsMargins()
+            button_width = max(
+                (
+                    button.minimumSizeHint().width()
+                    for button in self.copy.findChildren(QAbstractButton)
+                    if not button.isHidden()
+                ),
+                default=0,
+            )
+            minimum_width = max(190, button_width) + margins.left() + margins.right()
+            self.setMinimumWidth(minimum_width)
+            width = max(190, self.width() - margins.left() - margins.right())
+            self.copy.setFixedWidth(width)
+            actions = content.findChild(QBoxLayout, "CoverActions")
+            if actions is not None:
+                buttons = [
+                    button
+                    for button in self.copy.findChildren(QAbstractButton)
+                    if not button.isHidden()
+                ]
+                row_width = sum(
+                    max(button.minimumWidth(), button.minimumSizeHint().width())
+                    for button in buttons
+                ) + max(0, len(buttons) - 1) * max(content.spacing(), actions.spacing())
+                direction = (
+                    QBoxLayout.Direction.LeftToRight
+                    if row_width <= width
+                    else QBoxLayout.Direction.TopToBottom
+                )
+                if actions.direction() != direction:
+                    actions.setDirection(direction)
+                    content.invalidate()
+            # Keep the overlay readable at the current font size. Its parent
+            # scroll area can grow/scroll the panel on constrained displays.
+            height = max(content.minimumSize().height(), content.totalHeightForWidth(width))
+            self.copy.setFixedHeight(height)
+            self.setMinimumHeight(
+                max(280, height + margins.top() + margins.bottom() + layout.spacing() + 96)
+            )
+            layout.activate()
+            self._background_scale = None
+            self.update()
+        finally:
+            self._laying_out_copy = False
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        # Icons, wrapped labels, and action rows can change their natural size
+        # after the panel itself has already been laid out.
+        if watched is getattr(self, "copy", None) and event.type() == QEvent.Type.LayoutRequest:
+            self._layout_copy()
+        return False
 
     def changeEvent(self, event: QEvent) -> None:
         super().changeEvent(event)
@@ -255,7 +309,7 @@ class LoadingPanel(QWidget):
 
     def _refresh(self) -> None:
         self._background = QPixmap(
-            str(asset_path(self._appearance.theme.id, "backgrounds/robot-background-1920x1080.png"))
+            str(asset_path(self._appearance.theme.id, "backgrounds/robot-cover-1920x1080.png"))
         )
         self._scaled_background = None
         self._background_scale = None
@@ -275,6 +329,8 @@ class LoadingPanel(QWidget):
         if self._background.isNull():
             return
         ratio = self.devicePixelRatioF()
+        # Keep the cover full size. Blend the controls into the artwork rather
+        # than reserving a separate band that shrinks or letterboxes the image.
         scale = (self.width(), self.height(), ratio)
         if self._scaled_background is None or self._background_scale != scale:
             self._scaled_background = self._background.scaled(
@@ -286,19 +342,30 @@ class LoadingPanel(QWidget):
             self._background_scale = scale
         image = self._scaled_background
         logical_size = image.deviceIndependentSize()
-        # Keep the artwork's authored blank left column behind the loading copy.
-        # Narrow splash windows crop the robot side rather than the text zone.
-        painter.drawPixmap(
+        self._cover_rect = QRectF(
             QPointF(
                 0,
                 (self.height() - logical_size.height()) / 2,
             ),
-            image,
+            logical_size,
         )
+        painter.drawPixmap(self._cover_rect.topLeft(), image)
+        # A continuous, theme-matched fade has no panel edge. The source cover
+        # remains untouched, with the strongest tint only beneath live copy.
+        font_height = self.fontMetrics().height()
+        fade_top = max(0, self.copy.geometry().top() - max(72, font_height * 5))
+        fade_end = self.copy.geometry().top() + max(24, font_height * 2)
+        self._fade_rect = QRectF(0, fade_top, self.width(), self.height() - fade_top)
+        fade = QLinearGradient(0, fade_top, 0, fade_end)
+        for stop, opacity in ((0.0, 0.0), (0.28, 0.04), (0.55, 0.32), (0.78, 0.75), (1.0, 0.94)):
+            color = QColor(self._appearance.theme.shell)
+            color.setAlphaF(opacity)
+            fade.setColorAt(stop, color)
+        painter.fillRect(self._fade_rect, QBrush(fade))
 
 
 class StartupSplash(QSplashScreen):
-    """Play a branded intro and keep startup visible for at least three seconds."""
+    """Show the branded cover and keep startup visible for at least three seconds."""
 
     def __init__(self, workspace: str) -> None:
         screen = target_screen()
@@ -315,7 +382,7 @@ class StartupSplash(QSplashScreen):
         self._waiting_loop: QEventLoop | None = None
         self._cancelled = False
         self._handed_off = False
-        self.panel = LoadingPanel(workspace, self, animated_logo=True)
+        self.panel = LoadingPanel(workspace, self)
         self.panel.setMinimumSize(0, 0)
         self._scroll = QScrollArea(self)
         self._scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -336,8 +403,6 @@ class StartupSplash(QSplashScreen):
         super().showEvent(event)
         if not self._shown_clock.isValid():
             self._shown_clock.start()
-        if isinstance(self.panel.logo, AnimatedBrandLogo):
-            self.panel.logo.start()
 
     def _wait_until(self, elapsed_ms: int) -> bool:
         if self._cancelled:
@@ -376,7 +441,7 @@ class StartupSplash(QSplashScreen):
         return not self._cancelled
 
     def play_intro(self) -> bool:
-        """Animate the logo reveal before GUI-thread imports and construction.
+        """Service startup feedback before GUI-thread imports and construction.
 
         The intro is part of the three-second minimum. False indicates the
         user closed the splash or the application stopped during startup.
@@ -404,8 +469,6 @@ class StartupSplash(QSplashScreen):
     def closeEvent(self, event: QCloseEvent) -> None:
         if not self._handed_off:
             self._cancelled = True
-        if isinstance(self.panel.logo, AnimatedBrandLogo):
-            self.panel.logo.stop()
         if self._waiting_loop is not None:
             self._waiting_loop.quit()
         super().closeEvent(event)

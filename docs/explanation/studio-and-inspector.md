@@ -3,28 +3,30 @@ title: Studio and Runtime Inspector architecture
 sidebar_label: Studio and Inspector
 ---
 
-ModSim Studio contains two desktop applications with different ownership
-boundaries. The **Robot Pack Builder** edits a saved robot description. The
-**Runtime Inspector** observes one running demonstration and controls its
-playback. Both consume core models; Qt, PyVista, PyQtGraph, and the simulator's
-viewer remain outside the core package.
+ModSim Studio contains **Robot Pack** and **Runtime** workspaces in one
+desktop application. The Builder edits a robot description; Runtime configures
+a named demonstration and embeds the Inspector that observes its execution
+and controls playback. Sharing a window does not merge document and simulation
+state. Both consume core models; Qt, PyVista, PyQtGraph, and the simulator's
+viewer remain outside the core package. The Inspector is also reusable as a
+standalone application through `modsim-robotics runtime`.
 
 Start with the [architecture overview](index.md) for the complete system, or
 the [codebase map](codebase-map.md) for a reading order. This page explains why
-the two applications are separate, where editable state lives, and how live
-simulation reaches a responsive GUI.
+the workspaces retain separate ownership, where editable state lives, and
+how live simulation reaches a responsive GUI.
 
 ## Builder document ownership
 
 `modsim_robotics_studio.app.main()` resolves a supplied pack selector, configures
 session logging, and initializes the shared theme and application icon. It
 shows `StartupSplash` and calls `play_intro()` before importing and constructing
-`MainWindow`. The Qt event loop animates the supplied SVG logo for approximately
-1.1 seconds before that heavier initialization. `present(window)` shows the
+`MainWindow`. The Qt event loop services the cover and animated progress for
+approximately 1.1 seconds before that heavier initialization. `present(window)` shows the
 prepared main window after at least three seconds have elapsed since the splash
 first appeared. Initialization time counts toward this minimum. The splash can
-pause while GUI-thread imports or VTK construction run; its animation is a
-branding sequence, independent of measured application progress. Closing the
+pause while GUI-thread imports or VTK construction run. The cover contains its
+single logo, with live feedback over a softly fading lower area. Closing the
 splash cancels the handoff, and startup failure closes it immediately.
 With no selector it passes
 `initial_path=None`, leaving the Builder at its welcome screen without a
@@ -132,27 +134,113 @@ Xacro or fetch remote assets, and leaves texture-image handling deferred.
 | --- | --- |
 | `launcher.py`, `app.py`, `__main__.py` | Argument handling, application entry, exception logging, and process lifetime. |
 | `project.py` | Validated document operations and persistence delegation, without Qt imports. |
-| `main_window.py` | Project tree, property editors, validation actions, dialogs, and dirty-state handling. |
+| `main_window.py` | Robot Pack/Runtime workspace switching, project tree, property editors, validation actions, dialogs, dirty-state handling, and save-before-launch coordination. |
+| `runtime_workspace.py` | Runtime setup form, readiness report, explicit topology-recipe action, save-before-start handoff, and one embedded Inspector's lifetime. |
+| `runtime_launch.py` | Qt-free demo defaults, runtime-recipe helpers, and launch validation without constructing a physics engine. |
+| `runtime_window.py`, `runtime_app.py` | Reusable Inspector widget/window, standalone entry point, loading, presentation, and execution-controller selection. |
 | `viewport.py` | PyVista/VTK geometry, layers, picking, and camera behavior. |
 | `user_errors.py`, `session_logging.py` | Actionable input errors and session diagnostics outside saved pack contents. |
 | `appearance.py`, `chrome.py`, `icons.py`, `visual_colors.py` | Production palettes, shared header/theme picker, branded toolbar glyphs, and stable category colors. |
-| `_branding.py`, `_desktop.py`, `_loading.py`, `_splash_animation.py`, `assets/branding/` | Packaged assets and their provenance, desktop identity and icon registration, outlined logos and SVG animation, timed startup splash, document loading, and runtime loading panel. |
+| `_branding.py`, `_desktop.py`, `_loading.py`, `assets/branding/` | Packaged assets and their provenance, desktop identity and icon registration, header wordmarks, timed cover splash, and document/runtime loading panels with blended feedback overlays. |
+| `_splash_animation.py` | Standalone SVG animation helper, retained independently; cover screens use their baked-in logo without an overlay. |
 | `_window_sizing.py` | Completed-layout and font-aware sizing in logical pixels, parent/pointer monitor selection, desktop bounds, and local normal-geometry/dock-layout preferences. |
 
-The Builder exposes **File**, **Validate**, and **View** menus. It currently
-has no **Run** button or embedded Runtime Inspector. Simulation starts through
-the runtime launcher, with its own configuration and execution lifetime.
-The CLI dispatches to the Qt application in its current interpreter; the
-separate child described below is specifically the native MuJoCo viewer host.
+The Builder exposes **File**, **Validate**, and **View** menus. Studio's
+**Runtime** workspace adds backend, demonstration, module, and model-view
+selection, execution settings, **Validate runtime**, and **Start simulation**.
+The standalone CLI dispatches to a separate Inspector window in its current
+interpreter; the child described below is specifically the native MuJoCo
+viewer host, rather than a required second Studio application.
+
+## Document-to-runtime handoff
+
+Authoring and runtime readiness answer different questions. F6 allows missing
+simulation metadata as warnings while checking schema, assets, and references.
+F7 (**Simulation Metadata (Structural)**) checks that metadata more strictly. Neither profile
+requires a model view, starts physics, or guarantees that an Inspector can
+render the pack. **Validate runtime** checks the selected backend,
+demonstration settings, and runtime model-view recipe before launch.
+The **Validate → Runtime Launch** action (`F8`) opens that workspace and runs
+the same launch check.
+
+A model-view recipe remains optional pack data. An explicit runtime selection
+can use any suitable runtime-enabled recipe without requiring the default
+flag. **Add topology view** creates a generic recipe as a deliberate document
+edit; it does not manufacture graph state or silently save a pack.
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant S as Studio shell
+  participant P as StudioProject
+  participant C as Runtime configuration and checks
+  participant I as Embedded Inspector
+  U->>S: Switch to Runtime and configure launch
+  S->>C: Check in-memory pack and selected settings
+  C-->>S: Readiness issues or valid launch
+  U->>S: Start simulation
+  S->>C: Repeat readiness checks
+  opt Document has unsaved changes
+    S-->>U: Save and start, or Cancel
+    U->>S: Save and start
+    S->>P: save()
+    P-->>S: Clean project after verified directory replacement
+  end
+  S->>C: Check saved pack and launch configuration
+  C-->>S: Valid RuntimeInspectorConfig
+  S->>I: Construct embedded, without auto-start
+  S->>I: start()
+  I-->>S: Execution status and retained results
+```
+
+The runtime reads the saved pack, not the Builder's mutable widget state.
+Studio blocks pack replacement and persistence while execution is active:
+Open, Create, Save, and Export cannot replace the files an execution owner
+uses. Authoring navigation and in-memory edits remain available. Those edits
+can be saved for a later run after the active execution has stopped; they
+never update an existing backend in place.
+
+`RuntimeWorkspace` owns the setup form and its embedded Inspector. Its
+GUI-independent helpers in `runtime_launch.py` assemble demo-aware defaults
+and combine structural validation with backend imports, demo prerequisites,
+connector selections, and recipe checks. View validation builds a small
+in-memory canonical world to exercise the selected builder and configuration;
+it does not compile URDF/MJCF, create an engine, or predict scenario success.
+
+The setup form assembles a session-local `RuntimeInspectorConfig` request, not a
+new document in the Robot Pack. Changing engines preserves the user's timing,
+connector choices, and scenario tuning; it only updates the native-viewer
+control. Selecting another demonstration or explicitly resetting its settings
+reapplies the preset defaults. The recipe action crosses the normal
+`StudioProject` edit boundary, whereas launch-form edits only invalidate the
+runtime readiness report. A successful check is never reused as permission to
+skip the fresh in-memory and on-disk checks performed by **Start simulation**.
+
+The embedded Inspector belongs to the Studio window and shares its Qt
+application, session log, theme, and geometry policy. It hides its duplicate
+application header and uses the existing loading panel, presentation, and
+playback controls. **Back to setup** becomes available only after execution
+has finished. A native viewer holding a terminal scene still owns execution
+resources; Stop or closing that viewer releases them before returning to setup.
+A subsequent start creates a fresh execution owner rather than resetting a
+live session. Closing Studio requests shutdown and waits for
+cleanup before disposing of its Inspector.
 
 ## Selecting a live execution owner
 
-`runtime_app.main()` uses the same animated intro and three-second minimum
-splash before presenting `RuntimeInspectorWindow`. The window's first
-`showEvent` schedules the configured demonstration through a zero-delay Qt
-timer, guarded against starting it again. Constructing a hidden window does
-not start execution. The window
-chooses its controller from `RuntimeInspectorConfig.viewer_enabled`:
+The standalone `runtime_app.main()` uses the same cover intro and
+three-second minimum splash before presenting `RuntimeInspectorWindow`. Its
+first `showEvent` schedules the configured demonstration through a zero-delay
+Qt timer, guarded against starting it again. Constructing a hidden window
+does not start execution.
+
+Studio instead constructs `RuntimeInspectorWindow` with `embedded=True` and
+`auto_start=False`, then calls `start()` after its readiness and save handoff.
+The shared window reports execution-started, execution-finished, and failure
+signals to its parent. Completion is signalled after the execution controller
+has shut down, including on a failed run. Embedded errors stay inline; the
+standalone window also displays its existing error dialog. Both paths choose
+the execution controller from `RuntimeInspectorConfig.viewer_enabled`:
 
 ```mermaid
 flowchart TD
@@ -166,8 +254,8 @@ flowchart TD
   G --> H[Presenter and retained GUI widgets]
 ```
 
-After the branding splash hands off, the window keeps its runtime loading
-artwork visible until its presenter accepts and
+After execution starts, the Inspector keeps its runtime loading artwork
+visible until its presenter accepts and
 displays a valid frame. Status messages describe initialization without
 inventing a completion percentage. Stop remains available. Terminal paths
 stop the animation even if no frame arrives. Once a frame is presented, the

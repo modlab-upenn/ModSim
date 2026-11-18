@@ -14,9 +14,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 pytest.importorskip("pyqtgraph")
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, QRectF, Signal
 from PySide6.QtTest import QSignalSpy
-from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QProgressBar
+from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QProgressBar, QVBoxLayout, QWidget
 
 from modsim_robotics.model_views import ModelViewSourceStamp, ModuleTopologyGraphView
 from modsim_robotics.runtime import RuntimeInspectorConfig, RuntimeInspectorFrame
@@ -281,14 +281,22 @@ def test_loading_background_cache_tracks_device_pixel_ratio(
         image = panel._scaled_background  # pyright: ignore[reportPrivateUsage]
         assert image is not None
         assert image.devicePixelRatio() == 2.0
-        assert image.width() >= 1280 and image.height() >= 720
+        high_dpi_size = image.width(), image.height()
+        high_dpi_cover = QRectF(panel._cover_rect)
+        assert high_dpi_cover.width() > 0 and high_dpi_cover.height() > 0
+        assert high_dpi_cover.width() / high_dpi_cover.height() == pytest.approx(16 / 9, rel=0.01)
+        assert high_dpi_cover.contains(QRectF(panel.rect()))
+        assert panel._fade_rect.contains(QRectF(panel.copy.geometry()))
 
         monkeypatch.setattr(panel, "devicePixelRatioF", lambda: 1.0)
         panel.repaint()
         image = panel._scaled_background  # pyright: ignore[reportPrivateUsage]
         assert image is not None
         assert image.devicePixelRatio() == 1.0
-        assert image.width() >= 640 and image.height() >= 360
+        assert high_dpi_size[0] == pytest.approx(image.width() * 2, abs=2)
+        assert high_dpi_size[1] == pytest.approx(image.height() * 2, abs=2)
+        assert panel._cover_rect.width() == pytest.approx(high_dpi_cover.width(), abs=1)
+        assert panel._cover_rect.height() == pytest.approx(high_dpi_cover.height(), abs=1)
     finally:
         panel.close()
 
@@ -335,6 +343,146 @@ def test_runtime_entry_module_defers_plotting_imports() -> None:
         timeout=30,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_embedded_inspector_waits_for_explicit_start_and_uses_parent_geometry(
+    application: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(runtime_window, "RuntimeInspectorThreadController", StubController)
+
+    def unexpected_sizing(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("Embedded Inspector must not apply standalone window sizing")
+
+    monkeypatch.setattr(runtime_window, "manage_window", unexpected_sizing)
+    host = QWidget()
+    layout = QVBoxLayout(host)
+    host.resize(900, 650)
+    inspector = RuntimeInspectorWindow(
+        RuntimeInspectorConfig(pack_path=tmp_path, backend="mock"),
+        host,
+        embedded=True,
+        auto_start=False,
+    )
+    layout.addWidget(inspector)
+    worker = inspector.findChild(StubController)
+    assert worker is not None
+    started = QSignalSpy(inspector.execution_started)
+    try:
+        host.show()
+        application.processEvents()
+        assert not inspector.isWindow()
+        assert inspector.parentWidget() is host
+        assert inspector.header.isHidden()
+        assert not inspector.is_running
+        assert worker.start_count == 0
+
+        inspector.start()
+        assert started.count() == 1
+        assert inspector.is_running
+        inspector.hide()
+        inspector.show()
+        application.processEvents()
+        inspector.start()
+        assert worker.start_count == 1
+        assert started.count() == 1
+        assert inspector.width() <= host.width()
+        assert inspector.height() <= host.height()
+    finally:
+        inspector.stop_and_wait()
+        inspector.close()
+        host.close()
+
+
+def test_embedded_failure_is_inline_and_finish_waits_for_execution_shutdown(
+    application: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(runtime_window, "RuntimeInspectorThreadController", StubController)
+
+    def unexpected_dialog(*_args: object) -> None:
+        pytest.fail("Embedded failures must not open a blocking message box")
+
+    monkeypatch.setattr(QMessageBox, "critical", unexpected_dialog)
+    host = QWidget()
+    layout = QVBoxLayout(host)
+    inspector = RuntimeInspectorWindow(
+        RuntimeInspectorConfig(pack_path=tmp_path, backend="mock"),
+        host,
+        embedded=True,
+        auto_start=False,
+    )
+    layout.addWidget(inspector)
+    worker = inspector.findChild(StubController)
+    assert worker is not None
+    failed = QSignalSpy(inspector.execution_failed)
+    finished = QSignalSpy(inspector.execution_finished)
+    try:
+        host.show()
+        application.processEvents()
+        inspector.start()
+        worker.failed.emit("Backend initialization failed")
+        assert failed.count() == 1
+        assert failed.at(0) == ["Backend initialization failed"]
+        assert inspector.last_error == "Backend initialization failed"
+        assert inspector.exit_code == 1
+        assert "Backend initialization failed" in inspector.run_state.text()
+        assert inspector.is_running
+        assert finished.count() == 0
+
+        worker.running = False
+        worker.finished.emit()
+        assert not inspector.is_running
+        assert finished.count() == 1
+        assert host.isVisible()
+        assert inspector.isVisible()
+        worker.finished.emit()
+        assert finished.count() == 1
+    finally:
+        inspector.stop_and_wait()
+        inspector.close()
+        host.close()
+
+
+def test_embedded_close_defers_until_runtime_has_stopped_and_prevents_restart(
+    application: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(runtime_window, "RuntimeInspectorThreadController", StubController)
+    host = QWidget()
+    layout = QVBoxLayout(host)
+    inspector = RuntimeInspectorWindow(
+        RuntimeInspectorConfig(pack_path=tmp_path, backend="mock"),
+        host,
+        embedded=True,
+        auto_start=False,
+    )
+    layout.addWidget(inspector)
+    worker = inspector.findChild(StubController)
+    assert worker is not None
+    closed = QSignalSpy(inspector.closed)
+    finished = QSignalSpy(inspector.execution_finished)
+    try:
+        host.show()
+        application.processEvents()
+        inspector.start()
+        assert not inspector.close()
+        assert worker.stop_requested
+        assert closed.count() == 0
+        assert inspector.isVisible()
+
+        worker.running = False
+        worker.finished.emit()
+        application.processEvents()
+        assert finished.count() == 1
+        assert closed.count() == 1
+        assert not inspector.isVisible()
+        assert host.isVisible()
+        inspector.close()
+        inspector.start()
+        assert closed.count() == 1
+        assert worker.start_count == 1
+    finally:
+        inspector.stop_and_wait()
+        inspector.close()
+        host.close()
 
 
 def test_startup_failure_closes_visible_splash_and_restores_exception_hook(

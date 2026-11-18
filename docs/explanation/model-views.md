@@ -28,6 +28,26 @@ or executable plugin. Applications register trusted builder implementations
 through `ModelViewFactory.register()`. An unknown builder can remain valid pack
 data even when the current application cannot generate that view.
 
+Recipes remain optional for the pack format and core runtime. A headless
+experiment can create and step `RuntimeSession`, process docking, and collect
+events without generating any view. The Inspector adds a consumer requirement:
+it must resolve a runtime-enabled recipe and render that recipe's result.
+
+In Studio's **Runtime** workspace, **Model view** supplies an explicit recipe
+selection; `default: true` is unnecessary for that selected recipe. If no
+suitable recipe exists, **Add topology view** adds a uniquely named generic
+recipe to the editable project. Saving the pack persists it. The standalone
+Inspector uses a runtime default when no `--model-view` override is supplied.
+
+F6/F7 validate pack structure and metadata rather than local builder or
+renderer availability. **Validate runtime** checks the selected launch and
+constructs its view against a small canonical sample world. This exercises
+builder registration, modes, configuration, and supported result type without
+creating a physics engine. A successful report is not proof of simulator
+asset compilation or of a demonstration reaching its goal. See the
+[Studio launch architecture](studio-and-inspector.md) and
+[run workflow](../how-to/run-robot-pack.md) for the full handoff.
+
 ```mermaid
 classDiagram
   direction TB

@@ -57,13 +57,15 @@ examples/robot_packs/mblocks_3d/
 ```
 
 The Robot Pack contains hardware assets and semantics, not executable demo
-code. The reference routes live beside it in `examples/scenarios/`, including
-`mblocks_twelve_module_line.py` for the kinematic benchmark and
-`mblocks_twelve_module_physics.py` for the physical sequence.
-`mblocks_twelve_module_staircase.py` contains the shared topology and route for
-both staircase executors. The named
-Runtime Inspector entries therefore require a source checkout that contains
-those example files.
+code. Reference routes ship in `modsim_robotics.demo_configs`, including
+`mblocks_twelve_module_line` for the kinematic benchmark,
+`mblocks_twelve_module_physics` for the physical sequence, and
+`mblocks_twelve_module_staircase` for the shared staircase topology and route.
+Files under `examples/scenarios/` expose compatibility imports and example
+entry points. Named Studio/Inspector demonstrations do not require a source
+checkout, but the M-Blocks pack itself is separate data and is not bundled
+with the Python package. The paths on this page refer to the repository copy;
+an exported or installed compatible pack can be used instead.
 
 The expanded URDF is the Studio/imported mechanical source. It preserves the
 three source meshes while replacing the detailed collision meshes with one
@@ -108,8 +110,9 @@ The pack declares three runtime recipes:
   runtime view.
 - `mblocks_physics_lattice` uses the same builder with its lattice origin
   raised 25 mm so grounded cube centers occupy integer Z cells. The physical
-  momentum demonstrations and staircase reference select it automatically unless `--model-view`
-  overrides the choice.
+  momentum demonstrations and staircase reference select it as their preset
+  view. Studio exposes that choice in **Model view**; a standalone launch can
+  override it with `--model-view`.
 
 The lattice view is derived data, not a second configuration store. Module
 poses and committed connections remain canonical in `WorldState`.
@@ -153,8 +156,53 @@ Both validation profiles are expected to report zero issues. Studio should
 load three links, two joints, three visual meshes, the primitive collision
 box, and all fourteen connector frames without unresolved-asset warnings.
 
+The pack-validation results check authored data. They do not establish that a
+particular Inspector launch is ready; use **Validate runtime** after selecting
+the backend and demonstration below.
+
+## Run from Studio
+
+Keep the pack open and switch to **Runtime**. Select the `mblocks_3d` module
+type, choose a **Demonstration** below, and inspect its **Model view** and
+physics settings. The names in the picker use spaces; the corresponding CLI
+identifiers retain underscores.
+
+| Studio demonstration | CLI identifier | Model view to select | Budget / timestep |
+| --- | --- | --- | --- |
+| **Mblocks five module pivot** | `mblocks_five_module_pivot` | `mblocks_lattice` | 8 s / 0.002 s |
+| **Mblocks momentum pivot** | `mblocks_momentum_pivot` | `mblocks_physics_lattice` | 5 s / 0.00025 s |
+| **Mblocks twelve module line** | `mblocks_twelve_module_line` | `mblocks_lattice` | 24 s / 0.002 s |
+| **Mblocks physical twelve module line** | `mblocks_physical_twelve_module_line` | `mblocks_physics_lattice` | 12 s / 0.0005 s |
+| **Mblocks twelve module staircase** | `mblocks_twelve_module_staircase` | `mblocks_physics_lattice` | 28 s / 0.002 s |
+| **Mblocks physical twelve module staircase** | `mblocks_physical_twelve_module_staircase` | `mblocks_physics_lattice` | 12 s / 0.0005 s |
+
+Select the table's view explicitly when moving between demonstrations; a
+preset that does not request a specific view can retain the previous selection.
+The physical presets require **MuJoCo**, gravity and ground enabled, and a
+0.025 m initial height. The staircase reference also uses that height and
+grounded lattice origin, but keeps gravity and ground disabled. Other
+kinematic references start at zero height with gravity and ground disabled;
+they can run with **Mock** or **MuJoCo**. Keep connector, gap, release, and
+retraction fields at their demonstration defaults for these authored routes.
+
+Choose **Native 3D viewer** when using MuJoCo, then click **Validate runtime**
+and **Start simulation**. Confirm **Save and start** if there are unsaved pack
+edits. The embedded Inspector provides **Pause**/**Resume**, **Stop**, and
+retained graph/event results. After stopping execution or closing a companion
+holding the final scene, **Back to setup** configures a fresh run. Changing
+backends preserves the current scenario tuning; changing demonstrations or
+using **Reset demonstration settings** reapplies the preset values.
+
+The [online planning demos](mblocks_planning.md#launch) have a separate preset
+table. The commands below launch the same demonstrations in a standalone
+Inspector and remain useful for recording reproducible settings.
+
 The existing generic two-module lifecycle can exercise any face before the
 pivot scenario is used:
+
+In Studio, choose **Dock undock**, **MuJoCo**, and `mblocks_lattice`; expand
+**Advanced runtime settings** and set both connector fields to `pos_x` while
+leaving gravity disabled. The equivalent standalone command is:
 
 ```bash
 modsim-robotics runtime examples/robot_packs/mblocks_3d \

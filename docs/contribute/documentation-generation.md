@@ -198,6 +198,15 @@ relationship or sequence against source and the relevant current contract.
 Architecture meaning is reviewed by people; API extraction and Pyreverse do
 not automatically update these authored diagrams.
 
+For Studio runtime changes, review the
+[Studio and Inspector chapter](../explanation/studio-and-inspector.md) together
+with the [runtime how-to](../how-to/run-robot-pack.md), tutorial, and relevant
+backend/platform guides. Keep the authoring document, saved pack, launch
+preflight, execution owner, and generated view distinct in both prose and
+diagrams. UI labels and lifecycle steps come from `main_window.py`,
+`runtime_workspace.py`, `runtime_launch.py`, and `runtime_window.py`; regenerating
+the core API slice does not update those descriptions.
+
 The shared renderer in `website/src/theme/Mermaid/index.tsx` reads the site's
 light/dark tokens and fonts. It preserves readable native SVG dimensions within
 a scrollable panel and provides **Fit width**, **Expand**, and **Download SVG**

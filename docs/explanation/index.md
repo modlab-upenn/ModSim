@@ -41,25 +41,31 @@ picture cannot express.
 ## System context
 
 A user prepares a RobotPack once, then chooses how to consume it. Studio's
-Builder and Runtime Inspector are separate native applications. The CLI and a
-Python experiment are other clients of the same core. None requires a pack to
-contain executable Python plugins.
+Robot Pack and Runtime workspaces share one native window while keeping
+editable documents and live simulation state separate. The Runtime Inspector
+can also launch on its own. The CLI and a Python experiment are other clients
+of the same core. None requires a pack to contain executable Python plugins.
 
 ```mermaid
 flowchart TD
     Author["Robot author / researcher"]
     Mechanical["URDF and local meshes"]
-    Builder["Studio Builder"]
+    subgraph Studio["ModSim Studio · one desktop window"]
+      Builder["Robot Pack workspace"]
+      Launch["Runtime workspace · configure and validate"]
+      Inspector["Embedded Runtime Inspector"]
+    end
     Pack["RobotPack directory"]
     Experiment["CLI or Python experiment"]
     Runtime["ModSim runtime"]
     Backend["Mock or MuJoCo adapter"]
-    Inspector["Studio Runtime Inspector"]
     Author --> Builder
+    Author --> Launch
     Mechanical --> Builder
     Builder -->|"validate and save"| Pack
     Pack --> Experiment
-    Pack --> Runtime
+    Pack --> Launch
+    Launch -->|"save, recheck files, start"| Runtime
     Experiment -->|"scene and commands"| Runtime
     Runtime <-->|"observations and constraints"| Backend
     Runtime -->|"immutable views and events"| Inspector
@@ -80,12 +86,12 @@ separate dependency responsibilities:
 | --- | --- | --- |
 | `modsim_robotics` | Schema, import, validation, persistence, state, docking, runtime coordination, planners, and view generation. | No Qt, PyVista, PyQtGraph, or MuJoCo imports are required by the core. |
 | `modsim_robotics_backend_mujoco` | MuJoCo scene compilation, observations, actuators, runtime constraints, and native viewer hosting. | Installed physics dependencies are needed when this backend is selected. |
-| `modsim_robotics_studio` | Builder document UI and rendering, Inspector controllers, and desktop presentation. | Installed Studio dependencies and a working display are needed for its windows. |
+| `modsim_robotics_studio` | Authoring document UI, Runtime setup and preflight, Inspector controllers, and desktop presentation. | Installed Studio dependencies and a working display are needed for its windows. |
 
 These are software packages within one distribution, not three network
 services. The native-viewer execution path uses a child process on the same
 machine; the semantic-only Inspector uses a worker thread. A command-line or
-Python experiment can run without either Studio application.
+Python experiment can run without the Studio window or a model-view recipe.
 
 `pyproject.toml` defines the console commands and optional extras. Backend
 registration is lazy: choosing the mock backend does not import MuJoCo. The
@@ -169,11 +175,25 @@ rules must be authored because the mechanical file does not define them.
 
 ### 2. Create an execution owner
 
+A desktop user switches from **Robot Pack** to **Runtime** and chooses the
+backend, demonstration, module type, and model view. `RuntimeWorkspace` calls
+the Qt-free helpers in `runtime_launch.py` to check this request, confirms any
+save, reloads the files, and checks the saved input before starting its
+embedded Inspector. F6/F7 remain generic authoring/structural metadata checks;
+the launch preflight also checks backend availability, demonstration inputs,
+and view generation. It does not run physics or guarantee successful asset
+compilation.
+
 A Python caller creates a `RuntimeSession` directly. The Inspector instead
 uses `RuntimeInspectorRunner` to validate configuration, choose a named
 scenario, resolve a model-view recipe, and create the session. The runner and
 scenario execute in one owner thread or child process. GUI controls request
 pause, resume, or stop; they do not step another copy of the simulation.
+
+Core sessions and headless runs need no model view. The Inspector requires a
+runtime-enabled recipe whose generated result it can render. Studio selects
+the recipe explicitly and offers **Add topology view** as an ordinary unsaved
+pack edit when a generic representation is missing.
 
 ### 3. Advance and commit
 
@@ -202,6 +222,11 @@ Completion, user stop, time-budget exhaustion, and failure are distinct
 results. Interactive execution freezes a terminal result for inspection;
 backend cleanup belongs to the runtime owner. Saving the authoring document
 and stopping the simulation are separate operations with separate lifetimes.
+Studio retains the result, then enables **Back to setup** after execution
+resources have stopped. An open native MuJoCo companion can hold a finished
+scene until **Stop** or viewer close. In-memory authoring edits can continue,
+but saving/exporting or replacing the pack waits for that execution owner to
+finish; those edits apply to a subsequent launch.
 
 ## Architectural decisions and their consequences
 

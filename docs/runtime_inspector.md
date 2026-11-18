@@ -25,15 +25,62 @@ generated pivot and clearance overlays, actuator telemetry, and the same event
 log and completion states. See [M-Blocks planning](mblocks_planning.md) for the
 passing four- and six-block presets and experimental elbow/larger-cluster limitations.
 
-With the MuJoCo backend, the same command opens MuJoCo's native 3D viewer as a
-companion window by default. The two windows show the same authoritative
+With the MuJoCo backend, **Native 3D viewer** opens MuJoCo's 3D companion;
+standalone runtime commands enable it by default. The two windows show the same authoritative
 runtime in parallel: MuJoCo renders the physical model while Studio renders the
 selected generated view and canonical events. The native viewer is a separate
 process and window, not an embedded widget or a second simulation.
 
-The Runtime Inspector itself remains a standalone Qt window rather than an
-embedded mode in the Robot Pack authoring window. This keeps the authoring
-viewport separate from live simulation.
+The Inspector is embedded in Studio's **Runtime** workspace and can also run
+as a standalone Qt window. Authoring and live simulation retain separate state
+and execution ownership even when they share one application window.
+
+## Launch from Studio
+
+Open a pack with `modsim-robotics studio` and switch from **Robot Pack** to
+**Runtime**. Choose **Backend**, **Demonstration**, **Module type**, and
+**Model view**. Set duration and playback speed; expand **Advanced runtime
+settings** for connector selection, physics timing, gravity/ground, and
+scenario-specific approach and release settings. **Native 3D viewer** enables
+the MuJoCo companion window.
+
+Use **Add topology view** if the pack has no suitable recipe. This explicitly
+adds a generic runtime topology recipe to the authoring document; it does not
+silently rewrite the pack. A selected runtime-enabled recipe can be used
+without making it the pack default.
+
+Click **Validate runtime**, or use **Validate → Runtime Launch** (`F8`), to
+check the selected launch. Unlike F6/F7 pack
+validation, this also checks the Inspector's model-view requirements and the
+selected backend/demo/settings. It does not execute physics. Click
+**Start simulation** to repeat the checks and run. If there are unsaved pack
+edits, **Save and start** persists them through the existing transactional
+writer; **Cancel** returns to editing. The launch checks the saved pack again
+before creating execution resources.
+
+The embedded Inspector retains its existing Pause/Resume, Stop, loading,
+planning, and event-log behavior. Final results stay visible. **Back to setup**
+is available after execution finishes so another run can be configured in the
+same Studio session. A MuJoCo companion can hold the final scene after the
+demonstration completes; use **Stop** or close the companion before returning
+to setup if its execution resources are still active. Only one run is active
+at a time. Opening/creating,
+saving, or exporting a pack is blocked during execution; in-memory authoring
+edits apply to a later launch. Closing Studio shuts down its active execution
+owner and companion viewer.
+
+The initial Studio preset is **Dock undock** (`dock_undock`), with MuJoCo,
+a native viewer, and a six-second budget. Changing **Backend** preserves
+scenario tuning and changes only native-viewer availability and its checked
+state. Changing **Demonstration** or choosing **Reset demonstration settings**
+reapplies the preset's defaults and clears connector overrides. Launch settings
+remain in the current desktop session; they are not saved into the Robot Pack.
+The model-view recipe added through **Add topology view** is authored pack data
+and is persisted when the pack is saved.
+
+See [the Studio workflow](studio.md#author-and-run-in-one-window) for the
+validation layers and document ownership. The terminal workflow below remains
+available for repeatable standalone launches.
 
 ## Install and launch
 
@@ -121,11 +168,14 @@ connector whose type is self-compatible. Supplying explicit connector IDs is
 recommended for real platforms because it makes the scenario intent
 reproducible.
 
-A Robot Pack must declare a default runtime model-view recipe. Use
-`--model-view RECIPE_ID` to select a different runtime-enabled recipe. The
-inspector currently renders results from the generic `module_topology_graph`
-and `cubic_lattice` builders; another result type is rejected with the recipe
-and unsupported view type in the error.
+The Inspector requires a runtime-enabled model-view recipe. Studio selects it
+in **Model view**; a standalone launch uses a default runtime recipe unless
+`--model-view RECIPE_ID` selects one explicitly. An explicit selection does not
+require the default flag. The Inspector currently renders results from the
+generic `module_topology_graph` and `cubic_lattice` builders; another result
+type is rejected with the recipe and unsupported view type in the error.
+Model views remain optional for general Robot Packs and core/headless runtimes;
+this requirement belongs to the Inspector's visualization workflow.
 
 The useful scenario controls are:
 
@@ -261,6 +311,18 @@ a machine cannot sustain the default 20 Hz semantic refresh.
 
 ## Named demonstrations
 
+Studio displays each identifier below with underscores replaced by spaces and
+the first letter capitalized. For example, `dock_undock` appears as
+**Dock undock**, and `mblocks_momentum_pivot` appears as **Mblocks momentum
+pivot**. Select the matching pack and module before validating the launch.
+The generic connector-pair demos work with any pack that supplies a compatible
+pair; the SMORES and M-Blocks presets depend on their platform definitions.
+See [SMORES online planning](planning.md#launch-from-studio),
+[M-Blocks online planning](mblocks_planning.md#launch), and
+[M-Blocks reference and physics presets](mblocks_3d.md#run-from-studio) for
+Studio selection tables. The CLI examples below remain supported for
+reproducible standalone runs.
+
 The connector-pair and scripted SMORES demonstrations run through the generic
 `ScriptedReconfigurationScenario` engine. The five- and twelve-module
 M-Blocks visual benchmarks use the backend-neutral `KinematicPivotScenario`,
@@ -276,16 +338,16 @@ both slab flywheels and keeps one temporary hinge. The two generic module entrie
 dock-only or dock-then-undock plan builders. The physical SMORES entry instead
 uses a differential-drive controller that sends bounded joint efforts while
 MuJoCo integrates contact and dynamics. Platform dimensions and tuned
-bootstrap parameters live in
-`examples/scenarios/smores_ep_diff_drive_dock_undock.py`.
-The seven-module SMORES connector plan is example content at
-`examples/scenarios/smores_driver_to_snake.py`, outside the installable
-`modsim_robotics.runtime` library. The physical platform configuration is likewise kept
-under `examples/scenarios`. A source checkout loads this example content beside
-the committed SMORES Robot Pack when either named example is selected. The pack itself may be
-opened from `examples/robot_packs`, copied, exported, or staged under `.modsim`;
-scenario discovery is anchored to the source checkout rather than to the pack's
-current directory.
+bootstrap parameters live in the installed
+`modsim_robotics.demo_configs.smores_ep_diff_drive_dock_undock` module.
+The seven-module SMORES connector plan and physical platform configurations
+also ship under `modsim_robotics.demo_configs`; the corresponding files in
+`examples/scenarios/` provide compatibility imports and example entry points.
+Selecting a built-in demonstration does not require the source checkout.
+The caller must still supply a compatible Robot Pack: the SMORES and M-Blocks
+assets are not bundled with the Python package. A pack may be opened from the
+checkout's `examples/robot_packs`, copied, exported, or stored in the local
+library without changing how the packaged demo configuration is resolved.
 
 ### `dock` and `dock_undock`
 
@@ -320,8 +382,8 @@ Gravity and the ground plane remain disabled. The scenario writes the released
 module's root pose along each analytical arc while MuJoCo provides mesh
 rendering and endpoint weld constraints. It does not model magnetic edge-hinge
 forces, flywheel spin-up/braking, impact, or passive target-face capture, and
-must not be interpreted as momentum-driven physics. The source-checkout
-scenario data lives in `examples/scenarios/mblocks_five_module_pivot.py`; the
+must not be interpreted as momentum-driven physics. The packaged scenario
+data lives in `modsim_robotics.demo_configs.mblocks_five_module_pivot`; the
 pack and fidelity gate are documented in the
 [3D M-Blocks integration notes](mblocks_3d.md).
 
@@ -810,7 +872,10 @@ and is cleared when a selected connection disappears.
 ## Appearance
 
 The Inspector shares Studio's ModSim Light, ModSim Dark, and ModSim Midnight
-production themes, outlined wordmark, application icon, and toolbar glyphs.
+brand release 5.0 production themes, outlined wordmark, application icon, and
+toolbar glyphs. The shared loading background uses the supplied theme-matched
+robot cover artwork filling the panel. Live status controls blend over its
+lower portion through a soft fade, without an additional overlay logo.
 Use the **Theme** picker in the header; see [Studio appearance](studio.md#appearance-and-workspace) for
 preference storage and behavior across separate processes. Colors apply to
 the controls, event table, topology graph, and lattice presentation, including
@@ -836,8 +901,9 @@ On Linux, the Inspector and Builder share the desktop identity
 `io.github.modlab_upenn.ModSim` and the registered ModSim dock icon. Identity and
 per-user desktop registration are configured before the splash or main window
 is created. Activating the shared application launcher opens the blank Builder
-using the Python environment of the most recent GUI launch; launch a runtime
-with its explicit pack selector through the commands above. See
+using the Python environment of the most recent GUI launch. Open a pack and
+use **Runtime** there, or launch a standalone Inspector with an explicit pack
+selector through the commands above. See
 [Linux dock and application launcher](studio.md#linux-dock-and-application-launcher)
 for file locations and registration-failure behavior.
 
@@ -849,16 +915,18 @@ for the current scope and platform-validation limits. SVG wordmarks and toolbar
 icons support high-DPI displays; the loading artwork remains a 1920×1080 raster
 source, scaled to physical display pixels.
 
-The launcher shows the shared animated ModSim splash before importing the
+The launcher shows the shared ModSim cover splash before importing the
 plotting workspace. Normal startup keeps it visible for at least three seconds
-from first display, including the approximately 1.1-second logo intro and window
+from first display, including the approximately 1.1-second intro wait and window
 initialization. Slow initialization counts toward that minimum. Clicking the
 splash leaves it open; closing it cancels startup, and startup failure closes it
 immediately. See [Startup and loading feedback](studio.md#startup-and-loading-feedback)
-for the animation and timing behavior.
+for the progress animation and timing behavior.
 
-The runtime starts only when the main window is first shown. Its workspace
-then shows a themed loading panel until
+A standalone Inspector starts its runtime when the main window is first
+shown. An embedded Inspector is created without automatic start and begins
+only after Studio's **Start simulation** action has passed its checks. Its
+workspace then shows a themed loading panel until
 the presenter accepts and displays its first valid runtime frame. The panel
 shows four startup milestones:
 
@@ -930,10 +998,12 @@ explicitly labelled **Target not reached**. A finished companion process is not
 treated as proof that a goal succeeded. The native viewer switches its playback
 overlay to **FINISHED**, and the Inspector disables Pause/Resume for the frozen
 result. Camera navigation, legends, graph selection, and the Event log still work.
-Closing the Runtime Inspector requests a cooperative child shutdown and closes
-the native viewer. Closing the native viewer first ends the simulation while
-leaving the last complete semantic view and event log visible in the Runtime
-Inspector.
+Closing the standalone Runtime Inspector, or closing Studio with an embedded
+Inspector, requests a cooperative shutdown and closes the native viewer.
+Closing the native viewer first ends the simulation while leaving the last
+complete semantic view and event log visible in the Inspector. Switching
+between Studio's Robot Pack and Runtime workspaces does not start a second
+runtime or stop the active one.
 The **Stop** control follows the same cooperative shutdown path and remains
 available while playback is paused. The banner shows **Stopping simulation…**
 during cleanup, then **Simulation stopped** while the final semantic view and
@@ -947,8 +1017,9 @@ The Qt process is the only writer that initializes and truncates the Studio
 session log. Diagnostics from the native-viewer child are captured and mirrored
 into that log, preventing two processes from racing to rewrite the same file.
 Expected user actions such as closing the native viewer are recorded as normal
-shutdown, while startup, protocol, backend, or display failures produce a
-concise dialog and a full local traceback or child diagnostic in the log.
+shutdown, while startup, protocol, backend, or display failures appear inline
+in the embedded Inspector or in the standalone window's error dialog. The
+session log retains the full local traceback or child diagnostic.
 
 ## Current boundary
 
@@ -957,25 +1028,27 @@ geometry, contacts, or forces. Its separately launched native MuJoCo companion
 remains the 3D physics view. On macOS the internal companion must run under
 `mjpython`; ModSim resolves and launches it automatically. If it is unavailable,
 the launch fails with an installation-oriented message instead of a raw Cocoa
-or GLFW traceback. If only the MuJoCo native window is unavailable, use
-`--no-viewer`; the Qt semantic window still needs a display or Xvfb.
+or GLFW traceback. If only the MuJoCo native window is unavailable, leave
+**Native 3D viewer** unchecked in Studio, or use `--no-viewer` for a standalone
+launch; the Qt semantic window still needs a display or Xvfb.
 
 The inspector has topology and cubic-lattice renderers, one event table, a
 generic scripted scenario engine with small connector-pair plan builders,
 five- and twelve-module kinematic M-Blocks routes, a two-module one-plane
 M-Blocks momentum controller, an eleven-action twelve-module physical M-Blocks
 line sequence, matched reference/physical twelve-module staircase routes, one
-external seven-module SMORES plan, one physical SMORES
+packaged seven-module SMORES plan, one physical SMORES
 differential-drive controller, synchronized Pause/Resume control, and a Stop
 control, plus the experimental online SMORES planner and its Planning workspace.
 General scenes, arbitrary-configuration planning, continuous
-magnetic fields, a three-plane M-Blocks carrier, restart controls,
-interactive/manual joint controls,
-position/velocity backend command modes, metric plots, docking-lifecycle
-panels, further model-view renderers, and a combined authoring/runtime shell
-remain later increments.
+magnetic fields, a three-plane M-Blocks carrier, interactive/manual joint
+controls, position/velocity backend command modes, metric plots,
+docking-lifecycle panels, and further model-view renderers remain later
+increments. Studio's Runtime workspace can return to setup and launch a new
+run after the previous execution has ended; it does not reset a live backend
+in place.
 
-Runtime Inspector launches use the same repository-local, truncated Studio log
+Runtime Inspector launches use the same per-session, truncated Studio log
 described in `studio.md`. Worker or child startup, validation, backend,
 presentation, protocol, and shutdown failures are logged with tracebacks or
 captured native diagnostics.

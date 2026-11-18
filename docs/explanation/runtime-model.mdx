@@ -109,6 +109,19 @@ selection. A loaded pack supplies its asset directory automatically; an
 explicit `root` overrides it. Extra backend options are forwarded when a
 factory constructs the adapter, rather than applied to an existing instance.
 
+This core operation does not resolve a model-view recipe or create a GUI.
+Headless tests, batch experiments, and custom control loops can step the
+session and inspect `WorldState`, events, or metrics without a generated
+graph. A consumer that needs a representation requests one separately.
+
+Studio adds launch preparation outside this core contract. Its **Runtime**
+workspace assembles a `RuntimeInspectorConfig`, checks simulation metadata and
+the selected backend, demonstration, and view, and saves confirmed edits before
+starting an embedded Inspector. `RuntimeInspectorRunner` then owns session
+creation and scenario execution in a worker thread or native-viewer process.
+The Inspector's view requirement does not become a requirement of
+`RuntimeSession.create()`; see [Studio and Inspector](studio-and-inspector.md).
+
 ```mermaid
 sequenceDiagram
     participant Client

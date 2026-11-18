@@ -1,32 +1,41 @@
 @import './fonts.css';
 
-/* Shared ModSim brand values, adapted from the existing project website.
+/* ModSim brand asset release 5.0: Light / Glacier & Steel and Midnight.
+   Source: src/modsim_robotics_studio/assets/branding/{light,midnight}/theme/colors.json.
    This file has no Docusaurus selectors and can also style the future homepage. */
 :root {
   color-scheme: light;
-  --modsim-bg: #f7f6f2;
+  --modsim-bg: #e8f3fa;
   --modsim-surface: #ffffff;
-  --modsim-surface-2: #ece9e1;
-  --modsim-border: #d8d3c6;
-  --modsim-ink: #142030;
-  --modsim-muted: #5a6574;
-  --modsim-accent: #1f4e8c;
+  --modsim-surface-2: #d4e7f2;
+  --modsim-border: #9ab9ce;
+  --modsim-control-border: #526d82;
+  --modsim-ink: #0b1e3a;
+  --modsim-muted: #425e7c;
+  --modsim-accent: #087f79;
   --modsim-accent-ink: #ffffff;
-  --modsim-teal: #0b7a70;
+  --modsim-blue: #188fe5;
+  --modsim-teal: #00bfaf;
+  --modsim-cyan: #00bfd8;
+  --modsim-secondary-accent: #425e7c;
+  --modsim-focus: #1169a2;
+  --modsim-link: #126a9c;
+  --modsim-disabled: #829aac;
+  --modsim-selection: #c5dfef;
   --modsim-success: #11795f;
   --modsim-danger: #b4382b;
   --modsim-warning: #9a5b05;
   --modsim-warning-bg: #fbefd9;
-  --modsim-code-bg: #0f1a27;
-  --modsim-code-ink: #d9e3ec;
-  --modsim-code-comment: #91a1b3;
-  --modsim-code-string: #6fd6c5;
-  --modsim-code-keyword: #cfbafa;
+  --modsim-code-bg: #071427;
+  --modsim-code-ink: #f2f6fb;
+  --modsim-code-comment: #b4cddf;
+  --modsim-code-string: #35cdbf;
+  --modsim-code-keyword: #50def1;
   --modsim-code-number: #f2c17b;
-  --modsim-code-function: #9bc7f5;
+  --modsim-code-function: #2aa8ff;
   --modsim-reading-bg: var(--modsim-surface);
   --modsim-navigation-bg: var(--modsim-bg);
-  --modsim-accent-soft: color-mix(in srgb, var(--modsim-accent) 8%, var(--modsim-surface));
+  --modsim-accent-soft: var(--modsim-selection);
   --modsim-font-display: 'Archivo', 'Helvetica Neue', Arial, sans-serif;
   --modsim-font-body: 'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif;
   --modsim-font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
@@ -39,20 +48,27 @@
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --modsim-bg: #0b1521;
-  --modsim-surface: #102030;
-  --modsim-surface-2: #16293c;
-  --modsim-border: #24394f;
-  --modsim-ink: #e5ecf2;
-  --modsim-muted: #93a3b5;
-  --modsim-accent: #79aeea;
-  --modsim-accent-ink: #0b1521;
-  --modsim-teal: #3ccfba;
+  --modsim-bg: #071427;
+  --modsim-surface: #0d2339;
+  --modsim-surface-2: #143550;
+  --modsim-border: #245373;
+  --modsim-control-border: #6896b7;
+  --modsim-ink: #f2f6fb;
+  --modsim-muted: #b4cddf;
+  --modsim-accent: #00bfaf;
+  --modsim-accent-ink: #071427;
+  --modsim-blue: #2aa8ff;
+  --modsim-teal: #00bfaf;
+  --modsim-cyan: #00d9ef;
+  --modsim-secondary-accent: #5592c1;
+  --modsim-focus: #50def1;
+  --modsim-link: #2aa8ff;
+  --modsim-disabled: #466a88;
+  --modsim-selection: #16496b;
   --modsim-success: #4fd1a5;
   --modsim-danger: #f0806f;
   --modsim-warning: #f0b455;
   --modsim-warning-bg: #3a2a10;
-  --modsim-code-bg: #07101a;
   --modsim-reading-bg: var(--modsim-bg);
   --modsim-navigation-bg: var(--modsim-surface);
 }

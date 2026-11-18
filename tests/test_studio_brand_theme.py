@@ -48,9 +48,9 @@ def application() -> QApplication:
 @pytest.mark.parametrize(
     ("theme_id", "background", "text", "accent", "focus"),
     [
-        ("light", "#F8FBFE", "#10263C", "#0B7D73", "#1E4E8C"),
-        ("dark", "#17191F", "#EEF2F6", "#35B3A3", "#8CBCEE"),
-        ("midnight", "#0B1521", "#C5CCD3", "#35B3A3", "#8CBCEE"),
+        ("light", "#E8F3FA", "#0B1E3A", "#087F79", "#1169A2"),
+        ("dark", "#132331", "#F1F6FB", "#35CDBF", "#78D8F2"),
+        ("midnight", "#071427", "#F2F6FB", "#00BFAF", "#50DEF1"),
     ],
 )
 def test_brand_palette_reaches_native_widgets(

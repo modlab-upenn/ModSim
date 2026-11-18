@@ -1,81 +1,46 @@
-# ModSim — Dark software branding pack
+# ModSim Dark — complete final branding pack
 
-Version 1.0 · Prepared 2026-11-16
+**Brand asset release 5.0 / Honeycomb System.**
 
-## Start here
+**Approved Dark design retained.** The established muted blue-charcoal honeycomb artwork, logo/icon colors and UI appearance are carried forward unchanged. Shared guidelines, previews and multi-theme integration files are refreshed for this final suite.
 
-Open `index.html` for a browsable local catalog. The files can be used independently; the HTML is not required by the application. `previews/asset-overview.png` shows the actual assets in this pack. `examples/qt_theme_demo.py` is an optional PySide6 preview.
+Open **index.html** to browse all individual assets locally. Read **docs/ModSim_Brand_Guidelines_Final.pdf** or **docs/BRAND_GUIDELINES.md**. `PREVIEW.png` is a view of the actual exports, not the asset library itself.
 
-The production canvas is **#17191F**, with foreground **#EEF2F6**. The same relative filenames are used in all three packs so that switching the pack root switches the theme.
-
-## Contents
+## Included
 
 | Folder | Contents |
 | --- | --- |
-| `logos/svg/` | Horizontal logo; horizontal logo with descriptor; stacked logo; wordmark; black, white, and theme-foreground horizontal versions. Text is outlined. |
-| `logos/png/` | Transparent logo exports at 1000 and 2000 pixels wide; monochrome horizontal logos at 2000 pixels wide. |
-| `icons/svg/` | Transparent symbol; rounded-square app tile; maskable tile; reticle; three monochrome symbols. |
-| `icons/png/` | Transparent symbol and app tile at 16, 20, 24, 32, 40, 48, 64, 96, 128, 192, 256, 512 and 1024 pixels; monochrome and reticle exports. |
-| `icons/platform/` | Windows `.ico`, macOS `.icns`, favicons, Apple touch icon, maskable web icons, and a starter web manifest. |
-| `ui/svg/` | 24 toolbar icons in default, accent, disabled and `currentColor` versions. |
-| `ui/png/` | Default-color toolbar icons at 24, 48 and 96 pixels. |
-| `patterns/` | Transparent module pattern and connection-line motifs, in SVG and 2× PNG. |
-| `backgrounds/` | Native approved robot cover; cropped robot inset; theme-only background; theme-specific robot layout with and without branding at 1920×1080; 960×540 cover. |
-| `theme/` | `colors.json`, `theme.css`, `theme.qss`, and a GIMP-compatible `.gpl` palette. |
-| `examples/` | Optional PySide6 demo. |
-| `previews/` | Actual-asset overview and a static loading-screen example. |
-| `reference/` | Earlier approved concept board, original symbol, and preferred wordmark reference. |
-| `resources.qrc` | Optional Qt resource collection for SVG assets and the 960×540 splash. |
-| `asset-manifest.json` | File inventory, sizes, hashes, and image dimensions. |
+| `logos` | Outlined horizontal, stacked, wordmark-only, monochrome and optional descriptor logos; SVG and transparent PNG. |
+| `icons` | Symbols, app tiles, reticles and monochrome variants; 16–1024 px; ICO, ICNS, favicon, maskable and Apple touch formats. |
+| `ui` | All 24 toolbar actions; five SVG states and four PNG states at 24/48/96 px. |
+| `patterns` | Hex outlines, matte honeycomb, seamless tile, stage and straight connection motifs. |
+| `backgrounds` | Native and 1920×1080 / 960×540 covers plus empty scalable backgrounds. |
+| `artwork` | Original transparent SMORES configurations and isolated simulation-window illustration. |
+| `theme` | JSON colors, CSS, all-theme CSS, Qt stylesheet, palette and calculated contrast reports. |
+| `previews` | Actual asset board, toolbar state chart and static loading-screen example. |
+| `docs`, `reference` | PDF/Markdown guidelines, source provenance, preservation mask and validation. |
+| `examples` | Optional PySide6 styling demo. |
 
-## Production choices
+## Main entry points
 
-The symbol is reconstructed from your original 1024-pixel logo: analytic rounded-square modules with the original seven-piece reticle traced from the image. The wordmark is a vector outline traced from your preferred uploaded wordmark, not a replacement typed in a guessed font. The exact original typeface has not been identified. Very small raster-derived contour differences are possible; the source references are included.
-
-Light uses an off-white canvas. Dark uses neutral charcoal. Midnight uses **#0B1521**, sampled from your supplied wordmark image. Theme colors in `theme/colors.json` are authoritative. The approved concept boards are kept as references and can contain earlier palette or typography variations.
-
-The 24 toolbar glyphs are a consistent implementation set based on the actions shown in the branding concepts, with additional common software actions. They are not pixel crops of the concept board. Default stroke width is 1.8 on a 24×24 viewBox.
-
-## Use in Qt / PySide6
-
-Choose SVG for scalable logos and toolbar icons; Qt can rasterize them at the requested display size. Paths below are relative to the pack root:
-
-```python
-from pathlib import Path
-from PySide6.QtGui import QIcon
-
-pack = Path("path/to/ModSim_Dark_Pack")
-app.setWindowIcon(QIcon(str(pack / "icons/svg/modsim-app.svg")))
-app.setStyleSheet((pack / "theme/theme.qss").read_text(encoding="utf-8"))
-play_button.setIcon(QIcon(str(pack / "ui/svg/default/play.svg")))
+```text
+logos/svg/modsim-horizontal.svg
+icons/svg/modsim-app.svg
+ui/svg/default/play.svg
+ui/png/24/play.png
+backgrounds/robot-cover-960x540.png
+theme/colors.json
+theme/theme.css
+theme/theme.qss
+resources.qrc
 ```
 
-The optional demo can be launched with:
+All three packs use the same relative paths. Replace the whole older theme folder and rebuild any compiled Qt resources. Open `examples/qt_theme_demo.py` for a standalone styling demonstration; it is syntax-checked, not run inside ModSim.
 
-```sh
-python examples/qt_theme_demo.py
-```
+## Artwork
 
-PySide6 is not bundled. The example is syntax-checked, but was not run against a Qt GUI in the export environment. It demonstrates styling only; it does not control the simulator.
+The two SMORES robot configurations are reused from the approved honeycomb artwork, not generatively redrawn. Original fully opaque foreground pixels are preserved in the native adaptation; resizing and alpha edges are not pixel-identical guarantees. The simulation window is illustrative, not an actual ModSim screenshot. The wordmark is the supplied vector-outline form; its original font remains unidentified. No font files are distributed.
 
-For compiled resources, run `pyside6-rcc resources.qrc -o resources_rc.py` in the pack directory, then import the generated module in your app. Resource paths begin with `:/modsim/dark/`, for example `:/modsim/dark/icons/svg/modsim-app.svg`.
+## Checks
 
-## Use on the web
-
-Use `theme/theme.css` and switch the `data-modsim-theme` attribute on your application root. The sample `index.html` shows the available assets with no external dependencies. `ui/svg/currentcolor/` is intended for **inline SVG** or an SVG component. Loading one of those files through an HTML `<img>` does not make it inherit the parent element's CSS color; use the fixed-color variants in that case.
-
-The starter `site.webmanifest` contains icon references and theme colors. Configure application-specific fields such as `id`, `start_url`, and `scope` before deployment. Keep the manifest next to the referenced icon files or update its relative paths.
-
-## Splash screens and robot imagery
-
-`robot-cover-approved-native.png` is the approved 1672×941 rendered cover, unchanged and shared across the themes. The robot is illustrative concept art, not a verified render of a particular ModSim robot or a screenshot of a functioning interface.
-
-The theme-specific 1920×1080 covers place the same approved scene in a right-hand inset with production branding on the left. The light and charcoal packs do **not** contain a newly relit robot. `robot-background-1920x1080.png` omits the new left-hand text so that your application can draw its own logo, status, and progress. The source illustration is raster art and is not made more detailed by rescaling. The logo and symbol remain scalable SVGs.
-
-The progress bar in `previews/loading-screen-example.png` is a static design example. Do not use it to report actual load progress; draw a live progress widget on a background asset instead.
-
-## Usage notes
-
-Keep the symbol proportions and wordmark letter shapes intact. Use the theme-matched version against the corresponding canvas. Preserve transparent backgrounds when exporting logos. Reserve at least one small module-width around a placed mark where the layout permits. At very small sizes, use the symbol rather than a logo with text. Retain the dark/light variants instead of automatically inverting colors.
-
-The logo files contain outlined paths and require no installed fonts. No font files are included. Supporting descriptor labels and previews were outlined/rendered separately; they do not establish the original wordmark's typeface. Application text may use your existing UI font.
+See `docs/validation-report.json`, `theme/contrast-checks.json`, and `asset-manifest.json`. The manifest inventories file sizes and SHA-256 values. Native artwork preservation, dimensions, parsing and internal links are checked; no runtime or accessibility certification is implied.

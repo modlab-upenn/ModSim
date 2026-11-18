@@ -26,8 +26,8 @@
   --ifm-line-height-base: 1.8;
   --ifm-font-weight-semibold: 600;
   --ifm-heading-font-weight: 700;
-  --ifm-link-color: var(--modsim-accent);
-  --ifm-link-hover-color: var(--modsim-accent);
+  --ifm-link-color: var(--modsim-link);
+  --ifm-link-hover-color: var(--modsim-link);
   --ifm-code-font-size: 86%;
   --ifm-code-background: var(--modsim-surface-2);
   --ifm-global-radius: var(--modsim-radius);
@@ -36,7 +36,7 @@
   --ifm-color-emphasis-300: var(--modsim-border);
   --ifm-color-emphasis-600: var(--modsim-muted);
   --ifm-menu-color: var(--modsim-muted);
-  --ifm-menu-color-active: var(--modsim-accent);
+  --ifm-menu-color-active: var(--modsim-ink);
   --ifm-menu-color-background-active: var(--modsim-accent-soft);
   --ifm-menu-color-background-hover: var(--modsim-surface-2);
   --ifm-menu-link-padding-horizontal: 0.875rem;
@@ -48,13 +48,13 @@
   --ifm-navbar-shadow: none;
   --ifm-navbar-padding-horizontal: 1.75rem;
   --ifm-toc-border-color: var(--modsim-border);
-  --ifm-breadcrumb-color-active: var(--modsim-accent);
+  --ifm-breadcrumb-color-active: var(--modsim-ink);
   --ifm-breadcrumb-item-background-active: var(--modsim-accent-soft);
   --ifm-table-border-color: var(--modsim-border);
   --ifm-table-head-background: var(--modsim-navigation-bg);
   --ifm-table-stripe-background: var(--modsim-reading-bg);
   --doc-sidebar-width: var(--modsim-sidebar-width);
-  --docusaurus-highlighted-code-line-bg: rgb(121 174 234 / 12%);
+  --docusaurus-highlighted-code-line-bg: color-mix(in srgb, var(--modsim-blue) 12%, transparent);
 }
 
 body {
@@ -62,8 +62,12 @@ body {
 }
 
 :focus-visible {
-  outline: 2px solid var(--modsim-accent);
+  outline: 2px solid var(--modsim-focus);
   outline-offset: 3px;
+}
+
+.button--primary {
+  --ifm-button-color: var(--modsim-accent-ink);
 }
 
 .navbar {
@@ -79,6 +83,11 @@ body {
 .navbar__logo {
   height: 2rem;
   margin-right: 0;
+}
+
+.navbar__logo img {
+  height: 100%;
+  width: auto;
 }
 
 .navbar__title {
@@ -102,7 +111,7 @@ body {
 }
 
 .modsim-github-link {
-  border: 1px solid var(--modsim-border);
+  border: 1px solid var(--modsim-control-border);
   border-radius: var(--modsim-radius);
   margin-left: 0.5rem;
   padding: 0.35rem 0.75rem;
@@ -178,7 +187,7 @@ body {
 
 .modsim-diagram-toolbar button {
   background: var(--modsim-surface);
-  border: 1px solid var(--modsim-border);
+  border: 1px solid var(--modsim-control-border);
   border-radius: var(--modsim-radius);
   color: var(--modsim-accent);
   cursor: pointer;
@@ -187,8 +196,9 @@ body {
 }
 
 .modsim-diagram-toolbar button:disabled {
+  color: var(--modsim-disabled);
   cursor: wait;
-  opacity: 0.5;
+  opacity: 1;
 }
 
 .modsim-diagram-canvas {
@@ -363,6 +373,17 @@ body:has(.modsim-diagram-dialog[open]) {
   color: var(--modsim-muted);
   font-weight: 600;
   text-align: left;
+}
+
+/* Brand roles and hex values must stay intact when the guide table scrolls. */
+html[class*='docs-doc-id-contribute/branding'] .theme-doc-markdown table th,
+html[class*='docs-doc-id-contribute/branding'] .theme-doc-markdown table td {
+  overflow-wrap: normal;
+}
+
+html[class*='docs-doc-id-contribute/branding'] .theme-doc-markdown table th,
+html[class*='docs-doc-id-contribute/branding'] .theme-doc-markdown table code {
+  white-space: nowrap;
 }
 
 .theme-doc-markdown table tbody tr:last-child td {

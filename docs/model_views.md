@@ -5,6 +5,11 @@ state. They make hardware and runtime state convenient for algorithms and user
 interfaces without turning a graph, matrix, or platform-specific projection
 into a second source of truth.
 
+Model-view recipes are optional Robot Pack data. A core `RuntimeSession` or a
+headless `modsim-robotics run` can simulate and process docking without one.
+The Runtime Inspector needs a supported runtime view to display its semantic
+state, whether it is embedded in Studio or launched separately.
+
 The built-in module-topology graph provides the simplest runtime projection:
 
 - every module instance is a node, including disconnected modules;
@@ -79,6 +84,30 @@ on the installed application and plugins. Attempting to build it produces an
 actionable factory error. `module_topology_graph` has no configuration options.
 `cubic_lattice` uses the configuration described below. Both built-ins
 currently support runtime state only.
+
+### Select and validate a view in Studio
+
+Open a pack in Studio, switch to **Runtime**, and select its recipe in
+**Model view**. The selection is explicit, so the recipe need not have
+`default: true`. When no suitable recipe exists, **Add topology view** creates
+a uniquely named `module_topology_graph` recipe as an unsaved pack edit. It is
+marked default only when no runtime default already exists. **Save** or the
+**Save and start** confirmation persists that recipe; merely changing the
+runtime selector does not edit the manifest.
+
+**Validate runtime** runs the simulation-profile metadata checks and checks the
+selected recipe's runtime mode, registered builder, configuration, and
+supported Inspector result type. It generates a small canonical sample world
+to exercise view construction without loading a simulator or advancing physics.
+F6 authoring validation and F7 **Simulation Metadata (Structural)** do not
+perform these consumer-specific checks. A view-free pack can therefore pass
+both profiles while needing a recipe before it can use the Inspector.
+
+The standalone Inspector selects a default runtime recipe when
+`--model-view RECIPE_ID` is omitted. Neither Studio selection nor this CLI
+selection makes views a requirement of the core runtime. See
+[Studio's launch workflow](studio.md#author-and-run-in-one-window) for the
+save and execution handoff.
 
 ### Cubic-lattice recipe
 
@@ -186,7 +215,9 @@ distinguishable in generated topology and lattice DTOs.
 
 ## Runtime Inspector consumer
 
-`modsim-robotics runtime PACK` is the first live consumer of generated model views. In
+The Runtime Inspector consumes generated model views inside Studio's
+**Runtime** workspace or as the standalone `modsim-robotics runtime PACK`
+application. Both use the same runner and execution controllers. In
 semantic-only mode a dedicated worker thread owns `RuntimeSession`, the
 backend, and `ModelViewFactory`; with the native MuJoCo viewer enabled, one
 companion process owns the same responsibilities. After stepping, either owner

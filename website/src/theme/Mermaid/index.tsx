@@ -13,7 +13,7 @@ const tokens = {
   ink: '--modsim-ink',
   muted: '--modsim-muted',
   accent: '--modsim-accent',
-  teal: '--modsim-teal',
+  teal: '--modsim-secondary-accent',
 };
 
 type Palette = Record<keyof typeof tokens, string>;

@@ -1,98 +1,129 @@
 {
-  "collection": "Modsim_Branding/ModSim_Theme_Packs",
+  "collection": "Modsim_Branding / complete final v5 theme packs",
   "copied_files_unmodified": true,
   "themes": [
     {
       "theme": "light",
       "source_pack": "ModSim_Light_Pack",
-      "version": "1.0",
-      "prepared": "2026-11-16",
-      "source_manifest_sha256": "45af3122d450db46e9731cb77bc69761daef3f5b887d120ab7ae2b6872bedd9d",
+      "source_directory": "ModSim_Light_Complete_Branding_Final_v5/ModSim_Light_Pack",
+      "version": "5.0",
+      "prepared": "2026-11-17",
+      "source_manifest_sha256": "67fc5a70be1eda6860f1f9feb0b95cf6a80c2ce960d4a31b68c385dfd8a59c8a",
       "files": [
         {
+          "path": "CHANGELOG.md",
+          "bytes": 691,
+          "sha256": "4a997d9c154d7c54642dbea9cecd2c6ac3ab742850302c24b48b5038de5aba55"
+        },
+        {
           "path": "README.md",
-          "bytes": 6498,
-          "sha256": "f402b8900896edf473a8a1af020e16dd76c173739ba68b4fac75f96693e4d2b9"
+          "bytes": 2814,
+          "sha256": "20437e95add8dadbfe3ab02fc7d7f724110c8cb8e6bcd953a3e4390aa2fb00f3"
         },
         {
           "path": "backgrounds/robot-background-1920x1080.png",
-          "bytes": 1181256,
-          "sha256": "d1830d983810bf84309ad9b10d63324acacc4a568548e22ebf4e083f0e0a3d3e"
+          "bytes": 1424120,
+          "sha256": "d28a041a68a173adf6c267c1267aba40c5396feff7f860d46db6f81f5587243d"
+        },
+        {
+          "path": "backgrounds/robot-cover-1920x1080.png",
+          "bytes": 1424120,
+          "sha256": "d28a041a68a173adf6c267c1267aba40c5396feff7f860d46db6f81f5587243d"
+        },
+        {
+          "path": "backgrounds/theme-background-1920x1080.png",
+          "bytes": 116598,
+          "sha256": "c3d5498c943ce6bafeacc9ee540d0cfccb610b04d2fc7f94204bc71e68c3524e"
         },
         {
           "path": "backgrounds/theme-background.svg",
-          "bytes": 2321,
-          "sha256": "de0c3f94dda7d2d5ec6d950abf83de26f68f719c74f2ba2602143ec76396869f"
+          "bytes": 17163,
+          "sha256": "cb93a48a7137ee363a907955e82e610b8db7bfbd03e736d309fdd165e832fd34"
+        },
+        {
+          "path": "docs/BRAND_GUIDELINES.md",
+          "bytes": 11116,
+          "sha256": "118e20b59eab636f672782384e6e9f151849898488a65848a6bad5613e8e773a"
         },
         {
           "path": "icons/platform/modsim.icns",
-          "bytes": 105871,
-          "sha256": "468a7c20b13124c572d26372119b02c0fdc2c9a839a4e0fd7497d63e9683ea4a"
+          "bytes": 117140,
+          "sha256": "066c77554986c76d688caece0b6171ea74f5f8047a58f0b667c576e59e9e9757"
         },
         {
           "path": "icons/platform/modsim.ico",
-          "bytes": 26747,
-          "sha256": "6d5a51245166351287aded34380c6ec56bd5011d14920352a7177e4fc5d6a8ea"
+          "bytes": 30557,
+          "sha256": "1ec1c2ba2a70fe9cc363f60c331cfd5ed18c7dc0b8f6d3c257cea4df9ee663f7"
         },
         {
           "path": "icons/png/app/modsim-app-1024.png",
-          "bytes": 37619,
-          "sha256": "5d94eab982c277cdac377242e525825047378d05cb431f829f57a72a22a244af"
+          "bytes": 38778,
+          "sha256": "e1f022edbc22850fa5226aff3909b434af6c2041decc0cb95a72cead2a37da8d"
         },
         {
           "path": "icons/png/app/modsim-app-256.png",
-          "bytes": 8000,
-          "sha256": "57e96b0beda645accba4804d78669b9a75423079cd8aa0ca5da9fd67490b8933"
+          "bytes": 8224,
+          "sha256": "c0d7331aaebc01886da38847b1202edcac6b037659d7a32f9d0e7e209bb38498"
         },
         {
           "path": "icons/png/app/modsim-app-512.png",
-          "bytes": 16893,
-          "sha256": "0513ff9ecf8c62866a78a873fe626c2a1d05b02d65cb9807311deed486f7958a"
+          "bytes": 17481,
+          "sha256": "03fd7ae9ac6599171dc10bd62f81b26af3c6bc6afbfcb650dcd63add72f1896e"
         },
         {
           "path": "icons/png/symbol/modsim-symbol-256.png",
-          "bytes": 3993,
-          "sha256": "8d59abceb1148a0dca3e3d89d43010c8203bbbc557bbf91c8f47ca0fa68f7619"
+          "bytes": 3943,
+          "sha256": "81aee661b956f1a9ce48411bd52e69be2f12db401869324117bbd676229baea3"
         },
         {
           "path": "icons/png/symbol/modsim-symbol-512.png",
-          "bytes": 8406,
-          "sha256": "f272e3d8b5fc19b6a61b358968732404afef11f62ec85847cb3e92c0820cce0e"
+          "bytes": 8222,
+          "sha256": "d94c133c8b27c7765428c0ccf74616e9a58358a31fd19b632800678f34c0e687"
         },
         {
           "path": "icons/svg/modsim-app.svg",
           "bytes": 8314,
-          "sha256": "f5d3c5b031d9ffe169cfe19d8bea1fe70ac4be0ae6da6c937516bf884b236b03"
+          "sha256": "e9ed4b63094de788c2351aca7a85fd9796eb103dd5e4f1176cb8a9050a8cf09e"
         },
         {
           "path": "icons/svg/modsim-symbol.svg",
           "bytes": 8213,
-          "sha256": "92bd648900479fd9cfe4e5a015eee2edd0ae5d9ecf63817def088bb90b272b9f"
+          "sha256": "1482159997bddb0aed3f5ca5cb91c7dca2aacacdecb1c5809e700ace92881553"
         },
         {
           "path": "logos/svg/modsim-horizontal-tagline.svg",
           "bytes": 27527,
-          "sha256": "0c1add1c2e42723de42d911cc376e8fe45efd933fc8beea35afbfc27b7103a68"
+          "sha256": "6466da48200945fcd9d0b1f5f4b07b85cf145138ce84b478812b1759249f3f1f"
         },
         {
           "path": "logos/svg/modsim-horizontal.svg",
           "bytes": 20903,
-          "sha256": "c90f5ff8f9dea98bee49e59405dea7976526c1db54abbfa09a82acd373092d8e"
+          "sha256": "68df1edfd9b6e690ff745705f5bb96d8f76e8c1229f1312912c5f67b439a3ad2"
         },
         {
           "path": "patterns/module-pattern.svg",
-          "bytes": 16621,
-          "sha256": "f7c17cc975aee7d97081ff8fd5e7ec82c5c10d1860077855de9a7ad6ef265124"
+          "bytes": 4379,
+          "sha256": "8d7bebef1c729ee917797bca8ab1ed65fb4f1f3da39db11b4724b14c92b75878"
+        },
+        {
+          "path": "reference/artwork-provenance.json",
+          "bytes": 1379,
+          "sha256": "26dcb61310f9262e40563110167045315cd5b4dcce04aff603c6d59cab02e340"
         },
         {
           "path": "theme/colors.json",
-          "bytes": 369,
-          "sha256": "8394d49ab785f6acc9e779d35ee7735724100e62c9ae3f3a2899f5a9fb5f8c00"
+          "bytes": 669,
+          "sha256": "0279f47cdb228e8f86296c378cd0396164337ace2b9542e2035ba4d96928b790"
+        },
+        {
+          "path": "theme/contrast-checks.json",
+          "bytes": 1409,
+          "sha256": "8fb984f01a9db20412d952c25a64dcde7f6101ddaaccdba410951474f3521be5"
         },
         {
           "path": "ui/svg/accent/check.svg",
           "bytes": 303,
-          "sha256": "8c507b49e57e4afe998433fde9da166c9e8b80c3a9ef0160804e8f2ec23c0c26"
+          "sha256": "12800b319610688ab8fd18b118d2fed01c60a131bda1da548296abac3d6e212b"
         },
         {
           "path": "ui/svg/currentcolor/camera.svg",
@@ -219,94 +250,125 @@
     {
       "theme": "dark",
       "source_pack": "ModSim_Dark_Pack",
-      "version": "1.0",
-      "prepared": "2026-11-16",
-      "source_manifest_sha256": "cc4c075a0007455180d3990c61b278af735be09cd5f1bd6707c0d65c6ac1d36c",
+      "source_directory": "ModSim_Dark_Complete_Branding_Final_v5/ModSim_Dark_Pack",
+      "version": "5.0",
+      "prepared": "2026-11-17",
+      "source_manifest_sha256": "96634efb140099846bf1dd24f743815de8b2731056b85f74f5bb4ddb1912c732",
       "files": [
         {
+          "path": "CHANGELOG.md",
+          "bytes": 719,
+          "sha256": "fff2bef0c1403c457b16a0a94f4fb4de931c4f72414a26fa5b992d0842a4d390"
+        },
+        {
           "path": "README.md",
-          "bytes": 6494,
-          "sha256": "23b5b984b45b891324247d30ff15e11b444bd21effc6dcfa69f67c54c46854f9"
+          "bytes": 2842,
+          "sha256": "5cf4f2cd4b868564c4f5a3c1bdb367d92a0ff24bafa95bd297bc241c703d726d"
         },
         {
           "path": "backgrounds/robot-background-1920x1080.png",
-          "bytes": 1179186,
-          "sha256": "d9653099b1bcd4def5a11187b009c5fe33628cc9aa75bb23c3d34f58094e9288"
+          "bytes": 1834384,
+          "sha256": "d272cadb6d83beff4d0dd8570bad6c8da0f00e03da0794dcd2da2b8ae1b06113"
+        },
+        {
+          "path": "backgrounds/robot-cover-1920x1080.png",
+          "bytes": 1834384,
+          "sha256": "d272cadb6d83beff4d0dd8570bad6c8da0f00e03da0794dcd2da2b8ae1b06113"
+        },
+        {
+          "path": "backgrounds/theme-background-1920x1080.png",
+          "bytes": 185431,
+          "sha256": "ca96fecc8484d12adb1a55c3dd8c62a0a9ff3ba80639b107a3e8a096e2137876"
         },
         {
           "path": "backgrounds/theme-background.svg",
-          "bytes": 2320,
-          "sha256": "ec6e3aa7fda5753bab806aef7cbbf05f5e62563f9b66cd74b1fbcdb001c02af7"
+          "bytes": 19202,
+          "sha256": "ea61f270646f67688e26e62130b4b46710d842a7b7d43d0be4e0d1fea20c8db8"
+        },
+        {
+          "path": "docs/BRAND_GUIDELINES.md",
+          "bytes": 11116,
+          "sha256": "118e20b59eab636f672782384e6e9f151849898488a65848a6bad5613e8e773a"
         },
         {
           "path": "icons/platform/modsim.icns",
-          "bytes": 114874,
-          "sha256": "de3a07f99d697b5ddc28a08f4e3829a55048fcba8df76c7929ead69cf1591be0"
+          "bytes": 114430,
+          "sha256": "440f4347cedc2173da04e8d9c8d95d1470bfe950643e00c641ecd17f9159282c"
         },
         {
           "path": "icons/platform/modsim.ico",
-          "bytes": 29436,
-          "sha256": "316ed0879fbded691d0b40e0680c41cbe0cc3f222063a2c3fd1cdad1f9d32e44"
+          "bytes": 29364,
+          "sha256": "b29c666d2b0fabd252b6e845bd7fd883424dcc1b02a9c4cf751947c8e92ebc2e"
         },
         {
           "path": "icons/png/app/modsim-app-1024.png",
-          "bytes": 38966,
-          "sha256": "d056498c7edc84e84d9123bf9123a68114ce86eacf7ff928e91c54d4238c2e9f"
+          "bytes": 38535,
+          "sha256": "d169d90a1bb35eda53f649ce37ef7f39526f6b263c201083d4a8e41173f32ffa"
         },
         {
           "path": "icons/png/app/modsim-app-256.png",
-          "bytes": 8234,
-          "sha256": "b95298e7a22bfec4c0b94c9d8a600fda502f1333c71de28c8660bff1c7afac72"
+          "bytes": 8077,
+          "sha256": "d9aaec1f6bc6b4f83c7147ec07911cf53a2e4cec9473d9c208f66b672ec67ba6"
         },
         {
           "path": "icons/png/app/modsim-app-512.png",
-          "bytes": 17477,
-          "sha256": "6d1b84e61547e7834bcd68b36aead3fcea1a0e12dac7291fa0c9bd6ad8431c48"
+          "bytes": 17224,
+          "sha256": "23a14deab0dd99215938bcb38317da34ba8e25ae287c04e3aa9ee6a26978ef91"
         },
         {
           "path": "icons/png/symbol/modsim-symbol-256.png",
-          "bytes": 3999,
-          "sha256": "32df1c234451bcbb0349af6e4f8b233fb58b6475bdce07fb1fe1edd256de3af0"
+          "bytes": 3953,
+          "sha256": "d37c08e766fc9901af7b0f8331ab3ba3f1fe02de1e7cb05c10dadd070bcae091"
         },
         {
           "path": "icons/png/symbol/modsim-symbol-512.png",
-          "bytes": 8361,
-          "sha256": "b5d2187c0837839f9f01677d386974c49d5e80fb0b5123c3a3880e4683c06878"
+          "bytes": 8269,
+          "sha256": "7bbc08f13cf3d57dff19f018b68c3d336bcb56c454945cf93faf9fb81ec279f3"
         },
         {
           "path": "icons/svg/modsim-app.svg",
           "bytes": 8313,
-          "sha256": "839cfcdd516a4a99d5d64722175b716584e338082210afdec2261c9da0a21270"
+          "sha256": "9ad797f4f56e8dc6f2920368880e9901987baecc056833e05ce2072ac7a46d74"
         },
         {
           "path": "icons/svg/modsim-symbol.svg",
           "bytes": 8212,
-          "sha256": "95e875a05cb44470cf0d536a6b8cacd228bc1d9a8cbbbaa0928c85e36372b661"
+          "sha256": "6f3266837290c3bfa8b55646c8f8d903c02854f0058266307fe2c1b4b5cbc579"
         },
         {
           "path": "logos/svg/modsim-horizontal-tagline.svg",
           "bytes": 27526,
-          "sha256": "c72699873c7cf945d54268049ec79c29d65ea3deb4c022aca802e4f867b7e55c"
+          "sha256": "21996ce5ef2304accd8cda0e6b181620c792a6170470dfce3926ac4edac2397c"
         },
         {
           "path": "logos/svg/modsim-horizontal.svg",
           "bytes": 20902,
-          "sha256": "546ed18aaf52fb1ced7b7980cd586500b395609d5dd51a0ece437ed4058ac90e"
+          "sha256": "3591799df3e8225ac78f6ced7eafbd50ef044744284de31511d13c08ff99fdce"
         },
         {
           "path": "patterns/module-pattern.svg",
-          "bytes": 16621,
-          "sha256": "1d547003a5a929e7cb50fba4f432aed50b8e5bc921985993bb5ac875e7f984d3"
+          "bytes": 4379,
+          "sha256": "1f1f1cddc729fed1caf9643bde03552dac0bab63aa9b2f77fbcf17c7f1f7123c"
+        },
+        {
+          "path": "reference/artwork-provenance.json",
+          "bytes": 1081,
+          "sha256": "bc4a1097458d5d0690f530b438234850a0b952da4b5fbce1564604d0f7643958"
         },
         {
           "path": "theme/colors.json",
-          "bytes": 367,
-          "sha256": "9cb3531e41d90937748b07f3d91c2dd53315fcae2471dccd5662c5e9d8607383"
+          "bytes": 559,
+          "sha256": "ea0e030b1c1497e575d3f0753315c2684551f01dd8f1e7c222cf11a254a88f7b"
+        },
+        {
+          "path": "theme/contrast-checks.json",
+          "bytes": 1409,
+          "sha256": "2950a42ed1424355074cdbf23261025e2799c52f4ae7556f5807078c4bd2e4c2"
         },
         {
           "path": "ui/svg/accent/check.svg",
           "bytes": 303,
-          "sha256": "b31a8c96c8f8eafd582cdb613b8d50e29cb601e2c4329baf49b03e383cc4be37"
+          "sha256": "639594a3e28774d19434a5b095e95b9569685a7f401b42882719c490ba278d1f"
         },
         {
           "path": "ui/svg/currentcolor/camera.svg",
@@ -433,94 +495,125 @@
     {
       "theme": "midnight",
       "source_pack": "ModSim_Midnight_Pack",
-      "version": "1.0",
-      "prepared": "2026-11-16",
-      "source_manifest_sha256": "b31231d2e47157b22866a5fc247509b332f905ec1abc316f2c28fb3e37b2bfa9",
+      "source_directory": "ModSim_Midnight_Complete_Branding_Final_v5/ModSim_Midnight_Pack",
+      "version": "5.0",
+      "prepared": "2026-11-17",
+      "source_manifest_sha256": "356f4b35745dfc8d4eedba2930a452ba75ccc64e32e91cdc7f6d31e66dc8c97a",
       "files": [
         {
+          "path": "CHANGELOG.md",
+          "bytes": 722,
+          "sha256": "c1b6f4173a376d444cd66ec4c78b67d6a92634344bb4fe772017013668c7b6ac"
+        },
+        {
           "path": "README.md",
-          "bytes": 6510,
-          "sha256": "fdaa505a4c244de739b6e0919038316724e7ae0b8cdc0fcdf14e589f355a6470"
+          "bytes": 2845,
+          "sha256": "d7fc7fc725265631b79ed3a351e08af58ce4342bb52eacff04fb48c6fadfae1e"
         },
         {
           "path": "backgrounds/robot-background-1920x1080.png",
-          "bytes": 1179120,
-          "sha256": "cb33b0098c4805789178fa32916da913157b409aa4d60439eba14b3d0ae32a8e"
+          "bytes": 1928921,
+          "sha256": "5b674373c26b25eb2984d1d331269a1dfafd16f2adce526e0b19dddc7718fd54"
+        },
+        {
+          "path": "backgrounds/robot-cover-1920x1080.png",
+          "bytes": 1928921,
+          "sha256": "5b674373c26b25eb2984d1d331269a1dfafd16f2adce526e0b19dddc7718fd54"
+        },
+        {
+          "path": "backgrounds/theme-background-1920x1080.png",
+          "bytes": 180231,
+          "sha256": "af8b9c3072bddd2a7bb6a3feda8eeccac38ba028141584fc0104c08292e3b401"
         },
         {
           "path": "backgrounds/theme-background.svg",
-          "bytes": 2324,
-          "sha256": "07315dd50bc79f8f7b8117273636b919a503e42887c2def298e1d960a218dc4d"
+          "bytes": 19206,
+          "sha256": "32ae85cccab855a0925e8e816f609d7ba4c7f7a252ef2a5c5a8940b4c26b40af"
+        },
+        {
+          "path": "docs/BRAND_GUIDELINES.md",
+          "bytes": 11116,
+          "sha256": "118e20b59eab636f672782384e6e9f151849898488a65848a6bad5613e8e773a"
         },
         {
           "path": "icons/platform/modsim.icns",
-          "bytes": 112211,
-          "sha256": "d509f4b423840b3e32627cc56ab3ca8dc7aa5e437d18e4b62437469c4f79a07b"
+          "bytes": 111274,
+          "sha256": "f95424698b48f921be755160895d8575ec5844fca6349a8cbcce75713bbd8bbd"
         },
         {
           "path": "icons/platform/modsim.ico",
-          "bytes": 28409,
-          "sha256": "ab99b5c5fedab95eabe3094e7992c3d6934f81a00c53e7b57721e5005a035f0a"
+          "bytes": 28088,
+          "sha256": "650f63bfd3673d09e21ac621ff186b3be3010f8b5c6b67659b8ab740a406eb8a"
         },
         {
           "path": "icons/png/app/modsim-app-1024.png",
-          "bytes": 38526,
-          "sha256": "42b7f376755e66941ac95ee0332e0cf15e5db870f37a04c96e289559eb803428"
+          "bytes": 37880,
+          "sha256": "0741729d72e77368894ac22995cffd135db3d8c6bad5324a8ab71260641287a3"
         },
         {
           "path": "icons/png/app/modsim-app-256.png",
-          "bytes": 8073,
-          "sha256": "675765da2b5aead0dc5557c5fd74cc0a891ae5541d4f0d20da871a3352e8a7b4"
+          "bytes": 7938,
+          "sha256": "eb19053b8f4c2cde7df64ebecaa6a4b2555cce8365d719303099cd0d65aa02e8"
         },
         {
           "path": "icons/png/app/modsim-app-512.png",
-          "bytes": 17241,
-          "sha256": "514a5c0ff8ebd027c1da82c85776e28b4e00b2ee57db49fbb80eed65019d2a97"
+          "bytes": 16989,
+          "sha256": "4fe43dee52e11cc174719ab1bea24baffb6d3d185b2aabac928a0aaac6d734f6"
         },
         {
           "path": "icons/png/symbol/modsim-symbol-256.png",
-          "bytes": 4009,
-          "sha256": "feebcf85cd1a93dd9133b23d366a7ff8bc787cbb3f28de89e0fbce17a19d740f"
+          "bytes": 3797,
+          "sha256": "e72f89190da0fce045d32518778a8f66a3fb6fa02c8033f90bc7a15ac6dae6d5"
         },
         {
           "path": "icons/png/symbol/modsim-symbol-512.png",
-          "bytes": 8421,
-          "sha256": "37071c152004ed5833571ec0fe12642dc2daad64010ba06bcf620a9138b7ad1a"
+          "bytes": 7960,
+          "sha256": "cfbdeb3539bd1b779dcf6c34eb73c3e54a39efdf6bf91169a35896f0cff6acd8"
         },
         {
           "path": "icons/svg/modsim-app.svg",
           "bytes": 8317,
-          "sha256": "ba71067197bc799a2faf571bc285dbe1304634be5b5c84143725116197b56de4"
+          "sha256": "648c2a45fbc9abfdd20d634bcf51751bce5a19710ed2f222d2c501960be0f05e"
         },
         {
           "path": "icons/svg/modsim-symbol.svg",
           "bytes": 8216,
-          "sha256": "0aea0a2f779294766c91c828c88883e00e51569b124f3885ab9009f9b9f1a2ce"
+          "sha256": "5f94742cfcf5c8c16b047df9a7a3fcd79ee496dc78a7a270c202f5faeef070a2"
         },
         {
           "path": "logos/svg/modsim-horizontal-tagline.svg",
           "bytes": 27530,
-          "sha256": "c9050d7a9d673d76a9f0bfe0158135b08dfba80b5708b997529f61e6ae4c8b7e"
+          "sha256": "b6eb61dee8424df8af87993bd9065b9b28f20a45a398a977b74cf53f6f0b79d6"
         },
         {
           "path": "logos/svg/modsim-horizontal.svg",
           "bytes": 20906,
-          "sha256": "3d556ee28dcfcf488dacdc4df4c452723676fcd989ce1f55665999a050b4327d"
+          "sha256": "ea40542e10cbaa5be859295f2d53266987b1e7f0e9a2d09cb6b37725b6eac823"
         },
         {
           "path": "patterns/module-pattern.svg",
-          "bytes": 16621,
-          "sha256": "8146cfc81ff1f4d1d4b909a6039c3da8a7cdd72ea88254b205ad5f74c6ad19b7"
+          "bytes": 4379,
+          "sha256": "154118e77cae9add02da5037ec9cb862b72d62d4a35ac91f1cfd9e4198f29222"
+        },
+        {
+          "path": "reference/artwork-provenance.json",
+          "bytes": 1053,
+          "sha256": "8935d8fe1916e1545fc7e7dfdc0bbce4410a4faf754c78e42790c22c0c80bb6b"
         },
         {
           "path": "theme/colors.json",
-          "bytes": 375,
-          "sha256": "ef11545ead5e1c4132b9f671c86a9e5912718b2fdb0bfd9a771f19558dff31b8"
+          "bytes": 567,
+          "sha256": "1f44734ce68db2a7600b5e0fcd490de35c2b3357cf30a4a553273ec4fd988064"
+        },
+        {
+          "path": "theme/contrast-checks.json",
+          "bytes": 1410,
+          "sha256": "323e44c1a20c0cbc73a07980953ddbc7049f25b65219a662b817ccbf75ff0d70"
         },
         {
           "path": "ui/svg/accent/check.svg",
           "bytes": 303,
-          "sha256": "b31a8c96c8f8eafd582cdb613b8d50e29cb601e2c4329baf49b03e383cc4be37"
+          "sha256": "10457fa3562a81e9280a25ab9c7663af5394afe8a3aa6daf55240f1ba9631153"
         },
         {
           "path": "ui/svg/currentcolor/camera.svg",

@@ -68,6 +68,7 @@ const sidebars: SidebarsConfig = {
         'contribute/api-documentation',
         'contribute/local-development',
         'contribute/documentation-generation',
+        'contribute/branding',
         'contribute/release-process',
       ],
     },

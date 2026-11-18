@@ -1,12 +1,17 @@
-# ModSim Studio MVP
+# ModSim Studio
 
-ModSim Studio provides two optional native applications: the Robot Pack Builder
-with its PyVistaQt/VTK authoring viewport, and a lightweight Runtime Inspector
-with PyQtGraph topology/cubic-lattice views and an event table. The applications
-share core Robot Pack and model-view contracts but remain separate windows in
-the current slice. A MuJoCo Runtime Inspector launch also opens the backend's
-native 3D viewer as a separate companion window by default; it is not embedded
-in either Studio application.
+ModSim Studio combines Robot Pack authoring and runtime inspection in one
+native desktop window. The **Robot Pack** workspace contains the Builder's
+PyVistaQt/VTK authoring viewport. The **Runtime** workspace configures a named
+demonstration and embeds the Runtime Inspector's PyQtGraph topology or
+cubic-lattice views and event table. Open a pack, configure its execution,
+validate the launch, and start the simulation without constructing a CLI command.
+
+The standalone Runtime Inspector remains available through
+`modsim-robotics runtime`. With MuJoCo's native viewer enabled, either launch
+path opens a separate companion 3D window. That viewer observes the same
+runtime as the Inspector; it is neither embedded in Studio nor a second
+simulation.
 
 Online SMORES demos show live and target topology side by side in **Runtime state**.
 The **Planning** tab contains physical XY routes, per-action status, and a time-only
@@ -64,10 +69,15 @@ configuration without changing it. `studio generic_cube --home PATH` instead
 looks up the name in another ModSim home's library. `--pack generic_cube` is an
 equivalent way to supply the selector.
 
-Install MuJoCo too, then launch the Runtime Inspector for a pack:
+Install MuJoCo too to select it in Studio's Runtime workspace:
 
 ```bash
 .venv/bin/python -m pip install -e ".[studio,mujoco,dev]"
+```
+
+You can also launch the standalone Runtime Inspector directly:
+
+```bash
 .venv/bin/modsim-robotics runtime /absolute/path/to/robot_pack \
   --fixed-connector CONNECTOR_ID \
   --moving-connector CONNECTOR_ID
@@ -87,14 +97,84 @@ names and paths use the same explicit resolution rules; neither opens a default.
 Running through `.venv/bin/python -m modsim_robotics_studio` is useful while
 developing because the editable install uses the current source tree.
 
+## Author and run in one window
+
+Open or create a pack in **Robot Pack**, apply its property edits, and switch
+to **Runtime**. Runtime settings belong to the current desktop session; they
+are not added to the Robot Pack schema.
+
+1. Choose **Backend**, **Demonstration**, and **Module type**. The current
+   workspace runs the named demonstrations provided by ModSim; it is not a
+   general scene editor. `mock` provides kinematic checks and `mujoco` provides
+   physics when that optional dependency is installed.
+2. Choose a runtime-enabled **Model view**. If the pack has none, use
+   **Add topology view** to add a generic `module_topology_graph` recipe to
+   the in-memory document. This is an explicit pack edit and needs saving.
+   An explicitly selected recipe does not have to be marked as the default.
+3. Set **Duration (s)** and **Playback speed**. Enable **Native 3D viewer**
+   for the MuJoCo companion when wanted. **Advanced runtime settings** exposes
+   timestep, UI publish rate, gravity, ground, initial height, connector
+   selection, and the connector-pair approach/release controls. Demonstrations
+   have different prerequisites; a physics-specific demo cannot run under mock.
+4. Click **Validate runtime**. This checks the selected launch in addition to
+   the pack's structural simulation metadata. Correct any reported backend,
+   demonstration, connector, or model-view issue before starting. Readiness
+   does not step physics or prove the demonstration will succeed.
+5. Click **Start simulation**. Studio repeats readiness checks. If the pack
+   has unsaved edits, choose **Save and start** to persist them transactionally,
+   or **Cancel** to return to editing. The saved pack is checked again before
+   execution begins; a failed save or validation does not start a run.
+6. Use the embedded Inspector's **Pause**/**Resume**, **Stop**, **Runtime state**,
+   and **Event log** controls. Final results remain visible after execution.
+   Once execution has ended, **Back to setup** returns to the launch form for
+   another run. If the MuJoCo companion is holding a completed scene, use
+   **Stop** or close that companion to release its execution resources first.
+
+Studio initially selects **MuJoCo** and **Dock undock** (`dock_undock`), with
+a six-second simulation budget. The **Demonstration** picker displays names
+with spaces; the command-line identifiers use underscores. Platform-specific
+presets require the matching module and connector definitions, so use the
+[demonstration reference](runtime_inspector.md#named-demonstrations) when
+selecting a SMORES or M-Blocks example.
+
+Changing **Backend** preserves the demonstration, duration, playback speed,
+timestep, connector choices, and other scenario settings. It only enables
+and checks the native viewer for MuJoCo, or disables and clears it for other
+backends. Changing **Demonstration** or clicking **Reset demonstration
+settings** reapplies that preset's timing and physics defaults and clears
+connector overrides. Runtime settings are session-local: saving a Robot Pack
+persists its authored data and recipes, not the launch form or live state.
+
+The two workspaces share one Studio process and theme. You can return to
+**Robot Pack** to inspect or make in-memory edits during execution, but
+Open, Create, Save, and Export are blocked until the run has stopped. This
+keeps the saved pack used by the active runtime stable. Later edits affect
+only a subsequent launch; the running backend is never patched by an authoring
+edit. Closing Studio stops and cleans up its active runtime and native viewer.
+
+### Three different validation questions
+
+| Check | Question it answers |
+| --- | --- |
+| **Authoring Profile** (`F6`) | Is the document structurally consistent while allowing incomplete simulation metadata as warnings? |
+| **Simulation Metadata (Structural)** (`F7`) | Is the declared connector, joint, and mapping metadata complete enough to attempt a simulator adapter? |
+| **Validate runtime** in Runtime, or **Validate → Runtime Launch** (`F8`) | Can this installation attempt this selected backend, demonstration, and Inspector view with the supplied settings? |
+
+The first two profiles operate on pack data and do not require a model view.
+Core/headless runtimes can also execute without one. The Inspector requires a
+supported generated representation, so its launch check verifies the selected
+runtime recipe separately. Neither structural validation nor launch readiness
+replaces actually running a backend and checking the result.
+
 ## Appearance and workspace
 
-Both applications use the supplied ModSim production branding, with three
-theme packs:
+Both applications use the supplied ModSim brand asset release 5.0, with three
+Honeycomb System theme packs:
 
-- **ModSim Midnight** (default): deep navy surfaces and teal actions;
-- **ModSim Dark**: charcoal surfaces, pale text, and teal actions; and
-- **ModSim Light**: cool white surfaces, navy text, and deep teal actions.
+- **ModSim Midnight** (default): Deep Navy & Cyan, with teal actions;
+- **ModSim Dark**: Blue Charcoal surfaces, pale text, and teal actions; and
+- **ModSim Light**: Glacier & Steel, with icy-blue/white surfaces, navy text,
+  steel-blue secondary colors, and dark teal actions.
 
 Use the **Theme** picker at the top right of either window to switch immediately.
 The choice is stored in Qt user settings under organization `ModSim`, application
@@ -117,6 +197,13 @@ Headers use the original outlined ModSim wordmark. Window/application icons,
 toolbar glyphs, and welcome artwork come from the matching production pack.
 Palette JSON and curated assets are included under
 `src/modsim_robotics_studio/assets/branding/`, with their provenance and hashes.
+Functional control outlines use the guide's stronger `control_border` token;
+decorative panel separators use `border`. Disabled states and links also use
+the production color tokens. The supplied robot cover artwork stays behind the
+loading/welcome panels. Each cover retains its own logo; no second logo is
+overlaid. The cover fills the panel at its original proportions, with live
+text, progress, and actions over its lower portion. A soft, theme-matched fade
+blends the controls into the artwork without a separate card or image band.
 The installed wheel does not read the original branding folder. Supporting
 text uses available system fonts; the outlined logo needs no font installation.
 PySide6 renders these assets without an additional theme or icon dependency.
@@ -155,8 +242,9 @@ The registration files are:
 `~/.local/share`. Startup updates these files only when their contents change.
 Activating the application launcher opens the blank Builder using the Python
 environment of the most recent Builder or Inspector launch, preserving its
-virtual-environment executable path. Launch the Inspector with the runtime
-command and explicit RobotPack selector described above.
+virtual-environment executable path. Open a Robot Pack and switch to **Runtime**
+to configure its Inspector, or use the standalone runtime command with an
+explicit pack selector.
 
 If desktop registration cannot write its files, startup logs a warning and
 continues with the window icon. Registration is Linux-only and leaves RobotPacks
@@ -177,21 +265,26 @@ Linux; Windows and macOS integration still requires testing on those platforms.
 
 ### Startup and loading feedback
 
-Both applications open a themed startup splash with an animated ModSim logo,
-version, and current initialization stage. The supplied SVG symbol assembles,
-the outlined wordmark appears, and the completed logo softly pulses. Normal
+Both applications open a themed startup splash with the ModSim robot cover,
+version, current initialization stage, and animated progress bar. Normal
 startup keeps this window visible for at least three seconds from its first
-display. An approximately 1.1-second intro plays through the Qt event loop
+display. An approximately 1.1-second introductory wait services the Qt event loop
 before the heavier window and plotting modules are imported and constructed.
 That intro and subsequent initialization count toward the three-second minimum;
 only the remaining time is waited before showing the prepared main window.
-Qt/VTK construction on the GUI thread can temporarily pause the animation.
+Qt/VTK construction on the GUI thread can temporarily pause progress animation.
 
 Clicking the splash leaves it open. Closing it cancels startup and keeps any
 prepared main window hidden. A startup failure closes it immediately. On a
-successful blank launch, the Builder presents the same background artwork with
-its two authoring actions. The pictured robot is illustrative brand art, not a
-preview of the loaded RobotPack.
+successful blank launch, the Builder presents the same theme-matched
+`backgrounds/robot-cover-1920x1080.png` with its two authoring actions. Studio,
+Runtime Inspector, and operation-loading panels use this supplied robot cover
+with real status widgets over a softly fading lower area. The image fills the
+panel proportionally, cropping at its edges when the aspect ratio differs;
+controls do not reserve space that shrinks the cover. The overlay follows font
+metrics and can scroll with its containing page when space is limited. Welcome actions appear
+side by side when they fit and stack vertically in narrower windows. The robots
+and simulation window in the cover are illustrative brand artwork.
 
 Opening, importing, saving, and exporting a pack show a modal loading panel.
 URDF parsing and document reads/writes run in a temporary worker while the Qt
@@ -291,14 +384,17 @@ The current Studio MVP provides:
   policy;
 - a Model Views catalog for adding, editing, and removing named builder
   recipes, supported modes, default selection hints, and JSON configuration;
-- a separate Runtime Inspector that runs named two-module or seven-module
+- a Runtime workspace for backend/demo configuration, explicit view selection,
+  launch readiness checks, and starting an embedded Runtime Inspector;
+- a reusable Runtime Inspector that runs named two-module or seven-module
   scenarios plus larger M-Blocks routes, draws the live module-topology or
   cubic-lattice view, supports module-label visibility and lattice pan/orbit/
   zoom controls, retains the ordered canonical event log, and can supervise a
   native MuJoCo companion window showing that same runtime;
 - a read-only preview of the canonical split-YAML documents;
-- authoring validation with `F6` and stricter structural
-  simulation-readiness validation with `F7`;
+- authoring validation with `F6`, stricter structural simulation metadata
+  checks with `F7`, and a separate runtime launch check with `F8` or
+  **Validate runtime**;
 - atomic in-place Save and non-overwriting Export As;
 - an embedded viewport for URDF visual and collision geometry, link frames,
   joint axes, and connector frames and axes;
@@ -308,8 +404,9 @@ The current Studio MVP provides:
 - a local per-launch session log mirrored in the **Session Log** tab.
 
 The authoring viewport renders one module type at a time in the URDF zero-joint
-configuration. Simulation readiness is a validation profile; it does not start
-a runtime by itself. `modsim-robotics runtime` is the explicit launch path. See
+configuration. Neither pack-validation profile starts a runtime. Use
+**Runtime → Start simulation** for the integrated workflow, or
+`modsim-robotics runtime` for a standalone Inspector. See
 `runtime_inspector.md` for controls, process/thread ownership, and current
 limitations.
 
@@ -392,9 +489,11 @@ session continues to use the working-directory log chosen at startup.
 11. Select the Robot Pack to edit custom metadata in the Properties panel.
 12. Select **Model Views** to add any model-view recipes that should be
     available during authoring or at runtime.
-13. Run authoring validation with `F6` and simulation-readiness validation with
-   `F7`.
+13. Run authoring validation with `F6` and structural simulation metadata
+    validation with `F7`.
 14. Use **Save** to update the open pack or **Export As** to create a new pack.
+15. Switch to **Runtime**, select the backend/demo/view, and use
+    **Validate runtime** before **Start simulation**.
 
 Save stages a complete copy, reloads it, compares its semantic model, and then
 atomically swaps the pack directory. It writes metadata and semantic edits to
@@ -536,9 +635,10 @@ These are current-source limitations, not intended long-term behavior:
   shows one module type rather than a multi-module assembly, has no joint
   animation, and does not display
   contacts, physics, docking execution, generated model-view previews, or
-  runtime state. The separate Runtime Inspector renders the generated logical
-  graph and events; its optional MuJoCo companion window renders 3D physics
-  without embedding the backend viewer in Studio. A document edit rebuilds
+  runtime state. Studio's **Runtime** workspace renders the generated logical
+  graph and events through its embedded Inspector; its optional MuJoCo
+  companion window renders 3D physics without embedding the backend viewer
+  in Studio. A document edit rebuilds
   the scene, resets the camera, and currently returns multi-module documents
   to the first renderable module.
 - **Native authoring regression coverage remains limited.** Focused Builder

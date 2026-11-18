@@ -1,0 +1,17 @@
+{
+  "release": "5.0",
+  "source": "Approved dark-blue honeycomb cover supplied in this conversation",
+  "source_filename": "a_polished_modern_tech_poster_banner_in_a_dark_na.png",
+  "source_sha256": "85de51abe74506f9fd4ba4094b9160b0cea59c9b3e56d6cbb0f02ac087425add",
+  "source_dimensions": [
+    1671,
+    941
+  ],
+  "source_copy": "reference/approved-smores-cover.png",
+  "theme_artwork": "backgrounds/robot-cover-theme-native.png",
+  "robots": "Taken from approved source pixels; no generative redrawing. Native opaque foreground pixels validated against source. Resized outputs are resampled.",
+  "background": "Hexagons only; no legacy waves, sweeping arcs, curved connection motifs, or square perspective grid.",
+  "adaptation": "Steel-blue desaturation of approved hex scene; source robot foreground restored.",
+  "illustration_notice": "Illustrative brand artwork, not CAD-verified geometry or an operational software screenshot.",
+  "v5_change": "Approved native theme scene and visual assets preserved from v3; shared documentation and previews rebuilt for this suite."
+}

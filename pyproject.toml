@@ -93,6 +93,8 @@ src = ["src", "tests"]
 [tool.ruff.format]
 docstring-code-format = true
 quote-style = "double"
+# Supplied brand guides are hash-verified production assets, kept verbatim.
+exclude = ["src/modsim_robotics_studio/assets/branding/**"]
 
 [tool.ruff.lint]
 select = ["B", "E", "F", "I", "RUF", "SIM", "UP"]

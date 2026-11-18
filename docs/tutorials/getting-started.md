@@ -7,9 +7,9 @@ Use ModSim Studio to explore the bundled **Generic Cube** RobotPack, validate
 its description, and save your first edit. Then watch two cubes dock and undock
 in a MuJoCo simulation.
 
-Studio has two applications: the **Robot Pack Builder** for inspecting and
-authoring packs, and the **Runtime Inspector** for watching simulations. This
-tutorial uses their graphical controls; terminal commands launch each window.
+Studio has two workspaces: **Robot Pack** for inspecting and authoring packs,
+and **Runtime** for configuring a simulation and watching it in the embedded
+Inspector. This tutorial launches Studio once and uses its graphical controls.
 
 ## What you will learn
 
@@ -75,18 +75,19 @@ documents. This preview is read-only; use the Inspector to edit the pack.
 ### 3. Validate the pack
 
 Choose **Validate → Authoring Profile** (`F6`), then
-**Validate → Simulation Readiness** (`F7`). Open the bottom **Validation** tab to
-read the results. Generic Cube should pass both profiles with
+**Validate → Simulation Metadata (Structural)** (`F7`). Open the bottom
+**Validation** tab to read the results. Generic Cube should pass both profiles with
 **0 errors · 0 warnings**.
 
 Authoring validation checks the description and its references. Simulation
-readiness applies stricter structural checks. Neither action starts a simulator;
-the docking example will exercise the description in a runtime session.
+metadata validation applies stricter structural checks. Neither action starts
+a simulator or checks every Inspector launch requirement. The Runtime workspace
+checks the selected backend, demonstration, and view separately.
 
 ### 4. Save an edited working copy
 
 Try a small edit in a separate workspace so that the installed starter stays
-available for the simulation:
+available while you experiment:
 
 1. Choose **File → Export As** (`Ctrl+Shift+S`).
 2. In **Export to a new Robot Pack folder**, browse to the `workspaces` directory
@@ -98,8 +99,8 @@ available for the simulation:
 4. Select **Module Types → Generic Cube**, change **Name** to `Practice Cube`,
    and click **Apply module metadata**. The tree label updates, and the project
    shows **Unsaved changes**.
-5. Choose **File → Save** (`Ctrl+S`), then run **Simulation Readiness** (`F7`)
-   again. The edited copy should still pass.
+5. Choose **File → Save** (`Ctrl+S`), then run
+   **Simulation Metadata (Structural)** (`F7`) again. The edited copy should still pass.
 
 Use the workspace destination instead of the export dialog's suggested sibling
 folder in the RobotPack library. This exercise changes a display name and keeps
@@ -108,27 +109,46 @@ ambiguous `generic_cube` selection. It also leaves the installed cube unchanged.
 
 ### 5. Run the docking example
 
-Close the Builder to return to its terminal, or use another terminal with the
-same Python environment active. Follow
-[Install MuJoCo](../how-to/installation.md#install-mujoco) in that environment,
-then return here.
-
-Launch the Runtime Inspector using the original installed Generic Cube:
+Follow [Install MuJoCo](../how-to/installation.md#install-mujoco) in the same
+Python environment if it is not installed yet. If you install it while Studio
+is open, restart Studio with the saved workspace copy so it uses the updated
+environment:
 
 ```bash
-modsim-robotics runtime generic_cube --backend mujoco --demo dock_undock --fixed-connector front --moving-connector front --duration 6 --no-gravity --speed 0.25
+modsim-robotics studio "~/.modsim/workspaces/practice_cube"
 ```
 
-The simulation starts automatically. Two windows open: Studio's **Runtime
-Inspector**, showing connections and events, and a companion **MuJoCo viewer**,
-showing physical motion. Both show the same runtime session. The Builder and
-Runtime Inspector are separate applications; launch the Inspector with the
-command above.
+Otherwise keep the edited pack open. Switch to **Runtime** in Studio and set:
+
+| Setting | Value |
+| --- | --- |
+| **Backend** | **MuJoCo** |
+| **Demonstration** | **Dock undock** (`dock_undock`) |
+| **Module type** | `generic_cube` |
+| **Model view** | **Module Topology (module_topology_graph)**, the Generic Cube runtime topology recipe. |
+| **Native 3D viewer** | Enabled |
+| **Duration (s)** | `6` |
+| **Playback speed** | `0.25` |
+
+In **Advanced runtime settings**, select `front` for both the fixed and moving
+connectors and disable gravity and ground. Click **Validate runtime**, correct
+any reported issue, then click **Start simulation**. If prompted about unsaved
+edits, choose **Save and start** to launch the current document.
+
+The bundled cube already contains its topology recipe. For a new pack without
+one, **Add topology view** creates an unsaved recipe that is saved with the
+pack before starting. **Validate → Runtime Launch** (`F8`) is a shortcut to
+open Runtime and check the selected launch.
+
+The Runtime workspace shows the **Runtime Inspector**, and a companion
+**MuJoCo viewer** opens to show physical motion. Both observe the same runtime
+session. You can return to **Robot Pack** to inspect the description without
+closing either view.
 
 This demonstration creates two cubes and aligns their `front` connector frames
 for a scripted approach, docking, and release. Gravity is disabled to focus on
-the connection lifecycle. `--speed 0.25` slows playback to a quarter of real
-time so you can inspect the intermediate state. The six-second duration is a
+the connection lifecycle. A playback speed of `0.25` requests quarter speed
+so you can inspect intermediate state. The six-second duration is a
 simulation-time budget; the example can finish earlier once release completes.
 
 In **Runtime state**, watch a connection edge appear between the module nodes
@@ -145,8 +165,10 @@ Open **Event log** to find `DockCommitted` and `AssemblyMerged`, followed by
 `UndockCommitted` and `AssemblySplit`. Use **Pause** and **Resume** to inspect
 the intermediate state, or **Stop** to end the run early. A completed run shows
 **Simulation complete** and keeps its final state available for inspection.
-Run the launch command again to replay it.
-Close the Inspector and its companion viewer when you have finished.
+If the MuJoCo viewer is holding the completed scene, use **Stop** or close
+that companion to release the runtime. Once **Back to setup** is enabled,
+choose it, then **Start simulation** to replay. Closing Studio also closes
+its companion viewer.
 
 The topology graph shows logical connections; use the MuJoCo viewer to observe
 physical positions and motion. MuJoCo computes the mechanics and physical
@@ -156,9 +178,16 @@ that state, so nearby cubes only gain an edge after a connection commits.
 
 ## Continue exploring
 
-Return to your workspace copy in the Builder to inspect more fields. Your
-display-name edit changed its saved module metadata; running the example by
-`generic_cube` still selects the original installed starter.
+Return to **Robot Pack** to inspect more fields in your workspace copy. Your
+display-name edit changed its saved module metadata; the installed starter is
+still available separately by the name `generic_cube`. Edits made while a run
+is active affect a subsequent launch after saving, rather than changing the
+running simulation.
+
+Switching **Backend** preserves your current scenario settings. Choosing a
+different **Demonstration** or **Reset demonstration settings** restores its
+preset values. Backend, duration, and other launch settings are session choices;
+they are not written into the RobotPack when you save.
 
 For terminal inspection, validation, mock docking, headless MuJoCo runs, and
 JSON output, see the separate [CLI guide](../how-to/cli.md).

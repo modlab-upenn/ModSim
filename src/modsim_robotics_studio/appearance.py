@@ -21,8 +21,8 @@ class StudioTheme:
     """Semantic color tokens shared by Qt chrome and embedded renderers.
 
     Brand surfaces and interaction colors come from the selected production
-    palette. ``focus`` is its blue keyboard-focus color, distinct from the
-    teal ``accent``. Status colors retain the graph's categorical meanings.
+    palette. Functional controls use a stronger outline than decorative panel
+    borders. Status colors retain the graph's categorical meanings.
     """
 
     id: str
@@ -32,8 +32,11 @@ class StudioTheme:
     raised: str
     field: str
     border: str
+    control_border: str
     text: str
     muted: str
+    disabled: str
+    link: str
     accent: str
     focus: str
     on_accent: str
@@ -63,8 +66,11 @@ def _brand_theme(theme_id: str) -> StudioTheme:
         raised=palette["raised"],
         field=palette["surface"],
         border=palette["border"],
+        control_border=palette["control_border"],
         text=palette["text"],
         muted=palette["muted"],
+        disabled=palette["disabled"],
+        link=palette.get("link", palette["blue"]),
         accent=palette["accent"],
         focus=palette["focus"],
         on_accent=palette["accent_text"],
@@ -157,11 +163,11 @@ class ThemeManager(QObject):
             (QPalette.ColorRole.HighlightedText, theme.text),
             (QPalette.ColorRole.ToolTipBase, theme.raised),
             (QPalette.ColorRole.ToolTipText, theme.text),
-            (QPalette.ColorRole.Link, theme.accent),
+            (QPalette.ColorRole.Link, theme.link),
             (QPalette.ColorRole.BrightText, theme.on_accent),
             (QPalette.ColorRole.PlaceholderText, theme.muted),
-            (QPalette.ColorRole.Light, theme.border),
-            (QPalette.ColorRole.Mid, theme.border),
+            (QPalette.ColorRole.Light, theme.control_border),
+            (QPalette.ColorRole.Mid, theme.control_border),
             (QPalette.ColorRole.Dark, theme.shell),
             (QPalette.ColorRole.Shadow, theme.shell),
         ):
@@ -171,7 +177,7 @@ class ThemeManager(QObject):
             QPalette.ColorRole.ButtonText,
             QPalette.ColorRole.WindowText,
         ):
-            palette.setColor(QPalette.ColorGroup.Disabled, role, QColor(theme.muted))
+            palette.setColor(QPalette.ColorGroup.Disabled, role, QColor(theme.disabled))
         self._application.setPalette(palette)
         self._application.setStyleSheet(_stylesheet(theme))
         self._application.setWindowIcon(application_icon(theme.id))
@@ -233,7 +239,7 @@ def _stylesheet(t: StudioTheme) -> str:
         border-radius: {t.radius}px; margin-top: 16px; padding: 14px 10px 10px; }}
     QGroupBox::title {{ subcontrol-origin: margin; subcontrol-position: top left;
         left: 10px; padding: 0 5px; color: {t.text}; font-weight: 600; }}
-    QPushButton, QToolButton {{ background: {t.raised}; border: 1px solid {t.border};
+    QPushButton, QToolButton {{ background: {t.raised}; border: 1px solid {t.control_border};
         border-radius: {t.radius}px; padding: 7px 12px; }}
     QToolButton {{ padding: 6px 9px; }}
     QPushButton:hover, QToolButton:hover {{ background: {t.selection}; border-color: {t.focus}; }}
@@ -245,20 +251,20 @@ def _stylesheet(t: StudioTheme) -> str:
     QPushButton[primary="true"]:hover, QToolButton[primary="true"]:hover {{
         background: {t.accent}; color: {t.on_accent}; border-color: {t.focus}; }}
     QPushButton[danger="true"] {{ color: {t.danger}; background: {t.surface}; }}
-    QPushButton:disabled, QToolButton:disabled {{ color: {t.muted}; background: {t.surface};
+    QPushButton:disabled, QToolButton:disabled {{ color: {t.disabled}; background: {t.surface};
         border-color: {t.border}; }}
     QPushButton:focus, QToolButton:focus {{ border: 1px solid {t.focus}; }}
     QLineEdit, QPlainTextEdit, QTextEdit {{ color: {t.text}; background: {t.field};
-        border: 1px solid {t.border}; border-radius: 4px; padding: 5px; }}
+        border: 1px solid {t.control_border}; border-radius: 4px; padding: 5px; }}
     QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus {{ border-color: {t.focus}; }}
     QLineEdit:disabled, QPlainTextEdit:disabled, QTextEdit:disabled {{
-        color: {t.muted}; background: {t.surface}; }}
+        color: {t.disabled}; background: {t.surface}; }}
     QComboBox, QSpinBox, QDoubleSpinBox {{ min-height: 1.3em; }}
-    QComboBox QAbstractItemView {{ background: {t.surface}; border: 1px solid {t.border};
+    QComboBox QAbstractItemView {{ background: {t.surface}; border: 1px solid {t.control_border};
         padding: 4px; selection-background-color: {t.selection}; }}
     QCheckBox {{ spacing: 7px; padding: 3px 0; }}
     QCheckBox::indicator {{ width: 14px; height: 14px; background: {t.field};
-        border: 1px solid {t.border}; border-radius: 3px; }}
+        border: 1px solid {t.control_border}; border-radius: 3px; }}
     QCheckBox::indicator:checked {{ background: {t.on_accent}; border-color: {t.accent};
         image: url("{check}"); }}
     QCheckBox::indicator:hover, QCheckBox::indicator:focus {{ border-color: {t.focus}; }}
@@ -273,13 +279,13 @@ def _stylesheet(t: StudioTheme) -> str:
     QTreeView::item:hover:!selected, QListView::item:hover:!selected {{
         background: {t.raised}; }}
     QTreeView::item:disabled, QTableView::item:disabled, QListView::item:disabled {{
-        color: {t.muted}; }}
+        color: {t.disabled}; }}
     QTableView::item {{ padding: 0 3px; }}
     QAbstractItemView QLineEdit, QAbstractSpinBox QLineEdit {{
         color: {t.text}; background: {t.field}; border: 0; border-radius: 0;
         padding: 0 1px; margin: 0; min-height: 0; }}
     QAbstractItemView QLineEdit:disabled, QAbstractSpinBox QLineEdit:disabled {{
-        color: {t.muted}; }}
+        color: {t.disabled}; }}
     QHeaderView::section {{ background: {t.surface}; color: {t.muted};
         border: 0; border-bottom: 1px solid {t.border}; padding: 8px; }}
     QTabWidget::pane {{ border: 1px solid {t.border}; background: {t.surface}; }}
@@ -288,7 +294,7 @@ def _stylesheet(t: StudioTheme) -> str:
     QTabBar::tab:selected {{ color: {t.text}; background: {t.raised};
         border-bottom-color: {t.accent}; }}
     QTabBar::tab:hover {{ color: {t.text}; background: {t.raised}; }}
-    QTabBar::tab:disabled {{ color: {t.muted}; }}
+    QTabBar::tab:disabled {{ color: {t.disabled}; }}
     QMenuBar, QMenu {{ background: {t.surface}; }}
     QMenuBar::item {{ padding: 5px 10px; background: transparent; }}
     QMenuBar::item:selected, QMenu::item:selected {{ background: {t.selection}; }}
@@ -305,11 +311,11 @@ def _stylesheet(t: StudioTheme) -> str:
     QSplitter::handle {{ background: {t.shell}; height: 8px; width: 8px; }}
     QScrollBar:vertical {{ background: {t.surface}; width: 10px; margin: 0; }}
     QScrollBar:horizontal {{ background: {t.surface}; height: 10px; margin: 0; }}
-    QScrollBar::handle {{ background: {t.border}; border-radius: 4px;
+    QScrollBar::handle {{ background: {t.control_border}; border-radius: 4px;
         min-height: 24px; min-width: 24px; }}
     QScrollBar::handle:hover {{ background: {t.muted}; }}
     QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
     QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
     QToolTip {{ background: {t.raised}; color: {t.text};
-        border: 1px solid {t.border}; padding: 6px; }}
+        border: 1px solid {t.control_border}; padding: 6px; }}
     """

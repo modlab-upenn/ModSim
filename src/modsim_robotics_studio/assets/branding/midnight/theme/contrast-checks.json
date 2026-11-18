@@ -1,0 +1,55 @@
+{
+  "release": "5.0",
+  "method": "sRGB relative luminance pair comparisons; no application-wide certification claimed",
+  "pairs": [
+    {
+      "foreground_token": "text",
+      "background_token": "background",
+      "foreground": "#F2F6FB",
+      "background": "#071427",
+      "contrast_ratio": 16.998
+    },
+    {
+      "foreground_token": "text",
+      "background_token": "surface",
+      "foreground": "#F2F6FB",
+      "background": "#0D2339",
+      "contrast_ratio": 14.697
+    },
+    {
+      "foreground_token": "muted",
+      "background_token": "surface",
+      "foreground": "#B4CDDF",
+      "background": "#0D2339",
+      "contrast_ratio": 9.675
+    },
+    {
+      "foreground_token": "secondary_accent",
+      "background_token": "surface",
+      "foreground": "#5592C1",
+      "background": "#0D2339",
+      "contrast_ratio": 4.761
+    },
+    {
+      "foreground_token": "control_border",
+      "background_token": "surface",
+      "foreground": "#6896B7",
+      "background": "#0D2339",
+      "contrast_ratio": 5.039
+    },
+    {
+      "foreground_token": "accent_text",
+      "background_token": "accent",
+      "foreground": "#071427",
+      "background": "#00BFAF",
+      "contrast_ratio": 7.969
+    },
+    {
+      "foreground_token": "focus",
+      "background_token": "background",
+      "foreground": "#50DEF1",
+      "background": "#071427",
+      "contrast_ratio": 11.472
+    }
+  ]
+}

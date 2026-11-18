@@ -704,15 +704,21 @@ def test_user_input_ends_initial_monitor_correction(
                 Qt.KeyboardModifier.NoModifier,
             )
         else:
-            event = QKeyEvent(
-                QEvent.Type.KeyPress, Qt.Key.Key_Shift, Qt.KeyboardModifier.NoModifier
-            )
+            # A neutral key exercises input handling without global modifier state.
+            event = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_A, Qt.KeyboardModifier.NoModifier)
         QCoreApplication.sendEvent(handle, event)
         assign_actual_screen()
         application.processEvents()
         application.processEvents()
         assert dialog.size() == initial_size
     finally:
+        if input_kind == "key":
+            handle = dialog.windowHandle()
+            if handle is not None:
+                QCoreApplication.sendEvent(
+                    handle,
+                    QKeyEvent(QEvent.Type.KeyRelease, Qt.Key.Key_A, Qt.KeyboardModifier.NoModifier),
+                )
         dialog.close()
         dialog.deleteLater()
         application.processEvents()

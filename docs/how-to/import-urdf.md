@@ -20,8 +20,8 @@ Launch Studio from your active Python environment:
 modsim-robotics studio
 ```
 
-The Builder opens at **Build your Robot Pack**, with **Open Robot Pack** and
-**Create from URDF** buttons. No pack is loaded; Save and Export As remain
+Studio opens its **Robot Pack** workspace at **Build your Robot Pack**, with
+**Open Robot Pack** and **Create from URDF** buttons. No pack is loaded; Save and Export As remain
 disabled until you open or create one. A blank launch does not require an
 installed starter or RobotPack library setup.
 
@@ -111,6 +111,8 @@ representation. It is read-only; edit through the Inspector during this workflow
 An imported draft is a starting point. A validation profile can pass when no
 connectors have been declared, so that result alone does not mean the pack can
 perform the docking demonstration. Add its interfaces and runtime recipe next.
+When those edits are ready, switch to **Runtime** to configure and validate the
+actual launch; no separate Inspector command is needed.
 
 Previous: [Prepare a URDF](prepare-urdf.md).
 Next: [Author connectors](author-connectors.md).

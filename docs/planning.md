@@ -1,6 +1,46 @@
 # Online planar planning
 
-ModSim provides an experimental SMORES-EP online planner with two demonstrations:
+ModSim provides an experimental SMORES-EP online planner with two demonstrations.
+Both can be configured in Studio's **Runtime** workspace or launched through
+the standalone Inspector CLI.
+
+## Launch from Studio
+
+Open the supplied SMORES-EP pack in Studio:
+
+```bash
+modsim-robotics studio examples/robot_packs/smores_ep
+```
+
+Switch to **Runtime**, choose **MuJoCo** as **Backend**, and select the
+`smores_ep` **Module type** and **SMORES Topology** (`smores_topology`)
+**Model view**. Choose one of these **Demonstration** entries:
+
+| Studio demonstration | CLI identifier | Simulation budget |
+| --- | --- | --- |
+| **Smores online assembly** | `smores_online_assembly` | 360 s |
+| **Smores online driver to snake** | `smores_online_driver_to_snake` | 360 s |
+
+Selecting the demonstration applies gravity, ground, a 0.05 m initial height,
+and a 0.002 s timestep. Leave connector and approach/release overrides at the
+preset values; these demos own their multi-module staging and routes. Enable
+**Native 3D viewer** when the MuJoCo companion is wanted. Click
+**Validate runtime**, then **Start simulation**; confirm **Save and start** if
+there are pack edits to persist.
+
+The embedded Inspector exposes **Runtime state**, **Planning**, and **Event
+log**. **Pause**/**Resume** and **Stop** control the same simulation as the
+native viewer. Use **Stop** or close a companion holding the final scene before
+**Back to setup**. A new launch creates a fresh run; launch settings do not
+become pack data. See [the Studio workflow](studio.md#author-and-run-in-one-window).
+
+The SMORES assets must be supplied separately from the installed Python
+package. These examples use the repository copy, but an exported or locally
+installed compatible pack works with the same packaged demonstration configs.
+
+## Standalone and headless launch
+
+For repeatable terminal launches:
 
 ```bash
 modsim-robotics runtime examples/robot_packs/smores_ep --demo smores_online_assembly
@@ -16,11 +56,14 @@ python examples/scenarios/smores_online_planning.py --snapshot /tmp/planning-fra
 
 The script also accepts `--demo smores_online_driver_to_snake` and `--duration`.
 It exits unsuccessfully when the planner fails or the budget expires before
-completion. The CLI supplies MuJoCo, gravity, ground, a 0.05 m initial height,
-a 0.002 s step, and a 360 s simulation budget. `--speed` changes display pacing,
+completion. With MuJoCo selected in Studio, its presets and the CLI defaults
+enable gravity and ground, set a 0.05 m initial height, and use a 0.002 s step
+and a 360 s simulation budget. `--speed` changes display pacing,
 not physics or the controller. Programmatic `RuntimeInspectorConfig` callers
-must specify the physical settings explicitly. The source checkout is needed
-for the shared SMORES controller configuration in `examples/scenarios/`.
+must specify the physical settings explicitly. Shared controller configuration
+ships in `modsim_robotics.demo_configs`; built-in runtime demos do not need a
+source checkout. The `examples/scenarios/smores_online_planning.py` headless
+entry point above is a checkout script and uses the repository's SMORES pack.
 
 These are experimental planning demonstrations, not validated hardware motion
 plans. Their terminal status and decision log report blocked routes, contact
@@ -145,14 +188,17 @@ Paths and goal poses can be hidden independently. Theme switching and manual
 camera ranges are preserved. Pause/Resume/Stop control the same authoritative
 simulation as the MuJoCo window. Planner intent is an optional immutable field
 in `RuntimeInspectorFrame`, separate from generated world views and canonical
-events. IPC protocol version 2 carries the extended frame; parent and companion
-must use the same installation. Old version-1 peers are explicitly rejected.
+events. IPC protocol version 3 carries the extended frame; parent and companion
+must use the same installation. Peers using older protocol versions are
+explicitly rejected.
 
 Interactive runs stop advancing on a terminal scenario result. **Target reached ·
 Simulation complete** appears only after the planner reports completion. Failures,
 manual stops, and a time limit reached before completion have distinct banners.
 The Inspector and native viewer retain the frozen final result for inspection;
-completion disables playback controls. The direct `RuntimeInspectorRunner.step()`
+completion disables Pause/Resume. Stop remains available while the native
+viewer holds execution resources, and releases those resources so Studio can
+return to setup. The direct `RuntimeInspectorRunner.step()`
 API still permits additional steps for physical hold/validation experiments.
 
 ## Validation and limits

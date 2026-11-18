@@ -12,7 +12,7 @@ from typing import cast
 
 from pydantic import JsonValue
 from PySide6.QtCore import QDir, QObject, QSettings, QSize, Qt, Signal
-from PySide6.QtGui import QAction, QCloseEvent, QFontDatabase, QIcon
+from PySide6.QtGui import QAction, QCloseEvent, QFontDatabase, QIcon, QShowEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -77,6 +77,7 @@ from modsim_robotics_studio.appearance import theme_manager
 from modsim_robotics_studio.chrome import DetailsSection, StudioHeader, VectorEdit, property_group
 from modsim_robotics_studio.icons import studio_icon
 from modsim_robotics_studio.project import StudioProject
+from modsim_robotics_studio.runtime_workspace import RuntimeWorkspace
 from modsim_robotics_studio.user_errors import (
     error_log_details,
     user_error_message,
@@ -314,7 +315,7 @@ class _MetadataEditor(QWidget):
 
 
 class MainWindow(QMainWindow):
-    """Dock-based Robot Pack authoring application."""
+    """Studio shell with Robot Pack authoring and live Runtime workspaces."""
 
     def __init__(
         self,
@@ -337,6 +338,7 @@ class MainWindow(QMainWindow):
             Path(session_log_path).resolve() if session_log_path is not None else None
         )
         self._qt_log_handler: _QtLogHandler | None = None
+        self._workspace_shown = False
 
         preview = QWidget()
         preview.setObjectName("Panel")
@@ -358,6 +360,8 @@ class MainWindow(QMainWindow):
         welcome.set_stage("Import a URDF, author your connectors, and prepare a simulation.")
         welcome.set_busy(False)
         welcome_buttons = QVBoxLayout()
+        welcome_buttons.setObjectName("CoverActions")
+        welcome_buttons.setSpacing(12)
         self._welcome_buttons: list[tuple[QPushButton, str, bool]] = []
         for title, callback in (
             ("Create from URDF", self._create_from_urdf_dialog),
@@ -370,6 +374,7 @@ class MainWindow(QMainWindow):
             button.setMinimumHeight(40)
             button.clicked.connect(callback)
             welcome_buttons.addWidget(button)
+        welcome_buttons.addStretch(1)
         welcome_layout = cast(QVBoxLayout, welcome.copy.layout())
         welcome_layout.insertLayout(welcome_layout.count() - 1, welcome_buttons)
         welcome_scroll = QScrollArea()
@@ -447,7 +452,7 @@ class MainWindow(QMainWindow):
         self.validation_summary = QLabel("No Robot Pack open")
         self.validation_summary.setObjectName("ValidationSummary")
         self.validation_summary.setWordWrap(True)
-        run_validation = QPushButton("Check simulation readiness")
+        run_validation = QPushButton("Check simulation metadata")
         run_validation.clicked.connect(lambda: self._validate(ValidationProfile.SIMULATION))
         validation_row.addRow(self.validation_summary, run_validation)
         validation_layout.addLayout(validation_row)
@@ -484,6 +489,24 @@ class MainWindow(QMainWindow):
         self._attach_session_log()
 
         self._build_actions()
+        self._authoring_docks = (project_dock, properties_dock, bottom_dock)
+        self._authoring_dock_visibility: dict[QDockWidget, bool] = {}
+        self.runtime_workspace = RuntimeWorkspace(
+            lambda: self.project, self._save_for_runtime, self
+        )
+        self.runtime_workspace.project_changed.connect(self._set_project)
+        self.runtime_workspace.execution_active_changed.connect(self._runtime_active_changed)
+        self.workspaces = QTabWidget()
+        self.workspaces.setObjectName("StudioWorkspaces")
+        self.workspaces.setDocumentMode(True)
+        # takeCentralWidget prevents replacing the authoring preview from
+        # scheduling its destruction; both pages live for the Studio session.
+        self.takeCentralWidget()
+        self.workspaces.addTab(preview, "Robot Pack")
+        self.workspaces.addTab(self.runtime_workspace, "Runtime")
+        self.setCentralWidget(self.workspaces)
+        self.workspaces.currentChanged.connect(self._switch_workspace)
+        self._switch_workspace(0)
         self.save_state = QLabel("No pack open")
         self.save_state.setObjectName("SaveState")
         self.statusBar().addPermanentWidget(self.save_state)
@@ -509,11 +532,13 @@ class MainWindow(QMainWindow):
         create_action = QAction("Create from &URDF", self)
         create_action.setShortcut("Ctrl+N")
         create_action.triggered.connect(self._create_from_urdf_dialog)
+        self.create_action = create_action
         file_menu.addAction(create_action)
 
         open_action = QAction("&Open Robot Pack", self)
         open_action.setShortcut("Ctrl+O")
         open_action.triggered.connect(self._open_dialog)
+        self.open_action = open_action
         file_menu.addAction(open_action)
 
         self.save_action = QAction("&Save", self)
@@ -535,10 +560,14 @@ class MainWindow(QMainWindow):
         authoring_action.setShortcut("F6")
         authoring_action.triggered.connect(lambda: self._validate(ValidationProfile.AUTHORING))
         validate_menu.addAction(authoring_action)
-        simulation_action = QAction("&Simulation Readiness", self)
+        simulation_action = QAction("&Simulation Metadata (Structural)", self)
         simulation_action.setShortcut("F7")
         simulation_action.triggered.connect(lambda: self._validate(ValidationProfile.SIMULATION))
         validate_menu.addAction(simulation_action)
+        runtime_action = QAction("&Runtime Launch", self)
+        runtime_action.setShortcut("F8")
+        runtime_action.triggered.connect(self._validate_runtime_workspace)
+        validate_menu.addAction(runtime_action)
 
         view_menu = self.menuBar().addMenu("&View")
         for dock in self.findChildren(QDockWidget):
@@ -550,6 +579,7 @@ class MainWindow(QMainWindow):
         toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         toolbar.setIconSize(QSize(18, 18))
         self.addToolBar(toolbar)
+        self.document_toolbar = toolbar
         open_action.setIconText("Open pack")
         create_action.setIconText("Import URDF")
         self.save_action.setIconText("Save")
@@ -647,6 +677,8 @@ class MainWindow(QMainWindow):
 
     def open_project(self, path: str | Path) -> None:
         """Open a Robot Pack and populate all editor panels."""
+        if self._runtime_is_active():
+            return
         self._logger.info("Opening Robot Pack: %s", Path(path))
         try:
             with BusyDialog("Opening RobotPack…", self, str(path)) as loading:
@@ -665,8 +697,8 @@ class MainWindow(QMainWindow):
     def _set_project(self, project: StudioProject) -> None:
         self.project = project
         self._current_selection = None
-        self.save_action.setEnabled(True)
-        self.export_action.setEnabled(True)
+        self.save_action.setEnabled(not self._runtime_is_active())
+        self.export_action.setEnabled(not self._runtime_is_active())
         self._rebuild_tree()
         self._refresh_document_panels()
         self._render_first_module()
@@ -679,6 +711,69 @@ class MainWindow(QMainWindow):
             len(project.pack.manifest.model_views),
             len(project.imported_assets),
         )
+
+    def _runtime_is_active(self) -> bool:
+        workspace = getattr(self, "runtime_workspace", None)
+        return workspace is not None and workspace.is_running
+
+    def showEvent(self, event: QShowEvent) -> None:
+        super().showEvent(event)
+        if not self._workspace_shown:
+            self._workspace_shown = True
+            # The sizing policy restores saved docks before the first Show.
+            # Reapply the selected mode after that restore, including when a
+            # client selected Runtime before showing Studio.
+            self._switch_workspace(self.workspaces.currentIndex())
+
+    def _switch_workspace(self, index: int) -> None:
+        runtime = index == 1
+        for page_index in range(self.workspaces.count()):
+            page = self.workspaces.widget(page_index)
+            if page is not None:
+                policy = (
+                    QSizePolicy.Policy.Expanding
+                    if page_index == index
+                    else QSizePolicy.Policy.Ignored
+                )
+                page.setSizePolicy(policy, policy)
+        self.workspaces.updateGeometry()
+        if runtime:
+            self._authoring_dock_visibility = {
+                dock: not dock.isHidden() for dock in self._authoring_docks
+            }
+            for dock in self._authoring_docks:
+                dock.hide()
+            self.runtime_workspace.refresh_project()
+        else:
+            for dock, visible in self._authoring_dock_visibility.items():
+                dock.setVisible(visible)
+        for dock in self._authoring_docks:
+            dock.toggleViewAction().setEnabled(not runtime)
+        self.document_toolbar.setVisible(not runtime)
+        workspace_label = self.header.findChild(QLabel, "Workspace")
+        if workspace_label is not None:
+            workspace_label.setText("Runtime" if runtime else "Robot Pack Builder")
+
+    def _validate_runtime_workspace(self) -> None:
+        self.workspaces.setCurrentIndex(1)
+        self.runtime_workspace.validate_runtime()
+
+    def _runtime_active_changed(self, active: bool) -> None:
+        # Edits can remain in memory while a saved snapshot runs. Persistence
+        # and project replacement wait for the execution owner to shut down.
+        self.create_action.setEnabled(not active)
+        self.open_action.setEnabled(not active)
+        self.save_action.setEnabled(not active and self.project is not None)
+        self.export_action.setEnabled(not active and self.project is not None)
+        self.statusBar().showMessage(
+            "Simulation running from the saved pack; save and project changes resume after Stop."
+            if active
+            else "Runtime stopped; results remain available in the Runtime workspace."
+        )
+
+    def _save_for_runtime(self) -> bool:
+        self._save()
+        return self.project is not None and not self.project.dirty
 
     def _rebuild_tree(self) -> None:
         self.project_tree.clear()
@@ -768,6 +863,8 @@ class MainWindow(QMainWindow):
                 exc_info=(type(error), error, error.__traceback__),
             )
         self._validate(ValidationProfile.AUTHORING)
+        if hasattr(self, "runtime_workspace"):
+            self.runtime_workspace.refresh_project()
 
     def _render_first_module(self) -> None:
         if self.project is None:
@@ -790,6 +887,8 @@ class MainWindow(QMainWindow):
             self._logger.debug("Rendered module '%s'", module_id)
 
     def _create_from_urdf_dialog(self) -> None:
+        if self._runtime_is_active():
+            return
         urdf_path = _select_path(
             self,
             "Select a URDF",
@@ -855,7 +954,7 @@ class MainWindow(QMainWindow):
             self.open_project(path)
 
     def _export_dialog(self) -> None:
-        if self.project is None:
+        if self.project is None or self._runtime_is_active():
             return
         destination = _select_path(
             self,
@@ -881,7 +980,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Exported {destination}", 8000)
 
     def _save(self) -> None:
-        if self.project is None:
+        if self.project is None or self._runtime_is_active():
             return
         current = self.project
         try:
@@ -902,7 +1001,7 @@ class MainWindow(QMainWindow):
         profile_name = (
             "Authoring validation"
             if profile == ValidationProfile.AUTHORING
-            else "Simulation readiness"
+            else "Simulation metadata (structural)"
         )
         state = "error" if report.errors else "warning" if report.warnings else "success"
         self.validation_summary.setText(
@@ -1938,6 +2037,12 @@ class MainWindow(QMainWindow):
                 QMessageBox.StandardButton.Save,
             )
             if answer == QMessageBox.StandardButton.Save:
+                if not self.runtime_workspace.stop_and_wait():
+                    event.ignore()
+                    self.statusBar().showMessage(
+                        "The runtime is still stopping. Try closing again."
+                    )
+                    return
                 self._save()
                 if self.project.dirty:
                     event.ignore()
@@ -1945,6 +2050,13 @@ class MainWindow(QMainWindow):
             elif answer != QMessageBox.StandardButton.Discard:
                 event.ignore()
                 return
+        if not self.runtime_workspace.stop_and_wait():
+            event.ignore()
+            self.statusBar().showMessage("The runtime is still stopping. Try closing again.")
+            return
+        # Persist the authoring dock layout, rather than the temporarily hidden
+        # docks used while the Runtime page is visible.
+        self.workspaces.setCurrentIndex(0)
         self._logger.info("Studio window closing")
         try:
             # Release the viewport's OpenGL/shadow-map resources while the GL

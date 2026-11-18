@@ -7,14 +7,21 @@ Follow the [local development guide](../docs/contribute/local-development.md) fo
 live editing, and production preview commands. Track the remaining setup work in
 [SETUP_PLAN.md](SETUP_PLAN.md). The Documentation sidebar starts with Overview,
 [Installation](../docs/how-to/installation.md), then Tutorials /
-[Getting started](../docs/tutorials/getting-started.md), which uses Studio for
-inspection, authoring, and live simulation views. The
+[Getting started](../docs/tutorials/getting-started.md), which uses Studio's
+**Robot Pack** and **Runtime** workspaces for inspection, authoring, configuration,
+and live simulation views. The
 [How-to guides](../docs/how-to/index.md) take a new URDF through Studio import,
 connector authoring, optional joints, validation and saving, runtime execution,
 Python experiments, and troubleshooting. The [CLI workflow](../docs/how-to/cli.md)
 provides the parallel terminal route. The separate
 [Contribute](../docs/contribute/index.md) section contains code development,
 local documentation development, and release instructions.
+
+The [runtime how-to](../docs/how-to/run-robot-pack.md) is the main desktop launch
+guide. Keep its backend/model-view selection, validation, save-before-start,
+and playback steps aligned with the tutorial and
+[Studio architecture](../docs/explanation/studio-and-inspector.md). The native
+MuJoCo 3D viewer remains a companion window for the same simulation.
 
 The [Explanation overview](../docs/explanation/index.md) introduces the system's
 boundaries and reading order. Its chapters cover all source modules, the

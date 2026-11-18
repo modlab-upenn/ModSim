@@ -1,0 +1,80 @@
+{
+  "asset_release": "5.0",
+  "prepared": "2026-11-17",
+  "collection": "ModSim Final Honeycomb System",
+  "copied_files_unmodified": true,
+  "source_manifest": "src/modsim_robotics_studio/assets/branding/asset-manifest.json",
+  "source_manifest_sha256": "ce7e84d354b69ec2b3010a516486f06418ec3f944c3d89a98f2c036e3c166a02",
+  "documentation_theme_mapping": {
+    "light": "light",
+    "dark": "midnight"
+  },
+  "files": [
+    {
+      "path": "../favicon.svg",
+      "source": "src/modsim_robotics_studio/assets/branding/light/icons/svg/modsim-app.svg",
+      "bytes": 8314,
+      "sha256": "e9ed4b63094de788c2351aca7a85fd9796eb103dd5e4f1176cb8a9050a8cf09e"
+    },
+    {
+      "path": "../img/modsim-logo-dark.svg",
+      "source": "src/modsim_robotics_studio/assets/branding/midnight/logos/svg/modsim-horizontal.svg",
+      "bytes": 20906,
+      "sha256": "ea40542e10cbaa5be859295f2d53266987b1e7f0e9a2d09cb6b37725b6eac823"
+    },
+    {
+      "path": "../img/modsim-logo-light.svg",
+      "source": "src/modsim_robotics_studio/assets/branding/light/logos/svg/modsim-horizontal.svg",
+      "bytes": 20903,
+      "sha256": "68df1edfd9b6e690ff745705f5bb96d8f76e8c1229f1312912c5f67b439a3ad2"
+    },
+    {
+      "path": "light/backgrounds/robot-cover-1920x1080.png",
+      "source": "src/modsim_robotics_studio/assets/branding/light/backgrounds/robot-cover-1920x1080.png",
+      "bytes": 1424120,
+      "sha256": "d28a041a68a173adf6c267c1267aba40c5396feff7f860d46db6f81f5587243d"
+    },
+    {
+      "path": "light/icons/svg/modsim-symbol.svg",
+      "source": "src/modsim_robotics_studio/assets/branding/light/icons/svg/modsim-symbol.svg",
+      "bytes": 8213,
+      "sha256": "1482159997bddb0aed3f5ca5cb91c7dca2aacacdecb1c5809e700ace92881553"
+    },
+    {
+      "path": "light/logos/svg/modsim-horizontal.svg",
+      "source": "src/modsim_robotics_studio/assets/branding/light/logos/svg/modsim-horizontal.svg",
+      "bytes": 20903,
+      "sha256": "68df1edfd9b6e690ff745705f5bb96d8f76e8c1229f1312912c5f67b439a3ad2"
+    },
+    {
+      "path": "light/patterns/module-pattern.svg",
+      "source": "src/modsim_robotics_studio/assets/branding/light/patterns/module-pattern.svg",
+      "bytes": 4379,
+      "sha256": "8d7bebef1c729ee917797bca8ab1ed65fb4f1f3da39db11b4724b14c92b75878"
+    },
+    {
+      "path": "midnight/backgrounds/robot-cover-1920x1080.png",
+      "source": "src/modsim_robotics_studio/assets/branding/midnight/backgrounds/robot-cover-1920x1080.png",
+      "bytes": 1928921,
+      "sha256": "5b674373c26b25eb2984d1d331269a1dfafd16f2adce526e0b19dddc7718fd54"
+    },
+    {
+      "path": "midnight/icons/svg/modsim-symbol.svg",
+      "source": "src/modsim_robotics_studio/assets/branding/midnight/icons/svg/modsim-symbol.svg",
+      "bytes": 8216,
+      "sha256": "5f94742cfcf5c8c16b047df9a7a3fcd79ee496dc78a7a270c202f5faeef070a2"
+    },
+    {
+      "path": "midnight/logos/svg/modsim-horizontal.svg",
+      "source": "src/modsim_robotics_studio/assets/branding/midnight/logos/svg/modsim-horizontal.svg",
+      "bytes": 20906,
+      "sha256": "ea40542e10cbaa5be859295f2d53266987b1e7f0e9a2d09cb6b37725b6eac823"
+    },
+    {
+      "path": "midnight/patterns/module-pattern.svg",
+      "source": "src/modsim_robotics_studio/assets/branding/midnight/patterns/module-pattern.svg",
+      "bytes": 4379,
+      "sha256": "154118e77cae9add02da5037ec9cb862b72d62d4a35ac91f1cfd9e4198f29222"
+    }
+  ]
+}

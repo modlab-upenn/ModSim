@@ -6,8 +6,9 @@
 
 ModSim is an open-source Python framework for modular reconfigurable robots and
 multi-robot systems. Build and validate **RobotPacks** from URDF assets in
-**ModSim Studio**, then explore docking, undocking, and reconfiguration with a
-backend-neutral runtime and **MuJoCo** physics.
+**ModSim Studio**, then switch to its **Runtime** workspace to configure and run
+docking, undocking, and reconfiguration with a backend-neutral runtime and
+**MuJoCo** physics.
 
 **[Documentation](https://github.com/modlab-upenn/ModSim/blob/refactor/docs/index.md)**
 · **[Project website](https://modlab-upenn.github.io/ModSim/)**
@@ -18,7 +19,7 @@ ModSim requires **Python 3.11+**. Follow
 [Installation](https://github.com/modlab-upenn/ModSim/blob/refactor/docs/how-to/installation.md)
 to set up Studio and the bundled Generic Cube, then complete
 [Getting started](https://github.com/modlab-upenn/ModSim/blob/refactor/docs/tutorials/getting-started.md)
-to inspect a RobotPack and run your first docking example.
+to inspect a RobotPack and run your first docking example inside Studio.
 
 ## Documentation
 
@@ -27,6 +28,7 @@ to inspect a RobotPack and run your first docking example.
 | Guide | What you will find |
 | --- | --- |
 | [Create a RobotPack](https://github.com/modlab-upenn/ModSim/blob/refactor/docs/how-to/index.md) | Prepare a URDF, author connectors, validate, and run a simulation. |
+| [Run in Studio](https://github.com/modlab-upenn/ModSim/blob/refactor/docs/how-to/run-robot-pack.md) | Choose a backend and model view, validate the launch, and start or stop a simulation. |
 | [Architecture and UML](https://github.com/modlab-upenn/ModSim/blob/refactor/docs/explanation/index.md) | Source map, class responsibilities, runtime flows, and subsystem boundaries. |
 | [Python API](https://github.com/modlab-upenn/ModSim/blob/refactor/docs/reference/python-api.mdx) | Reference overview and how the API documentation is generated. |
 | [CLI](https://github.com/modlab-upenn/ModSim/blob/refactor/docs/how-to/cli.md) | Terminal workflows and headless execution. |

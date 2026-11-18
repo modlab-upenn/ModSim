@@ -28,7 +28,7 @@ panel before assuming the model was lost.
 
 ## Validation does not pass
 
-Run **Authoring Profile** (`F6`) and **Simulation Readiness** (`F7`) and read
+Run **Authoring Profile** (`F6`) and **Simulation Metadata (Structural)** (`F7`) and read
 the **Validation** table's code, location, and message. Find the referenced
 entity, apply one correction, and rerun the profile.
 
@@ -41,9 +41,11 @@ entity, apply one correction, and rerun the profile.
 | Unknown connector type or capability | Repair the referenced catalog entry or remove the incorrect reference. A name in a module must identify a declared entry. |
 | Missing joint-control limit | Check the joint's **Control modes** and the bound required for each mode, as described in [Configure joint control](configure-joints.md). |
 
-A clean structural report does not prove that a default runtime view exists
-or that connector geometry will mate. Verify those parts explicitly using
-[Validate and save](validate-and-save.md), then execute a runtime check.
+A clean structural report does not prove that a runtime view exists or that
+connector geometry will mate. Switch to **Runtime**, select the backend,
+demonstration, and view, then choose **Validate runtime**. Resolve launch
+issues before starting; successful readiness still does not prove a physical
+docking result.
 
 ## The runtime cannot start
 
@@ -52,17 +54,58 @@ library. Open a workspace by its saved absolute path, or use the explicit
 default-home path shown in [Run your RobotPack](run-robot-pack.md). Check that
 the Builder saved the same directory the runtime is loading.
 
-**No default runtime model-view recipe.** Add or select `module_topology` in
-**Model Views**. Use builder `module_topology_graph`, enable **Available at
-runtime**, check **Default view**, keep configuration empty, and save. A
-runtime view is generated from state; no nodes or edges need to be authored.
+**`pack.manifest_missing` at `robot_pack.yaml`.** Select the directory that
+actually contains `robot_pack.yaml`, rather than its parent or the original
+URDF directory. If you created a nested destination, reopen that inner pack
+directory in Studio before configuring its Runtime workspace.
+
+**No default runtime model-view recipe.** In Studio's **Runtime** workspace,
+select an existing runtime-enabled **Model view**, or use **Add topology view**
+and save the resulting pack edit. The selected recipe need not be the default.
+For a standalone CLI launch, use `--model-view RECIPE_ID` or mark a recipe as
+**Default view** in the Robot Pack's **Model Views** editor. A generic topology
+recipe uses builder `module_topology_graph`, enables **Available at runtime**,
+and keeps configuration empty. Its graph is generated from state; no nodes or
+edges need to be authored.
 
 **Backend unavailable or a native window fails.** Install MuJoCo into the same
 Python environment that launches ModSim. The Runtime Inspector requires Studio
-and a display. Add `--no-viewer` if only the native 3D window is unavailable;
-Qt still requires a display. Use the [headless CLI task](cli.md#run-the-lifecycle-headlessly)
+and a display. Disable **Native 3D viewer** in Studio, or add `--no-viewer` to
+a standalone launch, if only that native window is unavailable. Qt still
+requires a display. Use the [headless CLI task](cli.md#run-the-lifecycle-headlessly)
 when no desktop is available. The runtime launcher selects its MuJoCo viewer
 interpreter automatically on macOS.
+
+**A demonstration requires a different backend or platform.** Choose the
+matching pack and demonstration. For a generic imported module, start with
+**Dock** or **Dock undock** after authoring its connectors. SMORES and M-Blocks
+presets need their platform-specific data, and physics-specific presets require
+MuJoCo. Switching **Backend** preserves your launch settings; it does not
+convert a physical controller into a kinematic one. Changing **Demonstration**
+or **Reset demonstration settings** restores that preset's values.
+
+**Runtime preflight passes, but backend initialization fails.** Preflight
+checks structural metadata, installed backend dependencies, demonstration
+requirements, and the selected view. It does not compile mechanical assets or
+step physics. Read the embedded failure message and session log for the
+backend's asset or initialization error; a passing F7 report is not proof of
+Inspector or physics readiness.
+
+## Runtime controls or later edits are unavailable
+
+| Symptom | Check and correction |
+| --- | --- |
+| **Start simulation** is unavailable in a blank Studio | Open or create a pack in **Robot Pack** first. |
+| **Back to setup** is disabled after **Simulation complete** | The MuJoCo companion may still own the finished scene. Click **Stop** or close that companion, then return to setup once execution has released its resources. |
+| Save, Export, Open, or Create is disabled | One execution owner is still active. Stop the run before persisting changes or replacing its source pack. |
+| An authoring edit does not affect the live scene | The run uses the saved pack snapshot loaded at Start. Stop, save the edit, return to setup, validate, and start a new run. |
+| A new model-view recipe disappears after reopening the pack | **Add topology view** is an in-memory edit. Save it explicitly or accept **Save and start**; **Cancel** does not persist it. |
+| Duration or backend choice is not restored after reopening Studio | Launch settings are session choices and are not saved by **File → Save**. Reconfigure the launch, or use the CLI for a repeatable command. |
+
+Switching workspaces alone does not stop or restart the runtime. A first-frame
+loading panel is expected while the execution owner validates the saved files
+and initializes its backend. Failure details appear inline in Studio; the
+standalone Inspector also uses its existing error dialog.
 
 ## The modules do not dock or release
 
@@ -92,7 +135,8 @@ Importing another pack within the same Builder session does not relocate its
 already-open log.
 
 When reporting a problem, include the ModSim version, explicit pack path or
-identity, backend, launch command, validation code/location or runtime event,
+identity, backend, selected demonstration and runtime settings (or launch
+command), validation code/location or runtime event,
 and the last action before the failure. For a graphical issue, describe the
 selected tree row and panel. Keep the smallest model or sequence that reproduces
 it so the mechanical and semantic causes can be distinguished.

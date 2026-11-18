@@ -25,6 +25,14 @@ generated intent. `RuntimeInspectorRunner` selects an implementation from
 Controllers and planners therefore share the same execution host without
 requiring Qt or a viewer in their implementation.
 
+Studio exposes these existing entries through **Runtime → Demonstration**.
+Changing that selection loads its scene and physics defaults; users can then
+edit runtime settings, validate, and start the embedded Inspector. Backend
+changes preserve those edits. The form selects existing demonstrations rather
+than authoring an arbitrary `SceneSpec` or defining a new planner. A new
+general scene or control loop still belongs in Python experiment code, as
+described in [Write a runtime experiment](../how-to/write-runtime-experiment.md).
+
 Two plan families serve different geometries:
 
 ```mermaid

@@ -1,12 +1,12 @@
 # pyright: reportUnknownArgumentType=false, reportUnknownMemberType=false
-"""Standalone Qt window for immutable ModSim runtime inspection."""
+"""Standalone or embedded Qt workspace for immutable runtime inspection."""
 
 from __future__ import annotations
 
 import logging
 from functools import partial
 
-from PySide6.QtCore import QSize, Qt, QTimer, Slot
+from PySide6.QtCore import QSize, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QCloseEvent, QShowEvent
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -70,10 +70,49 @@ def _size_current_page(container: QStackedWidget | QTabWidget, _index: int = -1)
 
 
 class RuntimeInspectorWindow(QMainWindow):
-    """Display one automatically started Runtime Inspector demonstration."""
+    """Display one runtime session, standalone or inside the Studio workspace.
 
-    def __init__(self, config: RuntimeInspectorConfig) -> None:
-        super().__init__()
+    Execution owns its existing worker or native-viewer child process. Keep the
+    widget alive until ``execution_finished`` or a successful ``stop_and_wait``;
+    hiding it does not stop the simulation. Results remain visible after execution.
+
+    Attributes:
+        execution_started: Emitted when the one permitted start is requested.
+        execution_finished: Emitted after the execution controller has finished,
+            including failed or interrupted runs.
+        execution_failed: Emitted with an actionable execution or presentation error.
+        closed: Emitted when closing is accepted after execution has stopped.
+    """
+
+    execution_started = Signal()
+    execution_finished = Signal()
+    execution_failed = Signal(str)
+    closed = Signal()
+
+    def __init__(
+        self,
+        config: RuntimeInspectorConfig,
+        parent: QWidget | None = None,
+        *,
+        embedded: bool = False,
+        auto_start: bool = True,
+    ) -> None:
+        """Build the session controls without creating a backend yet.
+
+        Args:
+            config: Literal runtime settings used when execution starts.
+            parent: Qt owner, normally Studio's runtime workspace when embedded.
+            embedded: Render as a child widget without duplicate application
+                branding or standalone window geometry preferences.
+            auto_start: Start once on first show. Set false when a containing
+                workspace explicitly calls ``start`` after its readiness checks.
+        """
+        super().__init__(parent)
+        self._embedded = embedded
+        self._auto_start = auto_start
+        self._closed = False
+        if embedded:
+            self.setWindowFlags(Qt.WindowType.Widget)
         self._config = config
         self._presenter = RuntimeInspectorPresenter()
         self._started = False
@@ -96,6 +135,8 @@ class RuntimeInspectorWindow(QMainWindow):
         self.header = StudioHeader(self, "Runtime Inspector")
         self.header.setObjectName("StudioHeader")
         self.addToolBar(self.header)
+        if embedded:
+            self.header.hide()
 
         self.run_state = QLabel("Starting simulation…")
         self.run_state.setWordWrap(True)
@@ -274,12 +315,25 @@ class RuntimeInspectorWindow(QMainWindow):
         self.lattice.orbit_requested.connect(self._orbit_lattice)
         theme_manager().changed.connect(self._refresh_action_icons)
         self._refresh_action_icons()
-        self._window_sizing = manage_window(self, "runtime-inspector", preferred=QSize(1180, 820))
+        self._window_sizing = (
+            None
+            if embedded
+            else manage_window(self, "runtime-inspector", preferred=QSize(1180, 820))
+        )
 
     def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
-        if not self._started:
+        if self._auto_start and not self._started and not self._closed:
             QTimer.singleShot(0, self.start)
+
+    @property
+    def is_running(self) -> bool:
+        """Return whether the runtime worker or native-viewer process is active.
+
+        Returns:
+            True until the execution source has released its backend resources.
+        """
+        return self._controller.is_running()
 
     @property
     def last_error(self) -> str | None:
@@ -294,7 +348,7 @@ class RuntimeInspectorWindow(QMainWindow):
     @Slot()
     def start(self) -> None:
         """Start the configured scenario once."""
-        if self._started:
+        if self._started or self._closed:
             return
         self._started = True
         self.stop_button.setEnabled(True)
@@ -303,6 +357,7 @@ class RuntimeInspectorWindow(QMainWindow):
             "Starting runtime…", "Preparing the Robot Pack, scenario, and simulation backend."
         )
         self.statusBar().showMessage("Starting runtime…")
+        self.execution_started.emit()
         self._controller.start()
 
     @Slot()
@@ -323,7 +378,16 @@ class RuntimeInspectorWindow(QMainWindow):
         self._controller.request_interruption()
 
     def stop_and_wait(self, timeout_ms: int = 10_000) -> bool:
-        """Stop the worker and wait for backend shutdown during app teardown."""
+        """Stop execution and wait for backend shutdown during widget teardown.
+
+        Args:
+            timeout_ms: Cooperative shutdown wait in milliseconds. The native
+                viewer controller may additionally terminate and reap its child.
+
+        Returns:
+            True when execution has stopped and the widget can be destroyed.
+            False means its worker must remain alive while shutdown completes.
+        """
         self.loading_panel.set_busy(False)
         return self._controller.stop_and_wait(timeout_ms)
 
@@ -442,11 +506,14 @@ class RuntimeInspectorWindow(QMainWindow):
         self.statusBar().showMessage("Runtime failed")
         self._update_run_state()
         _LOGGER.error("%s", message)
-        if not self._close_pending:
+        self.execution_failed.emit(message)
+        if not self._embedded and not self._close_pending:
             QMessageBox.critical(self, "Runtime Inspector", message)
 
     @Slot()
     def _runtime_finished(self) -> None:
+        if self._finished:
+            return
         self._shutdown_requested = True
         if self._pending_frames:
             self._frame_batch_timer.stop()
@@ -461,6 +528,7 @@ class RuntimeInspectorWindow(QMainWindow):
                 "Runtime stopped", "The runtime ended before its first state update."
             )
         self._update_run_state()
+        self.execution_finished.emit()
         if self._close_pending:
             QTimer.singleShot(0, self.close)
 
@@ -696,6 +764,9 @@ class RuntimeInspectorWindow(QMainWindow):
             event.ignore()
             return
         self.loading_panel.set_busy(False)
+        if not self._closed:
+            self._closed = True
+            self.closed.emit()
         event.accept()
 
 

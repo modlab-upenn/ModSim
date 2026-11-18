@@ -17,6 +17,12 @@ This enables researchers to focus on development and inmplementaiton of new rese
 
 The following documentation is for people learning to use ModSim, create RobotPacks, or understand and extend the codebase. The learning path begins with ModSim Studio to inspect, validate, and edit a small RobotPack, then introduces physics simulation through a visual docking example. A separate CLI guide covers terminal workflows.
 
+Studio keeps that workflow in one window: author in **Robot Pack**, then switch
+to **Runtime** to select a backend and model view, validate the launch, and
+start a simulation. See [Getting started](tutorials/getting-started.md) for a
+complete example and [Run your RobotPack](how-to/run-robot-pack.md) for the
+runtime controls.
+
 We encourage and welcome contributions to the project, including new features, implementations of planners, and support for additional robotic systems. As research in modular robotics and multi-robot systems develops, we want ModSim to help bring these ideas into a common framework that the robotics community can use and build on.
 
 The documentation is organized into four sections:

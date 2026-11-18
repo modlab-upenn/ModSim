@@ -425,6 +425,24 @@ and overload paths are testable without a physics engine.
 
 ## 11. Running a session
 
+For the desktop workflow, open the pack in Studio and switch to **Runtime**.
+Choose **Backend**, **Demonstration**, **Module type**, and **Model view**;
+the initial generic demonstration is **Dock undock** (`dock_undock`). Choose
+connector overrides and numerical settings under **Advanced runtime settings**
+when the preset needs adjustment. **Validate runtime** checks the selected
+launch, and **Start simulation** saves confirmed edits before starting the
+embedded Inspector. **Pause/Resume** and **Stop** control the same authoritative
+session that supplies its topology, events, and optional native MuJoCo viewer.
+
+F6 authoring and F7 **Simulation Metadata (Structural)** remain generic pack
+checks; neither guarantees Inspector readiness. A runtime model view is needed
+by that Inspector, while core sessions, headless `run`, and the native-only
+`run --view` workflow can execute without one. **Add topology view** provides
+an explicit unsaved recipe edit when the desktop consumer needs a view.
+See [Studio's author-and-run workflow](studio.md#author-and-run-in-one-window)
+for the save, retained-result, and shutdown behavior. The same connector
+lifecycle applies regardless of how the session is launched.
+
 ### 11.1 From the command line
 
 `dock` and `run` require a pack selector, supplied positionally or with `--pack`.

@@ -6,7 +6,25 @@ that ship today differ.
 
 ## Selecting a backend
 
-Resolution order is explicit argument, then `MODSIM_BACKEND`, then `mock`.
+In Studio, open the Robot Pack and switch to **Runtime**. The **Backend** field
+explicitly chooses the execution engine; it initially selects **MuJoCo**.
+Select a demonstration and model view, then **Validate runtime** and
+**Start simulation**. The native 3D companion is available only for MuJoCo.
+Changing the backend preserves the current duration, timestep, connectors, and
+other scenario tuning; it updates the companion-viewer choice and invalidates
+the previous readiness report. Changing the demonstration or clicking
+**Reset demonstration settings** applies the demonstration's preset defaults.
+
+Studio's preflight checks whether the selected backend's factory can be
+imported, without constructing it. A pass does not prove that its mechanical
+assets compile or that it supports every requested physical feature. Those
+remain backend-loading and execution boundaries. See
+[the Studio workflow](studio.md#author-and-run-in-one-window).
+
+For registry-based selection in `create_backend()` and core sessions, the
+resolution order is explicit argument, then `MODSIM_BACKEND`, then `mock`.
+Studio and the Runtime Inspector pass an explicit backend choice; their
+MuJoCo default therefore does not change the registry's mock fallback.
 
 ```bash
 modsim-robotics backends                                   # what is registered and installed
@@ -223,8 +241,9 @@ limits, controller targets, simulated duration, and event timestamps remain
 unchanged. A high requested factor is best-effort when physics or rendering
 throughput cannot keep up.
 
-For `modsim-robotics runtime`, MuJoCo's built-in **Run/Pause** item remains disabled by
-design. ModSim uses the passive viewer and retains ownership of physics steps,
+For Inspector launches from Studio or `modsim-robotics runtime`, MuJoCo's
+built-in **Run/Pause** item remains disabled by design. ModSim uses the passive
+viewer and retains ownership of physics steps,
 scenario progression, `WorldState`, and events; handing control to a
 viewer-owned simulation loop would bypass that boundary. ModSim instead adds a
 synchronized **Pause**/**Resume** button to the Runtime Inspector, a **Space**
@@ -259,9 +278,12 @@ mjpython -m modsim_robotics run path/to/pack --backend mujoco --view
 The adapter translates MuJoCo's error into that instruction rather than letting
 a raw traceback through.
 
-`modsim-robotics runtime PACK` launches the complementary views together. Qt owns the
-main process and renders ModSim's selected 2-D semantic model view and event
-log. The built-in choices are a logical topology graph and a cubic-lattice
+Studio's **Start simulation** launches the embedded Inspector and, when
+**Native 3D viewer** is enabled, MuJoCo's separate companion window. The
+standalone `modsim-robotics runtime PACK` command uses the same execution
+arrangement. Qt owns the main process and renders ModSim's selected 2-D
+semantic model view and event log. The built-in choices are a logical topology
+graph and a cubic-lattice
 projection. A companion process owns the one authoritative MuJoCo session,
 native viewer, physics stepping, and model-view generation. Immutable
 inspector frames cross the process boundary, so the 3-D model, selected
@@ -273,6 +295,12 @@ owner publishes the exact frame at a pause boundary and acknowledges the
 resulting state, keeping the Inspector button and native-viewer overlay in
 sync. The `--no-viewer` worker-thread arrangement honors the same Inspector
 control and pause semantics without launching the companion process.
+
+Studio's **Native 3D viewer** checkbox selects the same process arrangement;
+clearing it uses the worker-thread arrangement. This does not make the Qt
+Inspector headless, and it does not remove that consumer's model-view
+requirement. Core `RuntimeSession` execution and native-only `run --view` do
+not require a model-view recipe.
 
 The public command is identical on macOS and Linux. On macOS ModSim
 automatically locates the `mjpython` installed beside the active environment's

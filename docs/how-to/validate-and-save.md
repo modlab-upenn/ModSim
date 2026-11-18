@@ -4,16 +4,34 @@ sidebar_label: Validate and save
 ---
 
 Finish the cube's runtime presentation recipe, check its declared semantics,
-and save a complete pack that another process can load. Start with
+and save a complete pack that a runtime can load. Start with
 [Author connectors](author-connectors.md) complete in the Builder.
 
 Validation uses the current in-memory document. The Runtime Inspector loads
-saved files in a separate runtime, so applying properties and saving are both
-part of this handoff.
+saved files in its own execution context, so applying properties and saving
+are both part of this handoff even when authoring and inspection share Studio.
 
 ## Add the runtime model-view recipe
 
-The URDF importer does not create a model-view recipe. Add one explicitly:
+The URDF importer does not create a model-view recipe. General Robot Packs
+and core/headless runtimes do not require one, but this workflow uses the
+Inspector to display connectivity. Add its recipe explicitly:
+
+1. Switch to **Runtime** and click **Add topology view**.
+2. Confirm that **Model view** selects **Module Topology (module_topology_graph)**.
+   For this new pack, the added recipe has ID `module_topology`, runtime mode,
+   and an empty configuration. It becomes a default when the pack has no
+   existing runtime default. Existing recipes remain unchanged.
+3. Return to **Robot Pack** to inspect the new entry under **Model Views**.
+   The pack shows unsaved changes; adding the recipe does not save or run it.
+
+This shortcut chooses a unique ID if `module_topology` is already present.
+If the pack already has a suitable runtime recipe, select it in Runtime
+instead of adding another.
+
+### Edit a recipe directly
+
+For a custom ID, name, builder, or default choice, use the authoring editor:
 
 1. Select **Model Views** in Project and click **Add model view**.
 2. In **Add model view**, enter these values:
@@ -32,8 +50,10 @@ The URDF importer does not create a model-view recipe. Add one explicitly:
 
 If you already created this ID, select its existing row, correct the fields,
 and click **Apply model view**. Leave the configuration empty for this builder.
-Marking the recipe as a default is a choice; it is not checked automatically
-when adding a new view.
+The manual **Add model view** dialog leaves **Default view** unchecked until
+you choose it. A default enables automatic selection in a standalone
+Inspector launch. Studio's Runtime workspace can select any suitable
+runtime-enabled recipe explicitly, without changing its default flag.
 
 The recipe selects a builder. You do not enter graph nodes or edges. During a
 run, the builder derives one node per module instance and edges from committed
@@ -42,17 +62,17 @@ connections. The Builder does not start a simulation when you add the recipe.
 ## Run both validation profiles
 
 Choose **Validate → Authoring Profile** (`F6`) and open **Validation** in the
-bottom **Document** panel. Then choose **Validate → Simulation Readiness** (`F7`).
+bottom **Document** panel. Then choose
+**Validate → Simulation Metadata (Structural)** (`F7`).
 
 | Profile | What it establishes |
 | --- | --- |
 | Authoring | The declared schema, references, and local assets can be checked while incomplete simulation metadata is reported as warnings. |
-| Simulation readiness | The stricter structural checks promote required missing semantic data to errors. |
+| Simulation metadata (structural) | The stricter structural checks promote required missing semantic data to errors. |
 
 For the completed workshop cube, both profiles should report
-**0 errors · 0 warnings**, with **Authoring validation passed** or
-**Simulation readiness passed**. The table below the summary appears when
-there are issues and identifies their severity, code, location, and message.
+**0 errors · 0 warnings**. The table below the summary appears when there are
+issues and identifies their severity, code, location, and message.
 
 To correct an issue, find the entity named by its location in Project, edit
 its Inspector fields, click the appropriate **Apply** button, then rerun the
@@ -61,9 +81,11 @@ an allowed-orientation set, the fixed constraint, or a load rating.
 
 A passing profile does not execute the backend, check arbitrary URDF source
 names against its mechanical files, or prove that two faces will mate. An
-empty connector catalog can pass structural validation, and an absent runtime
-view may be rejected only at launch. Check that the intended two connector
-instances and default runtime recipe actually exist.
+empty connector catalog can pass structural validation. These profiles also do
+not require a runtime view. Check that the intended connector instances exist,
+then use **Runtime → Validate runtime** to check the selected backend,
+demonstration, and Inspector recipe before starting. **Validate → Runtime Launch**
+(`F8`) opens Runtime and runs that same preflight check.
 
 ## Save the current workspace pack
 
@@ -75,6 +97,11 @@ Save writes canonical YAML through a staged, verified directory replacement.
 It preserves the pack's mechanical assets while persisting semantic edits.
 Formatting, comments, or YAML anchors from manually written documents are not
 preserved as an editing format.
+
+Save and Export are unavailable while execution is active. Use **Stop** in
+Runtime, or close an active MuJoCo companion, before saving later edits.
+Backend, duration, and other Runtime launch settings are session choices and
+are not part of the YAML saved by this action.
 
 Use **YAML Preview** to confirm that the current documents contain:
 

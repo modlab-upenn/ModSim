@@ -110,6 +110,15 @@ an optional backend is installed can invoke its loader, while normal named
 registration remains lazy. A new engine can register its factory without
 adding simulator imports to core modules.
 
+Studio's **Runtime** workspace passes the **Backend** selection explicitly;
+its initial MuJoCo choice does not change the registry's mock fallback.
+Switching engines preserves scenario tuning and updates native-viewer
+availability. Changing the demonstration or using **Reset demonstration
+settings** loads preset defaults. The backend-independent launch helper checks
+factory importability without constructing an adapter. Asset compilation and
+physical feature support are still checked when the runtime actually loads
+and executes the selected backend.
+
 Capabilities affect behavior: docking refuses before creation when runtime
 constraints are unsupported; joint-command validation checks advertised modes
 and the optional `SupportsJointCommands` protocol. A schema declaration is
