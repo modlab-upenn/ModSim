@@ -401,7 +401,7 @@ def resolve_runtime_viewer_python(
     raise RuntimeViewerLaunchError(
         "Native MuJoCo viewer requires mjpython, but it was not found next to this "
         "environment's Python. Install the MuJoCo extra in this environment with "
-        "pip install 'modsim-robotics[studio,mujoco]'."
+        "pip install 'modsim-robotics[mujoco]'."
     )
 
 

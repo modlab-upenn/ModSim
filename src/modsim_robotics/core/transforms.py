@@ -132,6 +132,62 @@ def quat_from_rpy(rpy_rad: Vec3) -> Quat:
     )
 
 
+def quat_to_rpy(q: Quat) -> Vec3:
+    """Return fixed-axis roll, pitch, and yaw in radians for a quaternion.
+
+    The result uses the same URDF convention as :func:`quat_from_rpy`:
+    ``Rz(yaw) Ry(pitch) Rx(roll)``. Pitch lies in ``[-pi/2, pi/2]``;
+    roll and yaw lie in ``(-pi, pi]``. At gimbal lock, roll is set to zero
+    and yaw represents the remaining rotation. Equivalent orientations can
+    therefore have different Euler triples. Keep the quaternion authoritative
+    when these angles are used for display rather than an explicit edit.
+
+    Args:
+        q: Finite, nonzero quaternion in scalar-first ``(w, x, y, z)`` order.
+            Its magnitude is normalized without modifying the input.
+
+    Returns:
+        A ``(roll, pitch, yaw)`` tuple in radians about the fixed X, Y, and Z
+        axes. No coordinate-frame conversion is performed.
+
+    Raises:
+        ValueError: If the quaternion does not contain four finite numeric
+            components, contains booleans, or has zero magnitude.
+    """
+    try:
+        valid = len(q) == 4 and all(
+            not isinstance(component, bool) and math.isfinite(component) for component in q
+        )
+    except (TypeError, OverflowError):
+        valid = False
+    if not valid:
+        raise ValueError("quaternion must contain four finite numeric components")
+    scale = max(abs(component) for component in q)
+    if scale == 0:
+        raise ValueError("cannot convert a zero-length quaternion")
+    # Scale first so both very large and very small finite inputs normalize
+    # without overflow or underflow in a sum of squared components.
+    scaled = tuple(component / scale for component in q)
+    magnitude = math.hypot(*scaled)
+    w, x, y, z = (component / magnitude for component in scaled)
+    # These pairs encode (roll-yaw)/2 and (roll+yaw)/2. Unlike separate
+    # matrix-entry atan2 formulas, they retain the well-defined coupled angle
+    # near gimbal lock even when the other half-angle becomes ill-conditioned.
+    plus = math.hypot(w + y, x - z)
+    minus = math.hypot(w - y, x + z)
+    half_difference = math.atan2(x - z, w + y)
+    half_sum = math.atan2(x + z, w - y)
+    if minus <= 1e-12:
+        return (0.0, math.pi / 2.0, wrap_angle(-2.0 * half_difference))
+    if plus <= 1e-12:
+        return (0.0, -math.pi / 2.0, wrap_angle(2.0 * half_sum))
+    return (
+        wrap_angle(half_difference + half_sum),
+        2.0 * math.atan2(plus, minus) - math.pi / 2.0,
+        wrap_angle(half_sum - half_difference),
+    )
+
+
 def quat_angle(q: Quat) -> float:
     """Return the magnitude in radians of the rotation encoded by ``q``."""
     unit = quat_normalize(q)
@@ -205,6 +261,50 @@ class Transform:
     def from_pose_spec(cls, pose: PoseSpec) -> Transform:
         """Return the transform described by a Robot Pack pose."""
         return cls(translation=pose.xyz_m, rotation=quat_from_rpy(pose.rpy_rad))
+
+    @classmethod
+    def from_rpy(
+        cls,
+        xyz: Vec3,
+        rpy: Vec3,
+        *,
+        length_unit: str = "m",
+        angle_unit: str = "rad",
+    ) -> Transform:
+        """Build a canonical transform from position and readable RPY angles.
+
+        Conversion happens once at this authoring boundary. The returned
+        transform stores metres and a scalar-first unit quaternion; runtime
+        composition never operates on the input Euler angles.
+
+        Args:
+            xyz: Translation in the parent frame, expressed in ``length_unit``.
+            rpy: Fixed-axis roll, pitch, and yaw about X, Y, and Z, expressed in
+                ``angle_unit``. The rotation is ``Rz(yaw) Ry(pitch) Rx(roll)``.
+            length_unit: Supported length unit, such as ``m``, ``cm``, or ``mm``.
+                Defaults to metres.
+            angle_unit: Supported angular unit, such as ``rad`` or ``deg``.
+                Defaults to radians.
+
+        Returns:
+            A transform with SI translation and quaternion ``(w, x, y, z)``
+            orientation, in the same parent frame as the input.
+
+        Raises:
+            UnitError: If an input is non-finite or its unit is unknown or
+                incompatible with the expected length or angle quantity.
+            ValidationError: If the converted pose violates the pose schema.
+
+        Examples:
+            >>> pose = Transform.from_rpy(
+            ...     (50, 0, 25), (0, 0, 90), length_unit="mm", angle_unit="deg"
+            ... )
+            >>> pose.translation
+            (0.05, 0.0, 0.025)
+        """
+        return cls.from_pose_spec(
+            PoseSpec.from_rpy(xyz, rpy, length_unit=length_unit, angle_unit=angle_unit)
+        )
 
     @classmethod
     def from_translation(cls, translation: Vec3) -> Transform:

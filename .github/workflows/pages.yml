@@ -1,0 +1,138 @@
+name: Website and Pages
+
+on:
+  push:
+    branches:
+      - "**"
+    paths:
+      - ".github/workflows/pages.yml"
+      - "website/**"
+      - "docs/**"
+      - "src/**"
+      - "tools/docs/**"
+      - "pyproject.toml"
+      - "uv.lock"
+  pull_request:
+    paths:
+      - ".github/workflows/pages.yml"
+      - "website/**"
+      - "docs/**"
+      - "src/**"
+      - "tools/docs/**"
+      - "pyproject.toml"
+      - "uv.lock"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish this build (configured deployment branch only)"
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: website-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build website, documentation, API, and UML
+    runs-on: ubuntu-latest
+    outputs:
+      publish: ${{ steps.settings.outputs.publish }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.11.31"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install Node
+        uses: actions/setup-node@3236e3f00472a763614f34e355b35731881ea236 # v7
+        with:
+          node-version-file: website/.nvmrc
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Resolve site address and publication request
+        id: settings
+        env:
+          PAGES_SITE_URL: ${{ vars.PAGES_SITE_URL }}
+          PAGES_BASE_URL: ${{ vars.PAGES_BASE_URL }}
+          PAGES_DEPLOY_BRANCH: ${{ vars.PAGES_DEPLOY_BRANCH }}
+          PAGES_AUTO_DEPLOY: ${{ vars.PAGES_AUTO_DEPLOY }}
+          PAGES_PUBLISH_REQUESTED: ${{ inputs.publish || false }}
+        run: node website/scripts/pages-settings.mjs
+
+      - name: Install Graphviz
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y graphviz
+
+      - name: Install locked documentation dependencies
+        run: |
+          uv sync --locked --group docs --python 3.12
+          npm --prefix website ci
+
+      - name: Test site and publication settings
+        run: node --test website/scripts/tests/*.test.mjs
+
+      - name: Check API documentation and website types
+        run: |
+          npm --prefix website run docs:check
+          npm --prefix website run typecheck
+
+      - name: Generate API and UML and build the combined site
+        env:
+          MODSIM_ROBOTPACK_LIBRARY_URL: ${{ vars.MODSIM_ROBOTPACK_LIBRARY_URL }}
+        run: npm --prefix website run docs:build
+
+      - name: Upload downloadable branch preview
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: site-preview-${{ github.run_id }}-${{ github.run_attempt }}
+          path: website/build/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Upload the checked Pages artifact
+        if: steps.settings.outputs.publish == 'true'
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
+        with:
+          path: website/build/
+
+  deploy:
+    name: Publish the checked website
+    needs: build
+    if: >-
+      needs.build.outputs.publish == 'true' &&
+      github.ref_type == 'branch' &&
+      github.ref_name == (vars.PAGES_DEPLOY_BRANCH || 'main') &&
+      ((github.event_name == 'push' && vars.PAGES_AUTO_DEPLOY == 'true') ||
+       (github.event_name == 'workflow_dispatch' && inputs.publish))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    steps:
+      - name: Read the configured Pages site
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+        with:
+          enablement: false
+
+      - name: Deploy the built artifact
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4

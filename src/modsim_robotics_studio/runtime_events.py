@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from modsim_robotics.runtime.inspection import RuntimeEventRow
+from modsim_robotics.units import UnitPreferences, format_quantity, from_si
 
 _HEADERS = ("Seq", "Sim time (s)", "Event", "Detail")
 
@@ -53,6 +54,21 @@ class RuntimeEventTableModel(QAbstractTableModel):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._events: tuple[RuntimeEventRow, ...] = ()
+        self._units = UnitPreferences()
+
+    def set_units(self, preferences: UnitPreferences) -> None:
+        """Refresh display times while leaving ordered event records unchanged."""
+        self._units = preferences
+        self.headerDataChanged.emit(Qt.Orientation.Horizontal, 1, 1)
+        if self._events:
+            self.dataChanged.emit(self.index(0, 1), self.index(len(self._events) - 1, 3))
+
+    def _detail(self, event: RuntimeEventRow) -> str:
+        if event.measured_force_n is not None and event.force_limit_n is not None:
+            force = format_quantity(event.measured_force_n, self._units.force_unit)
+            limit = format_quantity(event.force_limit_n, self._units.force_unit)
+            return f"{event.subject}: {force} > {limit}"
+        return event.detail
 
     @property
     def events(self) -> tuple[RuntimeEventRow, ...]:
@@ -105,13 +121,13 @@ class RuntimeEventTableModel(QAbstractTableModel):
         if role == int(Qt.ItemDataRole.DisplayRole):
             values = (
                 str(event.sequence),
-                f"{event.time_s:.4f}",
+                f"{from_si(event.time_s, self._units.time_unit):.6g}",
                 event.kind,
-                event.detail,
+                self._detail(event),
             )
             return values[index.column()] if 0 <= index.column() < len(values) else None
         if role == int(Qt.ItemDataRole.ToolTipRole):
-            return event.detail or event.kind
+            return self._detail(event) or event.kind
         if role == int(Qt.ItemDataRole.TextAlignmentRole) and index.column() in (0, 1):
             return int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         return None
@@ -122,9 +138,16 @@ class RuntimeEventTableModel(QAbstractTableModel):
         orientation: Qt.Orientation,
         role: int = int(Qt.ItemDataRole.DisplayRole),
     ) -> object:
+        if role == int(Qt.ItemDataRole.ToolTipRole) and section == 3:
+            return (
+                "Structured physical quantities follow display preferences. "
+                "Other diagnostic text retains its explicit source units."
+            )
         if role != int(Qt.ItemDataRole.DisplayRole):
             return None
         if orientation == Qt.Orientation.Horizontal and 0 <= section < len(_HEADERS):
+            if section == 1:
+                return f"Sim time ({self._units.time_unit})"
             return _HEADERS[section]
         return str(section + 1) if orientation == Qt.Orientation.Vertical else None
 
@@ -160,6 +183,10 @@ class RuntimeEventLogWidget(QWidget):
         self.model.set_events(events)
         if follow_tail:
             self.table.scrollToBottom()
+
+    def set_units(self, preferences: UnitPreferences) -> None:
+        """Apply local time display preferences without changing event data."""
+        self.model.set_units(preferences)
 
 
 __all__ = ["RuntimeEventLogWidget", "RuntimeEventTableModel"]

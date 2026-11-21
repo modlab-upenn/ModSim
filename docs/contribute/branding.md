@@ -19,7 +19,7 @@ recreating the wordmark.
 | Documentation dark mode | Midnight | Deep Navy & Cyan: navy surfaces, pale text, teal actions |
 | Additional desktop theme | Dark | Blue Charcoal: muted blue surfaces, pale text, teal actions |
 
-The documentation retains Docusaurus's light/dark switch. Studio and the
+The website and documentation share Docusaurus's light/dark switch. Studio and the
 Runtime Inspector offer all three themes. Match fixed-color SVGs, PNGs, and
 icons to the selected theme when switching colors.
 
@@ -132,6 +132,13 @@ npm --prefix website run docs:check
 npm --prefix website run typecheck
 npm --prefix website run docs:build
 ```
+
+The project homepage and its browser demonstrations use the same tokens, fonts,
+and production wordmarks as the manual. Keep homepage/widget rules in CSS modules
+and link to the authored installation instructions. Review the homepage, its
+interactive controls, recordings, shared navigation, and a manual page together.
+Use the [Pages guide](github-pages.md) to test an isolated deployment address;
+assets must work under both `/ModSim/` and a preview repository's base path.
 
 For desktop branding changes, preserve the system font size, shared window
 sizing, file-dialog behavior, runtime state, and startup timing. Exercise the

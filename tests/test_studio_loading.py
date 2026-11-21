@@ -353,7 +353,8 @@ def test_failed_startup_closes_splash_and_restores_exception_hook(
             widget for widget in application.topLevelWidgets() if isinstance(widget, StartupSplash)
         )
         assert splash.isVisible()
-        assert splash.panel.stage.text() == "Loading Studio…"
+        assert splash.panel.stage.text() == ""
+        assert splash.panel.stage.isHidden()
         raise RuntimeError("Builder initialization failed")
 
     monkeypatch.setattr(app, "_create_window", fail)

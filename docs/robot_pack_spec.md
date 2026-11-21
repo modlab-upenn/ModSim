@@ -173,6 +173,23 @@ All physical values use SI units. Units are carried in field names:
 - stiffness: newtons per metre (`_n_per_m`) or newton-metres per radian
   (`_nm_per_rad`).
 
+Display preferences do not change this persistence contract. Studio's physical
+quantity controls convert compatible explicit inputs and selected display units
+before updating the pack. This covers module mass, joint limits, connector
+rules and poses, and the built-in cubic-lattice recipe. Context determines
+whether a scalar joint effort is force or torque. Positions and orientations
+still persist as `xyz_m` and `rpy_rad`; runtime poses use quaternions.
+Python authoring can use `PoseSpec.from_rpy(..., length_unit="mm", angle_unit="deg")`
+for the same conversion. Format 0.1 YAML retains numeric SI fields and does not
+accept a global unit override or unit-bearing strings in those fields.
+
+`rpy_rad` uses URDF fixed-axis roll, pitch, and yaw:
+`Rz(yaw) Ry(pitch) Rx(roll)`. Runtime `Transform` orientations use unit
+quaternions in scalar-first `(w, x, y, z)` order. Euler angles are an authoring
+representation; runtime rotation composition operates on quaternions. See
+[Units and orientation](explanation/units-and-orientation.md) for the conversion
+boundaries and current editor coverage.
+
 `xyz_m` and `rpy_rad` are three-element vectors. Joint, docking, approach, and
 hinge axes are three-element unit vectors. Joint axes follow URDF semantics and
 are expressed in the source joint frame. Connector docking and approach axes

@@ -33,14 +33,20 @@ from modsim_robotics.planning.mblocks.models import (
 )
 from modsim_robotics.runtime.coordinated_pivot import CoordinatedPivotAction, CoordinatedPivotPlan
 from modsim_robotics.runtime.kinematic_pivot import KinematicPivotRoute
-from modsim_robotics.runtime.momentum_pivot import MomentumPivotConfig
+from modsim_robotics.runtime.momentum_pivot import (
+    PUBLISHED_FLYWHEEL_SPEED_CAP_RAD_S,
+    MomentumPivotConfig,
+)
 from modsim_robotics.runtime.reconfiguration import ConnectorPairRef, ReconfigurationScenarioError
 from modsim_robotics.runtime.session import RuntimeSession
+from modsim_robotics.units import QuantityKind, to_si
 
 TABLETOP_ROTATION = quat_from_axis_angle((1.0, 0.0, 0.0), math.pi / 2)
 PLAN_ID = "mblocks_online_lattice"
 PLAN_NAME = "M-Blocks online planar reconfiguration"
 SOURCE_URL = "https://doi.org/10.1109/ICRA.2015.7139451"
+DEFAULT_QUARTER_SPEED_RAD_S = 14000.0 * math.tau / 60.0
+DEFAULT_HALF_SPEED_RAD_S = 17000.0 * math.tau / 60.0
 _FACE_AXES: dict[str, Vec3] = {
     "pos_x": (1.0, 0.0, 0.0),
     "neg_x": (-1.0, 0.0, 0.0),
@@ -213,10 +219,49 @@ def make_pivot_plan(
     *,
     pitch_m: float = 0.05,
     dt_s: float = 0.0005,
-    quarter_rpm: float = 14000.0,
-    half_rpm: float = 17000.0,
+    quarter_rpm: float | None = None,
+    half_rpm: float | None = None,
+    quarter_speed_rad_s: float | None = None,
+    half_speed_rad_s: float | None = None,
 ) -> CoordinatedPivotPlan:
-    """Compile a legal geometric move into measured lifecycle/effort commands."""
+    """Compile a geometric move into measured lifecycle and SI effort commands.
+
+    Named RPM options remain supported at this authoring boundary. Runtime
+    callers pass canonical speed targets directly, without converting to RPM
+    and back for each generated move. Omitted targets retain the existing
+    14,000 RPM quarter-turn and 17,000 RPM half-turn reference values.
+
+    Args:
+        session: Session owning the measured modules and face topology.
+        state: Current discrete lattice observation, never modified.
+        action: Legal geometric pivot to compile against measured connectors.
+        frame: Transform locating the lattice frame in world coordinates.
+        pitch_m: Positive lattice pitch in metres.
+        dt_s: Physics timestep in seconds, validated by the momentum controller.
+        quarter_rpm: Legacy quarter-turn target in RPM; None uses canonical input/default.
+        half_rpm: Legacy half-turn target in RPM; None uses canonical input/default.
+        quarter_speed_rad_s: Canonical quarter-turn target in rad/s, mutually
+            exclusive with quarter_rpm.
+        half_speed_rad_s: Canonical half-turn target in rad/s, mutually exclusive
+            with half_rpm.
+
+    Returns:
+        A physical pivot plan whose momentum inputs are canonical SI values.
+
+    Raises:
+        ValueError: Two units are supplied for one target, or a target is outside
+            the finite positive published speed range.
+        UnitError: A speed magnitude is nonnumeric, boolean, or non-finite.
+        ReconfigurationScenarioError: Measured topology or hinge geometry does
+            not support the requested move.
+        StopIteration: A required support or moving block is absent.
+    """
+    quarter_speed, half_speed = _flywheel_targets_rad_s(
+        quarter_rpm=quarter_rpm,
+        half_rpm=half_rpm,
+        quarter_speed_rad_s=quarter_speed_rad_s,
+        half_speed_rad_s=half_speed_rad_s,
+    )
     after = apply_pivot(state, action)
     current = face_pairs(state, frame, pitch_m)
     expected = {pair.connection_id for pair in current}
@@ -247,9 +292,7 @@ def make_pivot_plan(
         edge_hinge=ConnectorPairRef(fixed_connector=support_hinge, moving_connector=moving_hinge),
         target_face=targets[0],
         dt_s=dt_s,
-        target_flywheel_speed_rad_s=(quarter_rpm if abs(action.turns) == 1 else half_rpm)
-        * math.tau
-        / 60,
+        target_flywheel_speed_rad_s=quarter_speed if abs(action.turns) == 1 else half_speed,
         spin_direction=sign,
         pivot_axis_in_fixed_frame=axis,
         pivot_reference_in_moving_frame=(1.0, 0.0, 0.0),
@@ -286,6 +329,39 @@ def make_pivot_plan(
         ),
         source_url=SOURCE_URL,
     )
+
+
+def _flywheel_targets_rad_s(
+    *,
+    quarter_rpm: float | None,
+    half_rpm: float | None,
+    quarter_speed_rad_s: float | None,
+    half_speed_rad_s: float | None,
+) -> tuple[float, float]:
+    """Normalize only explicit RPM authoring input, retaining SI targets directly."""
+    targets: list[float] = []
+    for label, rpm, speed, default in (
+        ("quarter", quarter_rpm, quarter_speed_rad_s, DEFAULT_QUARTER_SPEED_RAD_S),
+        ("half", half_rpm, half_speed_rad_s, DEFAULT_HALF_SPEED_RAD_S),
+    ):
+        if rpm is not None and speed is not None:
+            raise ValueError(f"Supply {label}_rpm or {label}_speed_rad_s, not both")
+        resolved = (
+            to_si(rpm, "rpm", kind=QuantityKind.ANGULAR_VELOCITY)
+            if rpm is not None
+            else to_si(
+                default if speed is None else speed,
+                "rad/s",
+                kind=QuantityKind.ANGULAR_VELOCITY,
+            )
+        )
+        if not 0 < resolved <= PUBLISHED_FLYWHEEL_SPEED_CAP_RAD_S:
+            raise ValueError(
+                "flywheel targets must be positive and must not exceed "
+                f"{PUBLISHED_FLYWHEEL_SPEED_CAP_RAD_S:g} rad/s"
+            )
+        targets.append(resolved)
+    return targets[0], targets[1]
 
 
 def _face(pose: Transform, direction: Vec3) -> str:

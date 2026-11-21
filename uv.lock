@@ -942,7 +942,13 @@ wheels = [
 name = "modsim-robotics"
 source = { editable = "." }
 dependencies = [
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "pydantic" },
+    { name = "pyqtgraph" },
+    { name = "pyside6" },
+    { name = "pyvista" },
+    { name = "pyvistaqt" },
     { name = "rich" },
     { name = "ruamel-yaml" },
     { name = "typer" },
@@ -958,16 +964,6 @@ dev = [
 ]
 mujoco = [
     { name = "mujoco" },
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-]
-studio = [
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-    { name = "pyqtgraph" },
-    { name = "pyside6" },
-    { name = "pyvista" },
-    { name = "pyvistaqt" },
 ]
 
 [package.dev-dependencies]
@@ -983,17 +979,16 @@ docs = [
 [package.metadata]
 requires-dist = [
     { name = "mujoco", marker = "extra == 'mujoco'", specifier = ">=3.3.3,<4" },
-    { name = "numpy", marker = "extra == 'mujoco'", specifier = ">=1.26,<3" },
-    { name = "numpy", marker = "extra == 'studio'", specifier = ">=1.26,<3" },
+    { name = "numpy", specifier = ">=1.26,<3" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=4,<5" },
     { name = "pydantic", specifier = ">=2.10,<3" },
-    { name = "pyqtgraph", marker = "extra == 'studio'", specifier = ">=0.13,<1" },
+    { name = "pyqtgraph", specifier = ">=0.13,<1" },
     { name = "pyright", marker = "extra == 'dev'", specifier = ">=1.1.390,<2" },
-    { name = "pyside6", marker = "extra == 'studio'", specifier = ">=6.7,<7" },
+    { name = "pyside6", specifier = ">=6.7,<7" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8,<10" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5,<8" },
-    { name = "pyvista", marker = "extra == 'studio'", specifier = ">=0.45,<1" },
-    { name = "pyvistaqt", marker = "extra == 'studio'", specifier = ">=0.11,<1" },
+    { name = "pyvista", specifier = ">=0.45,<1" },
+    { name = "pyvistaqt", specifier = ">=0.11,<1" },
     { name = "rich", specifier = ">=13,<15" },
     { name = "ruamel-yaml", specifier = ">=0.18,<0.20" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.16,<1" },

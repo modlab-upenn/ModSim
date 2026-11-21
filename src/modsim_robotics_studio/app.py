@@ -27,6 +27,7 @@ def _create_window(
     initial_path: str | Path | None,
     session_logger: logging.Logger,
     session_log_path: Path,
+    home: str | Path | None = None,
 ) -> QMainWindow:
     from modsim_robotics_studio.main_window import MainWindow
 
@@ -34,6 +35,7 @@ def _create_window(
         initial_path=initial_path,
         session_logger=session_logger,
         session_log_path=session_log_path,
+        home=home,
     )
 
 
@@ -48,8 +50,9 @@ def main(initial_path: str | Path | None = None, *, home: str | Path | None = No
         initial_path: Installed pack ID, version-qualified ID, or explicit pack
             directory/manifest path. None opens the welcome screen without
             resolving a pack or reading the installed library.
-        home: ModSim home for named pack lookup. It has no effect on blank
-            launches or explicit pack paths.
+        home: ModSim home for display preferences and named pack lookup. It
+            selects display preferences for blank launches and explicit pack
+            paths too, without initializing the home or its RobotPack library.
 
     Returns:
         The Qt event-loop exit status, 0 for cancelled startup, or 2 if the
@@ -93,16 +96,17 @@ def main(initial_path: str | Path | None = None, *, home: str | Path | None = No
         )
         configure_application_identity(application, "ModSim Studio")
         application.setWindowIcon(application_icon(theme_manager().theme.id))
-        splash = StartupSplash("Robot Pack Builder")
+        splash = StartupSplash("Loading Studio")
         splash.show()
         splash.set_stage("Starting ModSim")
         if not splash.play_intro():
             return 0
-        splash.set_stage("Opening RobotPack…" if initial_path is not None else "Loading Studio…")
+        splash.set_stage("Opening RobotPack…" if initial_path is not None else "")
         window = _create_window(
             initial_path=initial_path,
             session_logger=logger,
             session_log_path=log_path,
+            home=home,
         )
         if not splash.present(window):
             window.close()
@@ -115,7 +119,7 @@ def main(initial_path: str | Path | None = None, *, home: str | Path | None = No
         logger.exception("A Studio dependency could not be loaded")
         print(
             "Could not load ModSim Studio dependencies. "
-            "Install with: pip install 'modsim-robotics[studio]'\n"
+            "Install with: pip install modsim-robotics\n"
             f"{error}",
             file=sys.stderr,
         )

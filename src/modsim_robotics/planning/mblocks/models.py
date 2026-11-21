@@ -85,6 +85,8 @@ class LatticeActionRecord(PlanningValue):
 
 
 class LatticePlanningSnapshot(PlanningValue):
+    """Immutable lattice intent and measured diagnostics in canonical SI units."""
+
     kind: Literal["mblocks_lattice"] = "mblocks_lattice"
     time_s: float
     sample_sequence: int
@@ -102,10 +104,29 @@ class LatticePlanningSnapshot(PlanningValue):
     history: tuple[LatticeActionRecord, ...] = ()
     completed_actions: int = 0
     replans: int = 0
-    planning_ms: float = 0.0
-    flywheel_rpm: float = 0.0
-    pivot_angle_deg: float = 0.0
+    planning_time_s: float = 0.0
+    flywheel_angular_velocity_rad_s: float = 0.0
+    pivot_angle_rad: float = 0.0
     landing_error_m: float = 0.0
     landing_effort_nm: float = 0.0
     phase: str = "planning"
     detail: str = ""
+
+    @property
+    def planning_ms(self) -> float:
+        """Return legacy milliseconds as a computed view of canonical seconds."""
+        return self.planning_time_s * 1000.0
+
+    @property
+    def flywheel_rpm(self) -> float:
+        """Return legacy RPM as a computed view of canonical angular velocity."""
+        from modsim_robotics.units import from_si
+
+        return from_si(self.flywheel_angular_velocity_rad_s, "rpm")
+
+    @property
+    def pivot_angle_deg(self) -> float:
+        """Return legacy degrees as a computed view of the canonical angle."""
+        from modsim_robotics.units import from_si
+
+        return from_si(self.pivot_angle_rad, "deg")

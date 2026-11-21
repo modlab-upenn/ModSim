@@ -102,6 +102,69 @@ readiness, or proves the connectors can reach acceptance. In Studio these are
 **Validate → Runtime Launch** (`F8`) checks the selected graphical launch
 separately. Generic pack validation does not require a model-view recipe.
 
+## Enter physical quantities and choose output units
+
+Physical options accept a number followed by a compatible unit. Quote a value
+containing spaces so the shell passes it as one argument:
+
+```bash
+modsim-robotics dock "~/.modsim/workspaces/workshop_cube" --backend mock --count 3 --spacing "100 mm" --dt "10 ms"
+modsim-robotics runtime "~/.modsim/workspaces/workshop_cube" --backend mock --orientation "90 deg" --duration "6 s" --no-viewer
+```
+
+The second command also needs a supported runtime model-view recipe. Quantity
+conversion does not relax the chosen demo's backend or connector requirements.
+
+| Option | Equivalent alias | Unit for a bare number |
+| --- | --- | --- |
+| `--spacing` | `-s` | m |
+| `--connector-gap` | `--gap` | m |
+| `--orientation` | — | rad |
+| `--approach` | `--approach-speed` | m/s |
+| `--retract` | `--retract-speed` | m/s |
+| `--height` | `--initial-height` | m |
+| `--dt` | `--timestep` | s |
+| `--duration`, `--undock-at` | — | s |
+| `--publish-hz` | — | Hz |
+
+Options apply to the commands shown by each command's `--help`. Supply a
+physical option only once; conflicting aliases are rejected. Existing bare
+numbers keep their SI meaning regardless of display preferences. Thus
+`--spacing 0.1`, `--spacing "10 cm"`, and `--spacing "100 mm"` mean the same
+physical separation.
+
+Inspect or save the local profile:
+
+```bash
+modsim-robotics units show --supported
+modsim-robotics units set --length-unit mm --angle-unit deg --time-unit ms
+modsim-robotics units set --mass-unit g --torque-unit 'N*mm'
+modsim-robotics units set --angular-velocity-unit rpm
+modsim-robotics units set --angular-velocity-unit auto
+modsim-robotics units set --reset
+```
+
+`units show` does not create files. `units set` explicitly saves
+`~/.modsim/units.toml`, honoring `--home`, `MODSIM_PATH`, and `MODSIM_HOME`.
+`--reset` starts from defaults; `auto` restores derived speed/acceleration
+choices. Other `units set` flags cover force, inertia, stiffness, damping,
+frequency, and velocity. Use `units set --help` for their exact spellings.
+
+For one command, `--length-unit`, `--angle-unit`, and `--time-unit` override
+human-readable output or the launched Inspector without saving the profile:
+
+```bash
+modsim-robotics dock generic_cube --backend mock --spacing "100 mm" --length-unit cm --angle-unit deg --time-unit ms
+modsim-robotics units show --output json
+```
+
+The display options do not change numerical inputs. Simulation, saved Robot
+Packs, and physical `--output json` results remain canonical SI. The JSON from
+`units show` and `units set` instead describes the profile and effective unit
+symbols. Raw event JSON is not rewritten by guessing the meaning of numbers. The
+[units chapter](../explanation/units-and-orientation.md) defines each quantity
+and the separate orientation convention.
+
 ## Check fixed docking with the mock backend
 
 Place three cube centers one module width apart:

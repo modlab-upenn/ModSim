@@ -35,6 +35,7 @@ from modsim_robotics.model_views.models import CubicLatticePoseResidual
 from modsim_robotics.planning.mblocks.geometry import connected, pivots
 from modsim_robotics.planning.mblocks.models import LatticeState
 from modsim_robotics.runtime.inspection import RuntimeInspectorFrame
+from modsim_robotics.units import QuantityKind, UnitPreferences, format_quantity, from_si
 from modsim_robotics_studio.appearance import theme_manager
 from modsim_robotics_studio.chrome import LegendWidget
 from modsim_robotics_studio.runtime_events import TableRowSizing
@@ -98,6 +99,7 @@ def target_lattice_view(frame: RuntimeInspectorFrame) -> CubicLatticeView | None
 class LatticePlanningWorkspace(QWidget):
     def __init__(self) -> None:
         super().__init__()
+        self._units = UnitPreferences()
         self._frame: RuntimeInspectorFrame | None = None
         self._modules: dict[str, tuple[QGraphicsRectItem, Any]] = {}
         self._goals: dict[tuple[int, int], QGraphicsRectItem] = {}
@@ -169,6 +171,17 @@ class LatticePlanningWorkspace(QWidget):
         self.fit_button.clicked.connect(self.fit)
         theme_manager().changed.connect(self._redraw)
 
+    def set_units(self, preferences: UnitPreferences) -> None:
+        """Refresh physical telemetry while keeping lattice cell coordinates unchanged."""
+        self._units = preferences
+        self._table_key = None
+        self._decision_sequence = -1
+        self.history.set_units(preferences)
+        self.decisions.setHorizontalHeaderLabels(
+            [f"Time ({preferences.time_unit})", "Decision", "Explanation"]
+        )
+        self._redraw()
+
     def set_frame(self, frame: RuntimeInspectorFrame) -> None:
         if frame.lattice_planning is None:
             return
@@ -218,13 +231,18 @@ class LatticePlanningWorkspace(QWidget):
             f"Sung 2015 · {snapshot.goal.id} · "
             f"{snapshot.completed_actions}/{total} pivots verified\n"
             f"Plan {snapshot.plan_revision} · {snapshot.replans} replans · "
-            f"Peak planning {snapshot.planning_ms:.1f} ms"
+            f"Peak planning {format_quantity(snapshot.planning_time_s, self._units.time_unit)}"
         )
+        flywheel = format_quantity(
+            snapshot.flywheel_angular_velocity_rad_s,
+            self._units.unit_for(QuantityKind.ANGULAR_VELOCITY),
+        )
+        angle = format_quantity(snapshot.pivot_angle_rad, self._units.angle_unit)
+        effort = format_quantity(snapshot.landing_effort_nm, self._units.torque_unit)
+        error = format_quantity(snapshot.landing_error_m, self._units.length_unit)
         self.detail.setText(
-            f"{snapshot.detail}\nFlywheel {snapshot.flywheel_rpm:.0f} RPM · "
-            f"Pivot {snapshot.pivot_angle_deg:.1f}° · "
-            f"Landing effort {snapshot.landing_effort_nm:.4f} N m · "
-            f"Last settled position error {snapshot.landing_error_m * 1000:.2f} mm"
+            f"{snapshot.detail}\nFlywheel {flywheel} · Pivot {angle} · "
+            f"Landing effort {effort} · Last settled position error {error}"
         )
         origin = Transform(
             translation=snapshot.origin_world_m,
@@ -303,7 +321,12 @@ class LatticePlanningWorkspace(QWidget):
             self.moves.setRowCount(len(route))
             for row, action in enumerate(route):
                 for column, value in enumerate(
-                    (action.moving, str(action.destination), f"{action.turns * 90}°", action.reason)
+                    (
+                        action.moving,
+                        str(action.destination),
+                        format_quantity(action.turns * math.pi / 2, self._units.angle_unit),
+                        action.reason,
+                    )
                 ):
                     item = QTableWidgetItem(value)
                     item.setToolTip(
@@ -328,7 +351,11 @@ class LatticePlanningWorkspace(QWidget):
             self.decisions.setRowCount(len(snapshot.decisions))
             for row, decision in enumerate(snapshot.decisions):
                 for col, value in enumerate(
-                    (f"{decision.time_s:.3f}", decision.kind, decision.detail)
+                    (
+                        f"{from_si(decision.time_s, self._units.time_unit):.6g}",
+                        decision.kind,
+                        decision.detail,
+                    )
                 ):
                     self.decisions.setItem(row, col, QTableWidgetItem(value))
             self._decision_sequence = snapshot.decisions[-1].sequence

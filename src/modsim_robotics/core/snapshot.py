@@ -36,7 +36,12 @@ class BodyState:
 
 @dataclass(frozen=True, slots=True)
 class JointState:
-    """Measured state of one actuated or passive joint."""
+    """Measured scalar state using the mechanical joint's canonical units.
+
+    Rotating joints use rad, rad/s, and N*m; prismatic joints use m, m/s, and N.
+    Resolve their quantity kinds from joint metadata with
+    ``modsim_robotics.units.joint_quantity_kind`` before display conversion.
+    """
 
     position: float = 0.0
     velocity: float = 0.0

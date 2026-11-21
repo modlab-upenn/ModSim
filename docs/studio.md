@@ -24,12 +24,13 @@ cubes, swept-cell and pivot overlays, generated moves, and flywheel telemetry.
 
 ## Install and launch
 
-Create a repository-local virtual environment and install the current checkout
-in editable mode:
+Studio is included in the default `pip install modsim-robotics` installation.
+For development, create a repository-local virtual environment and install the
+current checkout in editable mode:
 
 ```bash
 python3 -m venv .venv
-.venv/bin/python -m pip install -e ".[studio,dev]"
+.venv/bin/python -m pip install -e ".[dev]"
 .venv/bin/modsim-robotics studio
 ```
 
@@ -72,7 +73,7 @@ equivalent way to supply the selector.
 Install MuJoCo too to select it in Studio's Runtime workspace:
 
 ```bash
-.venv/bin/python -m pip install -e ".[studio,mujoco,dev]"
+.venv/bin/python -m pip install -e ".[mujoco,dev]"
 ```
 
 You can also launch the standalone Runtime Inspector directly:
@@ -111,7 +112,7 @@ are not added to the Robot Pack schema.
    **Add topology view** to add a generic `module_topology_graph` recipe to
    the in-memory document. This is an explicit pack edit and needs saving.
    An explicitly selected recipe does not have to be marked as the default.
-3. Set **Duration (s)** and **Playback speed**. Enable **Native 3D viewer**
+3. Set **Duration** and **Playback speed**. Enable **Native 3D viewer**
    for the MuJoCo companion when wanted. **Advanced runtime settings** exposes
    timestep, UI publish rate, gravity, ground, initial height, connector
    selection, and the connector-pair approach/release controls. Demonstrations
@@ -306,6 +307,64 @@ connector custom metadata can be expanded when needed. The Validation tab
 shows the actual profile result and issue counts, with a read-only issue table
 when there are findings. Viewport layers and **Fit** are above the preview.
 Dock panels remain movable and can be restored through the **View** menu.
+
+### Display units across authoring and runtime
+
+Open **View → Display units** to choose the shared fifteen-quantity profile.
+Defaults include mm, degrees, seconds, kilograms, N, and N*m. Speed and
+acceleration can follow the length/angle choices or use explicit overrides;
+stiffness, damping, torque, and frequency have independent choices. The
+standalone Inspector has the same **Display units** chooser in its header.
+
+The profile covers module mass; joint position/velocity/effort limits;
+connector placements, orientation lists, acceptance and load limits,
+stiffness, hinge separation, cooldown, and break force. Runtime duration,
+timestep, initial height, gap, orientation, approach/retraction speed,
+release time, and UI update frequency use the same quantity metadata.
+Inspector measured poses, time labels, typed event details, diagnostics,
+tooltips, and planning axes follow the profile.
+
+Each input displays its current unit and accepts a compatible explicit suffix
+such as `50 mm`, `5 cm`, `90 deg`, or `250 ms`. Bare numbers use that field's
+displayed unit. Blank optional fields preserve their unspecified or automatic
+meaning. Invalid pending scalar/list text retains its old unit; a vector with
+an unfinished component keeps all three components and their old units.
+Changing display choices does not apply edits, mark a pack dirty, reposition a
+module, change camera geometry, or restart simulation.
+
+Controls retain canonical values separately from rounded display text. Runtime
+orientations remain scalar-first `(w, x, y, z)` quaternions. The readable RPY
+representation uses URDF fixed-axis `Rz(yaw) Ry(pitch) Rx(roll)`. Cubic-lattice
+configuration has typed pitch, tolerance, world-origin, and world-RPY controls;
+its quaternion persists unchanged until orientation is explicitly edited.
+**Edit raw builder configuration** retains direct canonical JSON access.
+Unknown builders and custom metadata are not recursively rescaled.
+
+Preferences save atomically in the selected ModSim home's `units.toml`.
+`--home` overrides `MODSIM_PATH`, legacy `MODSIM_HOME`, and `~/.modsim` for the
+profile and named-pack library. The profile is separate from pack-library
+`config.toml` and from every Robot Pack. Old length/angle-only profiles remain
+compatible; missing quantities take their defaults and omitted derived speed
+fields follow their base unit.
+
+```toml
+schema_version = 1
+
+[units]
+length = "mm"
+angle = "deg"
+time = "ms"
+angular_velocity = "rpm"
+```
+
+Reading absent preferences creates nothing. Choosing and saving preferences is
+an explicit local write. A malformed saved profile is reported and Studio can
+use session defaults without silently rewriting the file. The read-only YAML
+preview, raw JSON, machine-readable export, and saved Robot Packs remain
+canonical SI. Lattice coordinates remain **cells**, and raw diagnostic strings
+keep their documented units. See
+[Units and orientation](explanation/units-and-orientation.md) for conversion
+APIs, profile fields, and transport compatibility.
 
 Both applications and their file/creation dialogs use a shared window-sizing
 policy. New windows account for the completed layout and current font metrics,
@@ -524,7 +583,7 @@ other connector-type edit preserves both a declared docking policy and custom
 metadata.
 
 Selecting `hinge` as the physical constraint enables **Hinge axis (x, y, z)**
-and **Hinge anchor separation (m)**. The axis must be a unit vector and is
+and **Hinge anchor separation**. The axis must be a unit vector and is
 expressed in that connector's own frame, not the parent-link frame used by the
 connector's docking and approach axes. Anchor separation must be positive.
 Both compatible hinge types must define the same values. Selecting a different
@@ -684,6 +743,7 @@ OBJ or DAE.
 persistence, runtime, immutable inspector transport, and model-view APIs. It
 does not import Qt, PyVista, VTK, or PyQtGraph.
 
-`modsim_robotics_studio` is an optional client of those APIs. A future web frontend or
-C++ visualization application can consume the same Robot Pack and importer
-models without depending on Studio.
+`modsim_robotics_studio` is a desktop client of those APIs and is installed by
+default. Installation includes its GUI dependencies, while importing the core
+does not load them. A future web frontend or C++ visualization application can
+consume the same Robot Pack and importer models without using Studio.

@@ -434,7 +434,7 @@ def test_event_table_model_appends_and_resets_rows(application: QApplication) ->
     assert model.rowCount() == 2
     assert model.columnCount() == 4
     assert model.data(model.index(0, 0)) == "0"
-    assert model.data(model.index(0, 1)) == "0.1250"
+    assert model.data(model.index(0, 1)) == "0.125"
     assert model.data(model.index(1, 2)) == "DockCommitted"
     assert model.data(model.index(1, 3)) == second.detail
     assert (

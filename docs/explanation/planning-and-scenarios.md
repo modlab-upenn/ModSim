@@ -264,9 +264,19 @@ does not establish physical completion.
 `PlanningSnapshot` and `LatticePlanningSnapshot` carry decisions, action
 histories, plan revisions, and measured diagnostics. They remain separate from
 canonical events and generated live edges. Inspector frames require matching
-sample/time/topology stamps, and the current transport protocol is version 3.
-See [model views](model-views.md) and
-[Studio and Inspector](studio-and-inspector.md) for display ownership.
+sample/time/topology stamps, and the current transport protocol is version 4.
+Planning time is `planning_time_s`; M-Blocks flywheel speed and pivot angle are
+`flywheel_angular_velocity_rad_s` and `pivot_angle_rad`. Canonical models and
+serialization use these SI fields. Deprecated read-only Python properties can
+still expose milliseconds, RPM, and degrees for older readers. The protocol
+reader can normalize declared version-3 telemetry before strict validation;
+its version-4 writer emits canonical fields.
+
+Inspector text, axis ticks, tooltips, and action times use the selected display
+profile. Lattice coordinates stay in cells; paths and interaction geometry stay
+canonical. Free-form decision/detail strings retain their explicit units.
+See [units and orientation](units-and-orientation.md), [model views](model-views.md),
+and [Studio and Inspector](studio-and-inspector.md) for display ownership.
 
 Add a planner by defining immutable goals/results, keeping geometric search
 independent of adapters, and implementing an executor that owns session

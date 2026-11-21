@@ -96,7 +96,7 @@ They do not replace module, joint, or connector IDs in the semantic world.
 Likewise, a snapshot contains the world-frame measurements needed by core
 logic, rather than exposing an `MjModel`, renderer state, or a GUI object.
 
-## Selection and capabilities keep optional dependencies optional
+## Selection and capabilities keep simulator backends optional
 
 `backends/registry.py` stores `BackendEntry` records containing a name, summary,
 lazy loader, and installation hint. `create_backend()` resolves an explicit
@@ -109,6 +109,11 @@ Importing the core package does not import MuJoCo or Studio. Checking whether
 an optional backend is installed can invoke its loader, while normal named
 registration remains lazy. A new engine can register its factory without
 adding simulator imports to core modules.
+
+A plain `pip install modsim-robotics` includes Studio and the mock backend.
+Installing `modsim-robotics[mujoco]` adds the MuJoCo engine. Default installation
+contents and core import boundaries are separate contracts: installed GUI
+libraries are only loaded by clients that use them.
 
 Studio's **Runtime** workspace passes the **Backend** selection explicitly;
 its initial MuJoCo choice does not change the registry's mock fallback.

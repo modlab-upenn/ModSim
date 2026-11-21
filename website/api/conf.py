@@ -37,7 +37,14 @@ napoleon_use_param = True
 napoleon_use_rtype = True
 source_suffix = {".rst": "restructuredtext"}
 root_doc = "index"
-exclude_patterns = []
+# AutoAPI must keep parsed packages visible to generate their published child
+# modules. Their package overview pages are not part of the public scope, so
+# exclude only those exact index files from Sphinx's source discovery.
+exclude_patterns = [
+    "autoapi/modsim_robotics/" + path.removesuffix("/__init__.py") + "/index.rst"
+    for path in sorted(PARSED_MODULES - API_MODULES)
+    if path.endswith("/__init__.py")
+]
 
 # AutoAPI parses original Python source with Astroid rather than importing it.
 # AutoAPI's generated rst is relative to the staged source tree, which build.py

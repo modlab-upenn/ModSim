@@ -3,14 +3,20 @@
 
 from __future__ import annotations
 
+import math
+from collections.abc import Iterator
+from dataclasses import fields, replace
 from pathlib import Path
 
 import pytest
 
-from modsim_robotics.backends.base import BackendError
+from modsim_robotics.backends.base import BackendCapabilities, BackendError
+from modsim_robotics.core.transforms import Transform
 from modsim_robotics.model_views import CubicLatticeView
-from modsim_robotics.planning.mblocks import apply_pivot
+from modsim_robotics.planning.mblocks import LatticePivot, LatticeState, apply_pivot
 from modsim_robotics.robot_packs import RobotPackLoader
+from modsim_robotics.runtime import mblocks_online_planning
+from modsim_robotics.runtime.coordinated_pivot import CoordinatedPivotPlan
 from modsim_robotics.runtime.demos import RuntimeDemo
 from modsim_robotics.runtime.inspection_protocol import (
     RuntimeFrame,
@@ -18,12 +24,170 @@ from modsim_robotics.runtime.inspection_protocol import (
     encode_runtime_message,
 )
 from modsim_robotics.runtime.inspector_runner import RuntimeInspectorConfig, RuntimeInspectorRunner
-from modsim_robotics.runtime.mblocks_lattice import face_pairs, observe_lattice, tabletop_scene
+from modsim_robotics.runtime.mblocks_lattice import (
+    face_pairs,
+    make_pivot_plan,
+    observe_lattice,
+    tabletop_scene,
+)
 from modsim_robotics.runtime.mblocks_online_planning import OnlineLatticeScenario
+from modsim_robotics.runtime.momentum_pivot import PUBLISHED_FLYWHEEL_SPEED_CAP_RAD_S
 from modsim_robotics.runtime.reconfiguration import ReconfigurationPhase
 from modsim_robotics.runtime.session import RuntimeSession
 
 _PACK = Path(__file__).resolve().parents[1] / "examples/robot_packs/mblocks_3d"
+
+
+@pytest.fixture
+def planning_session(monkeypatch: pytest.MonkeyPatch) -> Iterator[RuntimeSession]:
+    """Exercise real pack/topology compilation without stepping a physics engine."""
+    session = RuntimeSession.create(RobotPackLoader().load(_PACK), tabletop_scene(), "mock")
+    capabilities = replace(session.adapter.capabilities(), supports_joint_commands=True)
+
+    def declared_dynamics(_self: object) -> BackendCapabilities:
+        return capabilities
+
+    monkeypatch.setattr(type(session.adapter), "capabilities", declared_dynamics)
+    try:
+        yield session
+    finally:
+        session.shutdown()
+
+
+def test_legacy_rpm_inputs_become_canonical_executor_fields(
+    planning_session: RuntimeSession,
+) -> None:
+    scenario = OnlineLatticeScenario.create(planning_session, quarter_rpm=12000.0, half_rpm=16000.0)
+    assert scenario.quarter_speed_rad_s == pytest.approx(12000 * math.tau / 60)
+    assert scenario.half_speed_rad_s == pytest.approx(16000 * math.tau / 60)
+    assert scenario.quarter_rpm == pytest.approx(12000.0)
+    assert scenario.half_rpm == pytest.approx(16000.0)
+    names = {field.name for field in fields(scenario)}
+    assert "quarter_rpm" not in names and "half_rpm" not in names
+    assert "quarter_speed_rad_s" in names and "half_speed_rad_s" in names
+    with pytest.raises(AttributeError):
+        object.__setattr__(scenario, "quarter_rpm", 1.0)
+
+
+def test_canonical_create_targets_keep_exact_values(planning_session: RuntimeSession) -> None:
+    scenario = OnlineLatticeScenario.create(
+        planning_session, quarter_speed_rad_s=1200.125, half_speed_rad_s=1600.25
+    )
+    assert scenario.quarter_speed_rad_s == 1200.125
+    assert scenario.half_speed_rad_s == 1600.25
+
+
+def test_canonical_and_legacy_pivot_inputs_compile_identical_plans(
+    planning_session: RuntimeSession,
+) -> None:
+    scenario = OnlineLatticeScenario.create(planning_session)
+    common = (
+        planning_session,
+        scenario.plan.initial,
+        scenario.plan.actions[0],
+        scenario.frame_transform,
+    )
+    legacy = make_pivot_plan(*common, quarter_rpm=12000.0, half_rpm=16000.0)
+    canonical = make_pivot_plan(
+        *common,
+        quarter_speed_rad_s=12000.0 * (math.tau / 60),
+        half_speed_rad_s=16000.0 * (math.tau / 60),
+    )
+    assert legacy == canonical
+    selected = 12000.0 if abs(scenario.plan.actions[0].turns) == 1 else 16000.0
+    assert canonical.actions[0].momentum.target_flywheel_speed_rad_s == pytest.approx(
+        selected * math.tau / 60
+    )
+
+
+@pytest.mark.parametrize("kind", ["quarter", "half"])
+def test_ambiguous_targets_rejected_before_initialization(
+    planning_session: RuntimeSession, kind: str
+) -> None:
+    with pytest.raises(ValueError, match="not both"):
+        if kind == "quarter":
+            OnlineLatticeScenario.create(
+                planning_session, quarter_rpm=12000.0, quarter_speed_rad_s=1200.0
+            )
+        else:
+            OnlineLatticeScenario.create(
+                planning_session, half_rpm=12000.0, half_speed_rad_s=1200.0
+            )
+    assert planning_session.world.connections == {}
+
+
+@pytest.mark.parametrize("value", [0.0, -1.0, math.nan, math.inf, True, 2100.0])
+def test_canonical_executor_targets_enforce_finite_positive_si_cap(
+    planning_session: RuntimeSession, value: float
+) -> None:
+    # Building the geometric plan is cheap and does not require dynamics.
+    from modsim_robotics.planning.mblocks import plan_reconfiguration
+    from modsim_robotics.runtime.mblocks_lattice import line_goal, starter_state
+
+    initial = starter_state()
+    plan = plan_reconfiguration(initial, line_goal(initial))
+    with pytest.raises(ValueError):
+        OnlineLatticeScenario(planning_session, plan, 0.0005, quarter_speed_rad_s=value)
+    accepted = OnlineLatticeScenario(
+        planning_session,
+        plan,
+        0.0005,
+        quarter_speed_rad_s=PUBLISHED_FLYWHEEL_SPEED_CAP_RAD_S,
+    )
+    assert accepted.quarter_speed_rad_s == PUBLISHED_FLYWHEEL_SPEED_CAP_RAD_S
+
+
+def test_pivot_compilation_rejects_ambiguous_or_out_of_range_speed(
+    planning_session: RuntimeSession,
+) -> None:
+    scenario = OnlineLatticeScenario.create(planning_session)
+    common = (
+        planning_session,
+        scenario.plan.initial,
+        scenario.plan.actions[0],
+        scenario.frame_transform,
+    )
+    with pytest.raises(ValueError, match="not both"):
+        make_pivot_plan(*common, quarter_rpm=12000, quarter_speed_rad_s=1200)
+    with pytest.raises(ValueError, match="positive"):
+        make_pivot_plan(*common, half_rpm=0)
+    with pytest.raises(ValueError, match="exceed"):
+        make_pivot_plan(*common, half_speed_rad_s=PUBLISHED_FLYWHEEL_SPEED_CAP_RAD_S + 1)
+
+
+def test_executor_compiles_with_si_targets_without_rpm_round_trip(
+    planning_session: RuntimeSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scenario = OnlineLatticeScenario.create(
+        planning_session, quarter_speed_rad_s=1200.125, half_speed_rad_s=1600.25
+    )
+    scenario._wait_since = -0.3
+    captured: dict[str, float] = {}
+
+    class CompilationReached(RuntimeError):
+        pass
+
+    def compile_si(
+        _session: RuntimeSession,
+        _state: LatticeState,
+        _action: LatticePivot,
+        _frame: Transform,
+        **kwargs: float,
+    ) -> CoordinatedPivotPlan:
+        captured.update(kwargs)
+        raise CompilationReached
+
+    def forbidden_rpm(_self: OnlineLatticeScenario) -> float:
+        raise AssertionError("Runtime execution read a presentation-only RPM property")
+
+    monkeypatch.setattr(mblocks_online_planning, "make_pivot_plan", compile_si)
+    monkeypatch.setattr(OnlineLatticeScenario, "quarter_rpm", property(forbidden_rpm))
+    monkeypatch.setattr(OnlineLatticeScenario, "half_rpm", property(forbidden_rpm))
+    with pytest.raises(CompilationReached):
+        scenario.step()
+    assert captured["quarter_speed_rad_s"] == 1200.125
+    assert captured["half_speed_rad_s"] == 1600.25
+    assert "quarter_rpm" not in captured and "half_rpm" not in captured
 
 
 def _runner(demo: RuntimeDemo = RuntimeDemo.MBLOCKS_ONLINE_LATTICE) -> RuntimeInspectorRunner:

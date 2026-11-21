@@ -17,7 +17,8 @@ from PySide6.QtWidgets import QApplication, QFileDialog, QPushButton, QWidget
 
 from modsim_robotics_studio import main_window
 from modsim_robotics_studio.appearance import DEFAULT_THEME, THEMES, ThemeManager, theme_manager
-from modsim_robotics_studio.chrome import ThemePicker, VectorEdit
+from modsim_robotics_studio.chrome import ThemePicker
+from modsim_robotics_studio.quantity_widgets import QuantityVectorEdit
 
 
 @pytest.fixture(scope="module")
@@ -116,8 +117,8 @@ def test_builder_theme_switch_keeps_pending_edits_selection_and_document(
     connector = module.connectors[0]
     selection = ("connector", connector.id, module.id)
     assert builder._select_tree_entity(selection)
-    position = builder.properties.findChildren(VectorEdit)[0]
-    position.fields[0].setText("0.037")
+    position = builder.properties.findChildren(QuantityVectorEdit)[0]
+    position.fields[0].setText("0.037 m")
     rendered = builder.viewport.render_count
     for identifier in THEMES:
         builder.header.theme_picker.setCurrentIndex(
@@ -126,7 +127,7 @@ def test_builder_theme_switch_keeps_pending_edits_selection_and_document(
         application.processEvents()
         assert builder.project is project
         assert builder._current_selection == selection
-        assert position.fields[0].text() == "0.037"
+        assert position.fields[0].text() == "0.037 m"
         assert builder.viewport.render_count == rendered
     apply_button = next(
         button

@@ -1,4 +1,4 @@
-"""Package-local production branding for the optional Studio applications."""
+"""Package-local production branding for the bundled Studio applications."""
 
 from __future__ import annotations
 

@@ -21,6 +21,8 @@ from pydantic import (
     model_validator,
 )
 
+from modsim_robotics.units import QuantityKind, to_si_vector
+
 SCHEMA_VERSION: Literal["0.1"] = "0.1"
 
 
@@ -184,6 +186,52 @@ class PoseSpec(StrictModel):
 
     xyz_m: Vector3 = (0.0, 0.0, 0.0)
     rpy_rad: Vector3 = (0.0, 0.0, 0.0)
+
+    @classmethod
+    def from_rpy(
+        cls,
+        xyz: tuple[float, float, float],
+        rpy: tuple[float, float, float],
+        *,
+        length_unit: str = "m",
+        angle_unit: str = "rad",
+    ) -> Self:
+        """Create an SI pose from position and fixed-axis roll/pitch/yaw inputs.
+
+        This authoring helper converts units once and retains the existing
+        Robot Pack 0.1 fields, ``xyz_m`` and ``rpy_rad``. Angles are not wrapped,
+        so an authored full turn is preserved in persistence. Runtime consumers
+        convert this description to a quaternion before applying rotations.
+
+        Args:
+            xyz: Translation in the parent frame, expressed in ``length_unit``.
+            rpy: Roll, pitch, and yaw about fixed X, Y, and Z axes in
+                ``angle_unit``. The convention is ``Rz(yaw) Ry(pitch) Rx(roll)``.
+            length_unit: Supported length unit, such as ``m``, ``cm``, or ``mm``.
+                Defaults to metres.
+            angle_unit: Supported angular unit, such as ``rad`` or ``deg``.
+                Defaults to radians.
+
+        Returns:
+            A pose containing only canonical ``xyz_m`` and ``rpy_rad`` values,
+            with the same parent-frame meaning as the input.
+
+        Raises:
+            UnitError: If an input is non-finite or its unit is unknown or
+                incompatible with the expected length or angle quantity.
+            ValidationError: If the converted values violate the pose schema.
+
+        Examples:
+            >>> pose = PoseSpec.from_rpy(
+            ...     (50, 0, 25), (0, 0, 90), length_unit="mm", angle_unit="deg"
+            ... )
+            >>> pose.xyz_m
+            (0.05, 0.0, 0.025)
+        """
+        return cls(
+            xyz_m=to_si_vector(xyz, length_unit, kind=QuantityKind.LENGTH),
+            rpy_rad=to_si_vector(rpy, angle_unit, kind=QuantityKind.ANGLE),
+        )
 
 
 class JointLimits(StrictModel):

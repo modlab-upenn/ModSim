@@ -14,6 +14,8 @@ jobs:
   checks:
     name: Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
     strategy:
       fail-fast: false
       matrix:
@@ -23,6 +25,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+
+      - name: Install headless desktop runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1
 
       - name: Install uv and Python
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
@@ -118,8 +125,8 @@ jobs:
           python-version: "3.12"
           enable-cache: true
 
-      - name: Install locked Studio environment
-        run: uv sync --locked --extra dev --extra studio --python "3.12"
+      - name: Install locked default desktop environment
+        run: uv sync --locked --extra dev --python "3.12"
 
       - name: Type check Studio
         run: uv run --no-sync pyright --project pyright-studio.json
@@ -132,9 +139,12 @@ jobs:
           tests/test_runtime_planning_widgets.py
           tests/test_mblocks_planning_widgets.py
           tests/test_runtime_worker.py
+          tests/test_runtime_brand_loading.py
           tests/test_window_sizing.py
           tests/test_studio_appearance.py
           tests/test_studio_viewport.py
+          tests/test_studio_runtime_launch.py
+          tests/test_studio_runtime_workspace.py
 
       - name: Launch Studio smoke test
         run: |
@@ -238,6 +248,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+
+      - name: Install headless desktop runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1
 
       - name: Install uv and Python
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0

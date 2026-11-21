@@ -4,6 +4,12 @@ ModSim owns modular-robot semantics; a backend owns physics. This document
 covers how backends are selected, what an adapter must provide, and how the two
 that ship today differ.
 
+The default `pip install modsim-robotics` installation includes Studio and the
+mock backend. Physics backends remain additional dependencies; install MuJoCo
+with `pip install "modsim-robotics[mujoco]"`. The Studio backend picker can list
+MuJoCo before it is installed; choose **Mock** for supported kinematic demos or
+add MuJoCo before starting a physics run.
+
 ## Selecting a backend
 
 In Studio, open the Robot Pack and switch to **Runtime**. The **Backend** field
@@ -73,9 +79,10 @@ register_backend(
 )
 ```
 
-Entries load lazily. Importing `modsim_robotics` never imports `mujoco`, which is what
-keeps the core dependency-light and what lets a core-only environment run the
-full test suite.
+Entries load lazily. Importing `modsim_robotics` does not import MuJoCo or Studio.
+The default distribution installs desktop dependencies, while core imports
+remain independent of GUI and simulator libraries. Non-physics tests
+and headless mock execution can run without the MuJoCo extra.
 
 ## The adapter contract
 

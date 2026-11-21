@@ -3,9 +3,10 @@ title: Local documentation development
 sidebar_label: Local development
 ---
 
-The documentation application reads Markdown files from `docs/`. Its configuration,
-navigation, and Node dependencies live in `website/`. You can edit and preview the
-documentation without running a simulator. Python documentation tools generate
+The combined website reads manual pages from `docs/` and the homepage from
+`website/src/pages/index.tsx`. Its configuration, navigation, browser demos,
+and Node dependencies live in `website/`. You can edit and preview the site
+without running a simulator. Python documentation tools generate
 the API reference and UML diagrams before the application starts or builds.
 
 ## Install the documentation dependencies
@@ -31,8 +32,10 @@ npm --prefix website ci
 `npm ci` installs `website/node_modules/` from `website/package-lock.json`. Run it
 after the lockfile changes or when setting up another checkout. Follow
 [Documentation generation](documentation-generation.md) to install the Python
-`docs` dependency group and Graphviz before starting the complete site. Studio
-and MuJoCo are not required for API extraction or diagram generation.
+`docs` dependency group and Graphviz before starting the complete site. Project
+sync also installs the default Studio dependencies. API extraction and diagram
+generation read Python source without importing Studio or MuJoCo or opening a GUI;
+the MuJoCo extra is only needed when running its physics backend.
 
 ## Start the live preview
 
@@ -42,7 +45,8 @@ Run this command from the repository root:
 npm --prefix website run docs:dev
 ```
 
-Open <http://localhost:3000/ModSim/docs/>. If port 3000 is occupied, select another
+Open <http://localhost:3000/ModSim/> for the homepage or
+<http://localhost:3000/ModSim/docs/> for the manual. If port 3000 is occupied, select another
 port explicitly and use the URL printed by the server:
 
 ```bash
@@ -58,6 +62,10 @@ Use `docs:uml` after changes to diagram inputs, or `docs:generate` for both.
 ## Edit a page and understand the configuration
 
 Open `docs/index.md`, change a sentence, and save it. Docusaurus reloads the page.
+Homepage content lives in `website/src/pages/index.tsx`, with its layout in
+`index.module.css`. The React/SVG demonstrations and recorded replay data live
+under `website/src/components/home/`; videos and their provenance are in
+`website/static/media/`. These share the manual's theme and navigation.
 Use ordinary `.md` files for prose; `.mdx` files will be available when a page needs
 React components. The `markdown.format: 'detect'` setting makes that distinction
 explicit.
@@ -114,12 +122,14 @@ Preview that built output with:
 npm --prefix website run docs:serve
 ```
 
-Open the printed URL with `/ModSim/docs/`, follow the sidebar links, and refresh a
+Open the printed URL with `/ModSim/`, visit the manual under `/ModSim/docs/`,
+follow the navigation links, and refresh a
 nested page. Stop the server with **Ctrl+C**. Unlike the live development server,
 this preview shows the last production build; rebuild after changing content.
 
-These build and serve commands operate locally. Publication will be a separate
-setup stage.
+These build and serve commands operate locally. The
+[GitHub Pages guide](github-pages.md) explains the build-only branch artifacts,
+isolated branch hosting, required repository settings, and explicit publication.
 
 ## Know which files to edit
 
@@ -130,6 +140,10 @@ setup stage.
 | `website/docusaurus.config.ts` | Content inclusion, routes, theme, and link checks |
 | `website/sidebars.ts` | Sidebar sections and ordering |
 | `website/src/` | Application components and styles |
+| `website/src/pages/index.tsx` | Project homepage |
+| `website/src/components/home/` | Browser demonstrations and recorded replay data |
+| `website/static/media/` | Existing project recordings and provenance |
+| `website/site-config.ts` | Production/preview origin and base-path validation |
 | `website/package.json` | Commands and direct dependencies |
 | `website/package-lock.json` | Exact dependency resolution for `npm ci` |
 | `website/api/` | AutoAPI and Markdown generation sources, build script, and configuration |

@@ -1,7 +1,7 @@
 """MuJoCo backend tests.
 
 Skipped entirely when the optional MuJoCo dependencies are not installed, so a
-core-only environment still runs a green suite.
+default installation without the MuJoCo backend still runs a green suite.
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""Internal branded loading widgets for the optional desktop applications."""
+"""Internal branded loading widgets for the bundled desktop applications."""
 
 from __future__ import annotations
 
@@ -203,6 +203,7 @@ class LoadingPanel(QWidget):
     def set_stage(self, message: str, detail: str = "") -> None:
         """Display the current operation without inventing percentage progress."""
         self.stage.setText(message)
+        self.stage.setVisible(bool(message))
         self.detail.setText(detail)
         self.detail.setVisible(bool(detail))
         self._layout_copy()

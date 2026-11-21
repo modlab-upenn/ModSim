@@ -6,6 +6,7 @@ import json
 import shlex
 import sys
 from collections.abc import Callable
+from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Annotated
 
@@ -25,6 +26,7 @@ from modsim_robotics.cli_options import (
     DOCK_EPILOG,
     RUN_EPILOG,
     VIEWS_EPILOG,
+    AngleUnitOpt,
     ApproachOpt,
     BackendOpt,
     ConnectorGapOpt,
@@ -40,6 +42,7 @@ from modsim_robotics.cli_options import (
     HeightOpt,
     HomeOpt,
     LatchOpt,
+    LengthUnitOpt,
     ModelViewOpt,
     ModuleTypeOpt,
     MovingConnectorOpt,
@@ -57,8 +60,10 @@ from modsim_robotics.cli_options import (
     RunSpacingOpt,
     ScenarioOptions,
     StepsOpt,
+    TimeUnitOpt,
     UndockAtOpt,
     UndockFlag,
+    UnitAwareCommand,
     ViewerOpt,
     ViewFlag,
     option_error,
@@ -101,6 +106,12 @@ from modsim_robotics.runtime.reconfiguration import (
     connector_pair_plan,
 )
 from modsim_robotics.runtime.session import RuntimeSession
+from modsim_robotics.unit_settings import (
+    UnitPreferencesError,
+    load_unit_preferences,
+    save_unit_preferences,
+)
+from modsim_robotics.units import QuantityKind, UnitError, UnitPreferences, get_units
 from modsim_robotics.user_data import (
     UserDataError,
     initialize_user_home,
@@ -121,6 +132,178 @@ pack_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(pack_app)
+units_app = typer.Typer(
+    name="units", help="Inspect or save local input/display unit preferences.", no_args_is_help=True
+)
+app.add_typer(units_app)
+
+
+def _display_preferences(
+    home: Path | None,
+    length: str | None,
+    angle: str | None,
+    time: str | None,
+    *,
+    read_saved: bool = True,
+) -> UnitPreferences:
+    """Resolve presentation choices without changing canonical numeric inputs."""
+    try:
+        preferences = load_unit_preferences(home) if read_saved else UnitPreferences()
+        changes = {
+            name: value
+            for name, value in (("length_unit", length), ("angle_unit", angle), ("time_unit", time))
+            if value is not None
+        }
+        return replace(preferences, **changes)
+    except (UnitError, UnitPreferencesError) as error:
+        option_error(str(error))
+
+
+def _render_unit_preferences(
+    preferences: UnitPreferences, output: OutputFormat, *, supported: bool = False
+) -> None:
+    if output is OutputFormat.JSON:
+        typer.echo(
+            json.dumps(
+                {
+                    "preferences": asdict(preferences),
+                    "effective": {kind.value: preferences.unit_for(kind) for kind in QuantityKind},
+                    **(
+                        {
+                            "supported": {
+                                kind.value: [unit.symbol for unit in get_units(kind)]
+                                for kind in QuantityKind
+                            }
+                        }
+                        if supported
+                        else {}
+                    ),
+                },
+                indent=2,
+            )
+        )
+        return
+    table = Table(title="Local display units (simulation and pack data remain SI)")
+    table.add_column("Quantity")
+    table.add_column("Display unit")
+    if supported:
+        table.add_column("Supported choices")
+    for kind in QuantityKind:
+        row = [kind.value.replace("_", " "), preferences.unit_for(kind)]
+        if supported:
+            row.append(", ".join(unit.symbol for unit in get_units(kind)))
+        table.add_row(*row)
+    Console().print(table)
+
+
+@units_app.command("show")
+def show_units_command(
+    home: HomeOpt = None,
+    output: OutputOpt = OutputFormat.TEXT,
+    supported: Annotated[
+        bool, typer.Option("--supported", help="Also list supported units for every quantity.")
+    ] = False,
+) -> None:
+    """Show local display choices without creating or changing any files.
+
+    Args:
+        home: ModSim data home, or the environment/default home when omitted.
+        output: Human-readable table or a JSON preference/effective-unit mapping.
+        supported: Include every supported unit choice for each quantity.
+
+    Raises:
+        typer.Exit: Preferences cannot be read or validated.
+    """
+    preferences = _display_preferences(home, None, None, None)
+    _render_unit_preferences(preferences, output, supported=supported)
+
+
+@units_app.command("set")
+def set_units_command(
+    home: HomeOpt = None,
+    length_unit: LengthUnitOpt = None,
+    angle_unit: AngleUnitOpt = None,
+    time_unit: TimeUnitOpt = None,
+    mass_unit: Annotated[str | None, typer.Option("--mass-unit")] = None,
+    force_unit: Annotated[str | None, typer.Option("--force-unit")] = None,
+    torque_unit: Annotated[str | None, typer.Option("--torque-unit")] = None,
+    inertia_unit: Annotated[str | None, typer.Option("--inertia-unit")] = None,
+    linear_velocity_unit: Annotated[
+        str | None,
+        typer.Option("--linear-velocity-unit", help="Unit override, or auto to follow length."),
+    ] = None,
+    angular_velocity_unit: Annotated[
+        str | None,
+        typer.Option("--angular-velocity-unit", help="Unit override, or auto to follow angles."),
+    ] = None,
+    linear_acceleration_unit: Annotated[
+        str | None,
+        typer.Option("--linear-acceleration-unit", help="Unit override, or auto to follow length."),
+    ] = None,
+    linear_stiffness_unit: Annotated[str | None, typer.Option("--linear-stiffness-unit")] = None,
+    angular_stiffness_unit: Annotated[str | None, typer.Option("--angular-stiffness-unit")] = None,
+    linear_damping_unit: Annotated[str | None, typer.Option("--linear-damping-unit")] = None,
+    angular_damping_unit: Annotated[str | None, typer.Option("--angular-damping-unit")] = None,
+    frequency_unit: Annotated[str | None, typer.Option("--frequency-unit")] = None,
+    reset: Annotated[bool, typer.Option("--reset", help="Start from default preferences.")] = False,
+    output: OutputOpt = OutputFormat.TEXT,
+) -> None:
+    """Save explicit local display choices while keeping Robot Packs untouched.
+
+    Args:
+        home: ModSim data home, or the environment/default home when omitted.
+        length_unit: Optional supported length display unit.
+        angle_unit: Optional supported angle display unit.
+        time_unit: Optional supported time display unit.
+        mass_unit: Optional supported mass display unit.
+        force_unit: Optional supported force display unit.
+        torque_unit: Optional supported torque display unit.
+        inertia_unit: Optional supported moment-of-inertia display unit.
+        linear_velocity_unit: Optional linear-speed override; auto restores derivation.
+        angular_velocity_unit: Optional angular-speed override; auto restores derivation.
+        linear_acceleration_unit: Optional acceleration override; auto restores derivation.
+        linear_stiffness_unit: Optional linear stiffness display unit.
+        angular_stiffness_unit: Optional rotational stiffness display unit.
+        linear_damping_unit: Optional linear damping display unit.
+        angular_damping_unit: Optional rotational damping display unit.
+        frequency_unit: Optional frequency display unit.
+        reset: Start from defaults rather than merging current preferences.
+        output: Human-readable table or JSON describing the resulting choices.
+
+    Raises:
+        typer.Exit: No change is requested, a unit is incompatible, or persistence fails.
+    """
+    choices = {
+        "length_unit": length_unit,
+        "angle_unit": angle_unit,
+        "time_unit": time_unit,
+        "mass_unit": mass_unit,
+        "force_unit": force_unit,
+        "torque_unit": torque_unit,
+        "inertia_unit": inertia_unit,
+        "linear_velocity_unit": linear_velocity_unit,
+        "angular_velocity_unit": angular_velocity_unit,
+        "linear_acceleration_unit": linear_acceleration_unit,
+        "linear_stiffness_unit": linear_stiffness_unit,
+        "angular_stiffness_unit": angular_stiffness_unit,
+        "linear_damping_unit": linear_damping_unit,
+        "angular_damping_unit": angular_damping_unit,
+        "frequency_unit": frequency_unit,
+    }
+    changes = {name: value for name, value in choices.items() if value is not None}
+    if not changes and not reset:
+        option_error("Choose a unit option or use --reset; no preferences were changed.")
+    try:
+        current = UnitPreferences() if reset else load_unit_preferences(home)
+        normalized: dict[str, str | None] = dict(changes)
+        for name in ("linear_velocity_unit", "angular_velocity_unit", "linear_acceleration_unit"):
+            if normalized.get(name) == "auto":
+                normalized[name] = None
+        preferences = replace(current, **normalized)
+        save_unit_preferences(preferences, home)
+    except (UnitError, UnitPreferencesError) as error:
+        option_error(str(error))
+    _render_unit_preferences(preferences, output)
 
 
 def _version_callback(value: bool) -> None:
@@ -211,11 +394,12 @@ def studio_command(
             None opens the welcome screen unless pack_override is supplied.
         pack_override: Alternative pack selector supplied with --pack. It cannot
             be combined with pack_path.
-        home: ModSim home used for named pack lookup. A blank launch does not
-            read or initialize its RobotPack library.
+        home: ModSim home used for display preferences and named pack lookup.
+            Display preferences also apply to blank launches and explicit pack
+            paths; a blank launch does not read or initialize its RobotPack library.
 
     Raises:
-        typer.Exit: After the application exits, or when selection or optional
+        typer.Exit: After the application exits, or when selection or missing
             Studio dependencies prevent startup.
     """
     resolved_pack = (
@@ -228,14 +412,14 @@ def studio_command(
     except ImportError as error:
         typer.echo(
             "ModSim Studio dependencies are not installed. "
-            "Install with: pip install 'modsim-robotics[studio]'",
+            "Install with: pip install modsim-robotics",
             err=True,
         )
         raise typer.Exit(code=2) from error
-    raise typer.Exit(code=studio_main(resolved_pack))
+    raise typer.Exit(code=studio_main(resolved_pack, home=home))
 
 
-@app.command("runtime")
+@app.command("runtime", cls=UnitAwareCommand)
 def runtime_command(
     pack_path: PackPathArg = None,
     demo: Annotated[
@@ -269,56 +453,13 @@ def runtime_command(
             help="Pair demos: module-local connector ID on the moving module.",
         ),
     ] = None,
-    connector_gap_m: Annotated[
-        float | None,
-        typer.Option(
-            "--connector-gap",
-            min=0.0,
-            help=(
-                "Staged separation between connector origins before approach. "
-                "Defaults to 0.02 m for demos that use pair staging."
-            ),
-        ),
-    ] = None,
-    orientation_rad: Annotated[
-        float,
-        typer.Option(
-            "--orientation",
-            help="Requested relative roll about the docking axis in radians.",
-        ),
-    ] = 0.0,
-    approach_m_s: Annotated[
-        float,
-        typer.Option("--approach", help="Staged approach speed toward each docking target."),
-    ] = 0.03,
-    retract_m_s: Annotated[
-        float | None,
-        typer.Option(
-            "--retract",
-            help="Speed away after release. Defaults to the approach speed.",
-        ),
-    ] = None,
-    duration_s: Annotated[
-        float | None,
-        typer.Option(
-            "--duration",
-            help="Simulated seconds to display. The selected demo supplies a default.",
-        ),
-    ] = None,
-    dt_s: Annotated[
-        float | None,
-        typer.Option(
-            "--dt",
-            help="Physics step size in seconds. The selected demo supplies a safe default.",
-        ),
-    ] = None,
-    undock_at_s: Annotated[
-        float | None,
-        typer.Option(
-            "--undock-at",
-            help="Optionally release the connection at this simulated time.",
-        ),
-    ] = None,
+    connector_gap_m: ConnectorGapOpt = None,
+    orientation_rad: OrientationOpt = 0.0,
+    approach_m_s: ApproachOpt = 0.03,
+    retract_m_s: RetractOpt = None,
+    duration_s: DurationOpt = None,
+    dt_s: RunDtOpt = None,
+    undock_at_s: UndockAtOpt = None,
     backend: Annotated[
         str,
         typer.Option("--backend", "-b", help="Physics backend used by the runtime owner."),
@@ -337,10 +478,7 @@ def runtime_command(
             help=("Add a ground plane at z = 0. Defaults on for physical demos and off otherwise."),
         ),
     ] = None,
-    height_m: Annotated[
-        float | None,
-        typer.Option("--height", help="Lift demo modules above the scene origin."),
-    ] = None,
+    height_m: HeightOpt = None,
     view_id: Annotated[
         str | None,
         typer.Option(
@@ -348,10 +486,7 @@ def runtime_command(
             help="Runtime model-view recipe ID. Defaults to the pack's default recipe.",
         ),
     ] = None,
-    publish_hz: Annotated[
-        float,
-        typer.Option("--publish-hz", help="Maximum inspector refresh frequency."),
-    ] = 20.0,
+    publish_hz: PublishHzOpt = 20.0,
     real_time_factor: RealTimeFactorOpt = 1.0,
     viewer: Annotated[
         bool | None,
@@ -365,8 +500,16 @@ def runtime_command(
     ] = None,
     pack_override: PackPathOpt = None,
     home: HomeOpt = None,
+    length_unit: LengthUnitOpt = None,
+    angle_unit: AngleUnitOpt = None,
+    time_unit: TimeUnitOpt = None,
 ) -> None:
     """Open live semantic and optional native 3D views of a runtime demo."""
+    preferences = (
+        _display_preferences(home, length_unit, angle_unit, time_unit)
+        if any(value is not None for value in (length_unit, angle_unit, time_unit))
+        else None
+    )
     resolved_pack = _resolve_cli_pack(pack_path, pack_override, home)
     physical_pair = demo is RuntimeDemo.SMORES_DIFF_DRIVE_DOCK_UNDOCK
     physical_reconfiguration = demo in {
@@ -785,7 +928,7 @@ def runtime_command(
     except ImportError as error:
         typer.echo(
             "Runtime Inspector dependencies are not installed. Install with: "
-            "pip install 'modsim-robotics[studio,mujoco]'",
+            "pip install modsim-robotics",
             err=True,
         )
         raise typer.Exit(code=2) from error
@@ -816,7 +959,7 @@ def runtime_command(
         viewer_enabled=viewer_enabled,
         real_time_factor=real_time_factor,
     )
-    raise typer.Exit(code=runtime_main(config))
+    raise typer.Exit(code=runtime_main(config, home=home, preferences=preferences))
 
 
 @pack_app.command("list")
@@ -987,7 +1130,7 @@ def initialize_pack_command(
         typer.echo(f"Warning: {warning}")
 
 
-@app.command("views", epilog=VIEWS_EPILOG)
+@app.command("views", epilog=VIEWS_EPILOG, cls=UnitAwareCommand)
 def model_views_command(
     pack_path: PackPathArg = None,
     view_id: Annotated[
@@ -1009,22 +1152,21 @@ def model_views_command(
         int,
         typer.Option("--count", "-n", min=1, help="Number of module nodes to instantiate."),
     ] = 3,
-    spacing_m: Annotated[
-        float,
-        typer.Option(
-            "--spacing",
-            "-s",
-            help="Distance in metres between initial module origins.",
-        ),
-    ] = 0.1,
+    spacing_m: DockSpacingOpt = 0.1,
     output: Annotated[
         OutputFormat,
         typer.Option("--output", "-o", case_sensitive=False, help="Output format."),
     ] = OutputFormat.TEXT,
     pack_override: PackPathOpt = None,
     home: HomeOpt = None,
+    length_unit: LengthUnitOpt = None,
+    angle_unit: AngleUnitOpt = None,
+    time_unit: TimeUnitOpt = None,
 ) -> None:
     """List model-view recipes or generate one physics-free runtime snapshot."""
+    preferences = _display_preferences(
+        home, length_unit, angle_unit, time_unit, read_saved=output is not OutputFormat.JSON
+    )
     resolved_pack = _resolve_cli_pack(pack_path, pack_override, home)
     try:
         loaded = RobotPackLoader().load(resolved_pack)
@@ -1079,10 +1221,10 @@ def model_views_command(
     except ModelViewError as error:
         typer.echo(f"Could not build model-view recipe '{recipe.id}': {error}", err=True)
         raise typer.Exit(code=2) from error
-    _render_generated_model_view(generated, output=output)
+    _render_generated_model_view(generated, output=output, units=preferences)
 
 
-@app.command("dock", epilog=DOCK_EPILOG)
+@app.command("dock", epilog=DOCK_EPILOG, cls=UnitAwareCommand)
 def dock_command(
     pack_path: PackPathArg = None,
     module_type: ModuleTypeOpt = None,
@@ -1097,6 +1239,9 @@ def dock_command(
     output: OutputOpt = OutputFormat.TEXT,
     pack_override: PackPathOpt = None,
     home: HomeOpt = None,
+    length_unit: LengthUnitOpt = None,
+    angle_unit: AngleUnitOpt = None,
+    time_unit: TimeUnitOpt = None,
 ) -> None:
     """Run a docking session to check whether a Robot Pack's connectors mate.
 
@@ -1105,8 +1250,12 @@ def dock_command(
     it runs no physics, so it answers "is this pack authored such that these
     connectors would latch?" rather than "will this robot work?".
     """
+    preferences = _display_preferences(
+        home, length_unit, angle_unit, time_unit, read_saved=output is not OutputFormat.JSON
+    )
     resolved_pack = _resolve_cli_pack(pack_path, pack_override, home)
     _require_positive_finite(dt_s, "--dt")
+    _require_finite(spacing_m, "--spacing")
 
     try:
         loaded = RobotPackLoader().load(resolved_pack)
@@ -1175,11 +1324,11 @@ def dock_command(
         events.extend(session.step(dt_s))
 
     _render_docking_session(
-        session, tuple(events), output=output, latch=latch, backend=backend_name
+        session, tuple(events), output=output, latch=latch, backend=backend_name, units=preferences
     )
 
 
-@app.command("run", epilog=RUN_EPILOG)
+@app.command("run", epilog=RUN_EPILOG, cls=UnitAwareCommand)
 def run_command(
     pack_path: PackPathArg = None,
     gui: GuiFlag = False,
@@ -1208,6 +1357,9 @@ def run_command(
     output: OutputOpt = OutputFormat.TEXT,
     pack_override: PackPathOpt = None,
     home: HomeOpt = None,
+    length_unit: LengthUnitOpt = None,
+    angle_unit: AngleUnitOpt = None,
+    time_unit: TimeUnitOpt = None,
 ) -> None:
     """Run a scripted docking scenario, headless or in the Runtime Inspector.
 
@@ -1253,8 +1405,14 @@ def run_command(
             publish_hz=publish_hz,
             real_time_factor=real_time_factor,
             viewer=viewer,
+            length_unit=length_unit,
+            angle_unit=angle_unit,
+            time_unit=time_unit,
         )
         return
+    preferences = _display_preferences(
+        home, length_unit, angle_unit, time_unit, read_saved=output is not OutputFormat.JSON
+    )
     resolved_pack = _resolve_cli_pack(pack_path, pack_override, home)
     options = ScenarioOptions(
         pack_path=resolved_pack,
@@ -1281,6 +1439,7 @@ def run_command(
         view=view,
         gui=gui,
         output=output,
+        display_units=preferences,
     )
     resolved_duration_s = options.validate()
     _run_headless_scenario(options, resolved_duration_s)
@@ -1529,5 +1688,10 @@ def _run_headless_scenario(options: ScenarioOptions, resolved_duration_s: float)
     else:
         events = _run_headless(session, resolved_duration_s, stepper)
     _render_docking_session(
-        session, events, output=options.output, latch=True, backend=backend_name
+        session,
+        events,
+        output=options.output,
+        latch=True,
+        backend=backend_name,
+        units=options.display_units,
     )

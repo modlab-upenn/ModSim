@@ -2,16 +2,25 @@ import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 import prismTheme from './src/theme/prism';
 import apiTableScroll from './src/rehype/apiTableScroll';
+import {robotPackLibraryUrl, siteLocation} from './site-config';
+
+const location = siteLocation(process.env);
 
 const config: Config = {
-  title: 'ModSim documentation',
+  title: 'ModSim',
   tagline: 'Modular robotics simulation',
   favicon: 'favicon.svg',
-  url: 'https://modlab-upenn.github.io',
-  baseUrl: '/ModSim/',
+  url: location.url,
+  baseUrl: location.baseUrl,
   trailingSlash: true,
   onBrokenLinks: 'throw',
+  onBrokenAnchors: 'throw',
+  onDuplicateRoutes: 'throw',
+  clientModules: [require.resolve('./src/clientModules/canonicalPaths.ts')],
   staticDirectories: ['static', '.generated/site'],
+  customFields: {
+    robotPackLibraryUrl: robotPackLibraryUrl(process.env),
+  },
   i18n: {
     defaultLocale: 'en',
     locales: ['en'],
@@ -49,6 +58,7 @@ const config: Config = {
             'contribute/local-development.md',
             'contribute/documentation-generation.md',
             'contribute/release-process.md',
+            'contribute/github-pages.md',
           ],
           exclude: ['archive/**', 'technical_report/**'],
         },
@@ -68,7 +78,6 @@ const config: Config = {
       respectPrefersColorScheme: true,
     },
     navbar: {
-      title: 'Docs',
       logo: {
         alt: 'ModSim outlined wordmark',
         src: 'img/modsim-logo-light.svg',
@@ -77,9 +86,9 @@ const config: Config = {
         height: 32,
       },
       items: [
+        {to: '/', label: 'Home', position: 'left', activeBaseRegex: `^${location.baseUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`},
         {type: 'docSidebar', sidebarId: 'documentation', label: 'Documentation', position: 'left'},
         {type: 'doc', docId: 'contribute/index', label: 'Contribute', position: 'left'},
-        {href: 'https://modlab-upenn.github.io/ModSim/', label: 'Project website', position: 'right'},
         {
           href: 'https://github.com/modlab-upenn/ModSim',
           label: 'GitHub',
@@ -87,6 +96,28 @@ const config: Config = {
           className: 'modsim-github-link',
         },
       ],
+    },
+    footer: {
+      style: 'light',
+      links: [
+        {title: 'Start building', items: [
+          {label: 'Installation', to: '/docs/installation/'},
+          {label: 'Getting started', to: '/docs/tutorials/getting-started/'},
+          {label: 'Create a RobotPack', to: '/docs/how-to/'},
+        ]},
+        {title: 'Understand ModSim', items: [
+          {label: 'Architecture and UML', to: '/docs/explanation/'},
+          {label: 'Python API', to: '/docs/reference/python-api/'},
+          {label: 'Contribute', to: '/docs/contribute/'},
+        ]},
+        {title: 'Project', items: [
+          {label: 'Source on GitHub', href: 'https://github.com/modlab-upenn/ModSim'},
+          {label: 'RobotPack Library', to: '/#robotpack-library'},
+          {label: 'Experiments', to: '/#experiments'},
+          {label: 'Citation', to: '/#citation'},
+        ]},
+      ],
+      copyright: 'ModSim · ModLab, University of Pennsylvania · MIT License',
     },
     prism: {
       theme: prismTheme,

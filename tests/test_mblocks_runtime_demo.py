@@ -35,6 +35,7 @@ from modsim_robotics.runtime.momentum_pivot import (
     MomentumPivotConfig,
 )
 from modsim_robotics.runtime.session import RuntimeSession
+from modsim_robotics.units import UnitPreferences
 
 _ROOT = Path(__file__).resolve().parents[1]
 _PACK_PATH = _ROOT / "examples" / "robot_packs" / "mblocks_3d"
@@ -487,7 +488,13 @@ def test_cli_supplies_safe_mblocks_kinematic_defaults(
     captured: dict[str, object] = {}
     runtime_app = ModuleType("modsim_robotics_studio.runtime_app")
 
-    def fake_main(config: object) -> int:
+    def fake_main(
+        config: RuntimeInspectorConfig,
+        *,
+        home: str | Path | None = None,
+        preferences: UnitPreferences | None = None,
+    ) -> int:
+        assert home is None and preferences is None
         captured["config"] = config
         return 0
 
@@ -525,7 +532,13 @@ def test_cli_supplies_safe_twelve_module_line_defaults(
     captured: dict[str, object] = {}
     runtime_app = ModuleType("modsim_robotics_studio.runtime_app")
 
-    def fake_main(config: object) -> int:
+    def fake_main(
+        config: RuntimeInspectorConfig,
+        *,
+        home: str | Path | None = None,
+        preferences: UnitPreferences | None = None,
+    ) -> int:
+        assert home is None and preferences is None
         captured["config"] = config
         return 0
 
@@ -564,7 +577,13 @@ def test_cli_supplies_safe_mblocks_momentum_pivot_defaults(
     captured: dict[str, object] = {}
     runtime_app = ModuleType("modsim_robotics_studio.runtime_app")
 
-    def fake_main(config: object) -> int:
+    def fake_main(
+        config: RuntimeInspectorConfig,
+        *,
+        home: str | Path | None = None,
+        preferences: UnitPreferences | None = None,
+    ) -> int:
+        assert home is None and preferences is None
         captured["config"] = config
         return 0
 
@@ -613,7 +632,13 @@ def test_cli_supplies_safe_physical_mblocks_defaults(
     captured: dict[str, object] = {}
     runtime_app = ModuleType("modsim_robotics_studio.runtime_app")
 
-    def fake_main(config: object) -> int:
+    def fake_main(
+        config: RuntimeInspectorConfig,
+        *,
+        home: str | Path | None = None,
+        preferences: UnitPreferences | None = None,
+    ) -> int:
+        assert home is None and preferences is None
         captured["config"] = config
         return 0
 

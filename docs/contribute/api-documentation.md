@@ -8,6 +8,17 @@ annotations and docstrings in the same change as the behavior they describe.
 AutoAPI extracts that source and Docusaurus renders the reference; contributors
 and reviewers remain responsible for its accuracy.
 
+Physical APIs accept and return documented canonical SI values. New authoring
+inputs can accept explicit units through `modsim_robotics.units`, then normalize
+once. Declare quantity metadata for public physical fields in the closed
+`units/fields.py` registry; resolve joint scalars by joint type and control mode.
+Do not infer quantities from arbitrary metadata, introduce UI preference state
+into stepping code, or silently reinterpret an `_m`/`_rad` parameter. UI controls
+and formatters consume the same definitions, while raw JSON and transport remain
+canonical. Quaternion ordering and the declared coordinate frame belong in the
+contract separately from angle units.
+
+
 ## Document the public contract
 
 Use Google-style docstrings. Sphinx Napoleon converts their sections for the
@@ -61,11 +72,11 @@ change, and update the static dependency closure where needed. Extend the
 generator when a new namespace needs support. Review its generated module page
 and links before requesting review.
 
-The current reference covers eleven modules around runtime sessions, canonical
-state, scene composition, backend contracts, and RobotPack schemas. It is a
-first slice of the repository. The documentation requirements also apply to
-public APIs outside that slice; reviewers check them until those modules are
-included in automated coverage.
+The current reference covers runtime sessions, canonical state, scene composition,
+backend contracts, RobotPack schemas, units and conversion, and local unit
+preferences. It is a first slice of the repository. The documentation
+requirements also apply to public APIs outside that slice; reviewers check
+them until those modules are included in automated coverage.
 
 ## Understand the checks and review
 

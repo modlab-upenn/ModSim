@@ -28,9 +28,11 @@ from PySide6.QtWidgets import (
 from modsim_robotics.planning.mblocks.models import LatticePlanningSnapshot
 from modsim_robotics.planning.models import PlanningSnapshot, Pose2
 from modsim_robotics.runtime.inspection import RuntimeInspectorFrame
+from modsim_robotics.units import QuantityKind, UnitPreferences, format_quantity, from_si
 from modsim_robotics_studio.appearance import theme_manager
 from modsim_robotics_studio.chrome import LegendWidget
 from modsim_robotics_studio.runtime_events import TableRowSizing
+from modsim_robotics_studio.runtime_quantity import QuantityAxis
 from modsim_robotics_studio.visual_colors import action_colors, visual_colors
 
 
@@ -43,6 +45,7 @@ class ActionHistory(QWidget):
 
     def __init__(self) -> None:
         super().__init__()
+        self._units = UnitPreferences()
         self._snapshot: PlanningSnapshot | LatticePlanningSnapshot | None = None
         self._bars: dict[tuple[str, int], QGraphicsRectItem] = {}
         self._row_count = 0
@@ -60,12 +63,13 @@ class ActionHistory(QWidget):
         layout.addLayout(controls)
         self.legend = LegendWidget("History legend and controls")
         layout.addWidget(self.legend)
-        self.plot: Any = pg.PlotWidget()
+        self.time_axis = QuantityAxis("bottom", kind=QuantityKind.TIME, unit=self._units.time_unit)
+        self.plot: Any = pg.PlotWidget(axisItems={"bottom": self.time_axis})
         self.plot.setAspectLocked(False)
         self.plot.setMouseEnabled(x=True, y=False)
         self.plot.setMenuEnabled(False)
         self.plot.enableAutoRange(x=False, y=False)
-        self.plot.setLabel("bottom", "Simulation time", units="s")
+        self.plot.setLabel("bottom", "Simulation time", units=self._units.time_unit)
         self.plot.getAxis("bottom").enableAutoSIPrefix(False)
         self.plot.getAxis("left").setWidth(None)
         self.plot.getViewBox().invertY(True)
@@ -85,6 +89,22 @@ class ActionHistory(QWidget):
         self.plot.getViewBox().sigRangeChangedManually.connect(self._manual_range)
         self.follow.toggled.connect(self._follow_changed)
         self.fit_button.clicked.connect(self.fit_all)
+
+    def set_units(self, preferences: UnitPreferences) -> None:
+        """Convert time tick/hover text while retaining canonical bar geometry."""
+        self._units = preferences
+        self.time_axis.set_unit(preferences.time_unit)
+        self.plot.setLabel("bottom", "Simulation time", units=preferences.time_unit)
+        if self._snapshot is not None:
+            # A preference switch must not re-fit a user's manually chosen range.
+            follow = self.follow.isChecked()
+            blocked = self.follow.blockSignals(True)
+            self.follow.setChecked(False)
+            try:
+                self.set_snapshot(self._snapshot)
+            finally:
+                self.follow.setChecked(follow)
+                self.follow.blockSignals(blocked)
 
     def _manual_range(self, _axes: object) -> None:
         self.follow.setChecked(False)
@@ -120,7 +140,9 @@ class ActionHistory(QWidget):
         for axis in ("left", "bottom"):
             self.plot.getAxis(axis).setTextPen(theme.muted)
             self.plot.getAxis(axis).setPen(theme.border)
-        self.plot.setLabel("bottom", "Simulation time", units="s", color=theme.muted)
+        self.plot.setLabel(
+            "bottom", "Simulation time", units=self._units.time_unit, color=theme.muted
+        )
         self.legend.set_entries(
             tuple(("■", colors[p], p.capitalize()) for p in colors),
             "Each row is one module's docking action. Segment width is elapsed simulation time, "
@@ -166,8 +188,10 @@ class ActionHistory(QWidget):
                 bar.setBrush(QColor(colors[phase]))
                 bar.setPen(QPen(Qt.PenStyle.NoPen))
                 bar.setToolTip(
-                    f"{label}\n{phase.replace('_', ' ').capitalize()}: {start_s:.2f}-{end:.2f} s\n"
-                    f"Duration: {end - start_s:.2f} s"
+                    f"{label}\n{phase.replace('_', ' ').capitalize()}: "
+                    f"{format_quantity(start_s, self._units.time_unit)} - "
+                    f"{format_quantity(end, self._units.time_unit)}\n"
+                    f"Duration: {format_quantity(end - start_s, self._units.time_unit)}"
                 )
         for key in self._bars.keys() - live_keys:
             self.plot.removeItem(self._bars.pop(key))
@@ -184,6 +208,7 @@ class PlanningWorkspace(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._units = UnitPreferences()
         self._appearance = theme_manager()
         self._frame: RuntimeInspectorFrame | None = None
         self._trails: dict[str, list[tuple[float, float]]] = {}
@@ -199,10 +224,12 @@ class PlanningWorkspace(QWidget):
         controls.addWidget(self.summary, 1)
         controls.addWidget(self.paths)
         controls.addWidget(self.goals)
-        self.workspace: Any = pg.PlotWidget()
+        self.x_axis = QuantityAxis("bottom", kind=QuantityKind.LENGTH, unit=self._units.length_unit)
+        self.y_axis = QuantityAxis("left", kind=QuantityKind.LENGTH, unit=self._units.length_unit)
+        self.workspace: Any = pg.PlotWidget(axisItems={"bottom": self.x_axis, "left": self.y_axis})
         self.workspace.setAspectLocked(True)
-        self.workspace.setLabel("bottom", "World X", units="m")
-        self.workspace.setLabel("left", "World Y", units="m")
+        self.workspace.setLabel("bottom", "World X", units=self._units.length_unit)
+        self.workspace.setLabel("left", "World Y", units=self._units.length_unit)
         self.workspace.showGrid(x=True, y=True, alpha=0.15)
         self.action_table = QTableWidget(0, 4)
         self._action_row_sizing = TableRowSizing(self.action_table)
@@ -250,6 +277,19 @@ class PlanningWorkspace(QWidget):
         self.goals.toggled.connect(self._redraw)
         self._appearance.changed.connect(self._redraw)
 
+    def set_units(self, preferences: UnitPreferences) -> None:
+        """Refresh physical readouts and axes without rescaling measured data."""
+        self._units = preferences
+        self.x_axis.set_unit(preferences.length_unit)
+        self.y_axis.set_unit(preferences.length_unit)
+        self.workspace.setLabel("bottom", "World X", units=preferences.length_unit)
+        self.workspace.setLabel("left", "World Y", units=preferences.length_unit)
+        self.history.set_units(preferences)
+        self.decisions.setHorizontalHeaderLabels(
+            [f"Time ({preferences.time_unit})", "Decision", "Explanation"]
+        )
+        self._redraw()
+
     def set_frame(self, frame: RuntimeInspectorFrame) -> None:
         if frame.planning is None:
             return
@@ -277,12 +317,15 @@ class PlanningWorkspace(QWidget):
                 plot.getAxis(name).setTextPen(theme.muted)
                 plot.getAxis(name).setPen(theme.border)
             plot.clear()
-        self.workspace.setLabel("bottom", "World X", units="m", color=theme.muted)
-        self.workspace.setLabel("left", "World Y", units="m", color=theme.muted)
+        self.workspace.setLabel(
+            "bottom", "World X", units=self._units.length_unit, color=theme.muted
+        )
+        self.workspace.setLabel("left", "World Y", units=self._units.length_unit, color=theme.muted)
         self.summary.setText(
             f"Plan {snapshot.plan_revision} · Root {snapshot.plan.root_module} · "
-            f"{snapshot.replans} replans · Peak planning {snapshot.planning_ms:.1f} ms · "
-            f"Travel {snapshot.path_length_m:.2f} m"
+            f"{snapshot.replans} replans · "
+            f"Peak planning {format_quantity(snapshot.planning_time_s, self._units.time_unit)} · "
+            f"Travel {format_quantity(snapshot.path_length_m, self._units.length_unit)}"
         )
         colors = phase_colors()
         overlay = visual_colors(theme.id)
@@ -369,7 +412,11 @@ class PlanningWorkspace(QWidget):
         self.decisions.setRowCount(len(decisions))
         for row, decision in enumerate(decisions):
             for column, text in enumerate(
-                (f"{decision.time_s:.2f}", decision.kind, decision.detail)
+                (
+                    f"{from_si(decision.time_s, self._units.time_unit):.6g}",
+                    decision.kind,
+                    decision.detail,
+                )
             ):
                 self.decisions.setItem(row, column, QTableWidgetItem(text))
         if follow_tail:
@@ -415,17 +462,20 @@ class PlanningWorkspace(QWidget):
             position = (
                 "—"
                 if observation.position_error_m is None
-                else f"{observation.position_error_m * 1000:.1f} mm"
+                else format_quantity(observation.position_error_m, self._units.length_unit)
             )
             angle = (
                 "—"
                 if observation.orientation_error_rad is None
-                else f"{math.degrees(observation.orientation_error_rad):.1f}°"
+                else format_quantity(observation.orientation_error_rad, self._units.angle_unit)
             )
             velocity = (
                 "—"
                 if observation.relative_velocity_m_s is None
-                else f"{observation.relative_velocity_m_s:.3f} m/s"
+                else format_quantity(
+                    observation.relative_velocity_m_s,
+                    self._units.unit_for(QuantityKind.LINEAR_VELOCITY),
+                )
             )
             self.detail.setText(
                 f"{action.moving}/{action.moving_face} → {action.parent}/{action.parent_face}\n"

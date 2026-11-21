@@ -2,7 +2,7 @@
 
 /* ModSim brand asset release 5.0: Light / Glacier & Steel and Midnight.
    Source: src/modsim_robotics_studio/assets/branding/{light,midnight}/theme/colors.json.
-   This file has no Docusaurus selectors and can also style the future homepage. */
+   Shared by the homepage, browser demonstrations, and documentation. */
 :root {
   color-scheme: light;
   --modsim-bg: #e8f3fa;

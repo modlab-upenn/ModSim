@@ -7,7 +7,7 @@ default.
 
 Every entry loads its adapter lazily, preserving the boundary documented in
 ``docs/backends.md``: importing ``modsim_robotics`` never imports ``mujoco``,
-VTK, or any other optional engine dependency.
+VTK, or other engine and desktop modules when only core APIs are imported.
 """
 
 from __future__ import annotations

@@ -15,6 +15,9 @@ docking, undocking, and reconfiguration with a backend-neutral runtime and
 
 ## Getting started
 
+Install with `pip install modsim-robotics`; Studio and the mock backend are
+included. Add MuJoCo physics with `pip install "modsim-robotics[mujoco]"`.
+
 ModSim requires **Python 3.11+**. Follow
 [Installation](https://github.com/modlab-upenn/ModSim/blob/refactor/docs/how-to/installation.md)
 to set up Studio and the bundled Generic Cube, then complete
@@ -44,6 +47,8 @@ Contributions to the repository and documentation are
 welcome. Read [Contribute](https://github.com/modlab-upenn/ModSim/blob/refactor/docs/contribute/index.md)
 and [Development setup](https://github.com/modlab-upenn/ModSim/blob/refactor/docs/contribute/development-setup.md)
 for the workflow, required checks, and pull request process.
+The [website and Pages guide](https://github.com/modlab-upenn/ModSim/blob/refactor/docs/contribute/github-pages.md)
+explains local website review and isolated branch previews before publication.
 
 ## License
 

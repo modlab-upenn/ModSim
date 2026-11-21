@@ -36,6 +36,7 @@ from modsim_robotics.runtime import (
 from modsim_robotics.runtime.inspector_runner import validate_runtime_inspector_config
 from modsim_robotics.runtime.momentum_pivot import MAX_MOMENTUM_TIMESTEP_S
 from modsim_robotics.runtime.session import RuntimeSession
+from modsim_robotics.units import UnitPreferences
 
 _ROOT = Path(__file__).resolve().parents[1]
 _PACK_PATH = _ROOT / "examples" / "robot_packs" / "mblocks_3d"
@@ -232,7 +233,13 @@ def test_cli_supplies_staircase_defaults(
     captured: dict[str, object] = {}
     runtime_app = ModuleType("modsim_robotics_studio.runtime_app")
 
-    def fake_main(config: object) -> int:
+    def fake_main(
+        config: RuntimeInspectorConfig,
+        *,
+        home: str | Path | None = None,
+        preferences: UnitPreferences | None = None,
+    ) -> int:
+        assert home is None and preferences is None
         captured["config"] = config
         return 0
 

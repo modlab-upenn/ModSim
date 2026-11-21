@@ -5,8 +5,8 @@ sidebar_label: Source map
 
 Use this map to locate a responsibility after reading the
 [architecture overview](index.md). It inventories **every Python file under
-`src/` in this documentation revision**: 117 files across the core package
-(79), MuJoCo adapter (7), and Studio (31), grouped by their owning subsystem. The
+`src/` in this documentation revision**: 127 files across the core package
+(85), MuJoCo adapter (7), and Studio (35), grouped by their owning subsystem. The
 architecture chapters explain how those files cooperate; the
 [API reference](../reference/python-api.mdx) describes individual public objects
 in the currently published API slice.
@@ -17,6 +17,7 @@ in the currently published API slice.
 | --- | --- |
 | How does a library name become a RobotPack? | `user_data.resolve_robot_pack`, then `RobotPackLoader.load`. |
 | Where is a Studio edit held before Save? | `StudioProject` and its replacement methods, then `MainWindow._apply_project_change`. |
+| How do millimeters and degrees become canonical poses? | `units`, `PoseSpec.from_rpy`, `Transform.from_rpy`, and Studio's quantity controls. |
 | How does importing URDF create semantic files? | `URDFImporter.load`, `DraftPackBuilder.build`, and `RobotPackWriter`. |
 | How do I launch a simulation from Studio? | `RuntimeWorkspace`, `validate_runtime_launch`, then the embedded `RuntimeInspectorWindow`. |
 | Why does F7 pass while a runtime launch is blocked? | Generic `RobotPackValidator` profiles, then the application-specific checks in `runtime_launch.py`. |
@@ -54,6 +55,23 @@ Entry points translate user selections into shared services. They do not impleme
 | `cli_options.py` | Shared CLI option definitions and scenario argument validation. | `OutputFormat`<br/>`ScenarioOptions` |
 | `cli_render.py` | Rich/JSON rendering helpers for the ModSim CLI. | `render_model_view_catalog`<br/>`render_generated_model_view`<br/>`render_docking_session` |
 | `user_data.py` | Explicit initialization of per-user ModSim data and the bundled starter pack. | `UserDataError`<br/>`InstalledRobotPack`<br/>`SetupResult` |
+| `unit_settings.py` | Side-effect-free display-preference reads and explicit atomic writes in the selected data home. | `load_unit_preferences`<br/>`save_unit_preferences` |
+
+## Units and authoring conversions
+
+`src/modsim_robotics/units/`
+
+This dependency-free boundary maps explicit input and display choices onto SI
+numbers. It does not change geometry scale or coordinate frames. See
+[Units and orientation](units-and-orientation.md).
+
+| File | Responsibility | Useful entry points |
+| --- | --- | --- |
+| `__init__.py` | Public conversion and preference exports. | Package exports |
+| `definitions.py` | Semantic quantity kinds, immutable unit scales, aliases, and compatibility. | `QuantityKind`<br/>`UnitDefinition`<br/>`get_unit` |
+| `conversion.py` | Finite scalar/vector conversion, quantity parsing, and display formatting. | `to_si`<br/>`from_si`<br/>`parse_quantity`<br/>`format_quantity` |
+| `fields.py` | Closed physical-field metadata and scalar joint type/mode resolution. | `quantity_for_field`<br/>`joint_quantity_kind`<br/>`joint_value_to_si` |
+| `preferences.py` | Validated fifteen-quantity profile with derived speed/acceleration units. | `UnitPreferences` |
 
 ## RobotPack schema, validation, and persistence
 
@@ -99,7 +117,7 @@ State, stable IDs, scenes, observations, and events are shared across all client
 | `scene.py` | Multi-module scene composition. | `SceneError`<br/>`ModulePlacement`<br/>`SceneSpec` |
 | `snapshot.py` | The read-only state contract a backend returns to ModSim each step. | `BodyState`<br/>`JointState`<br/>`BackendStateSnapshot` |
 | `state.py` | Canonical modular-robot world state. | `WorldState`<br/>`WorldStateRevision` |
-| `transforms.py` | Rigid-body transforms for the ModSim core. | `Transform`<br/>`quat_from_rpy`<br/>`quat_rotate` |
+| `transforms.py` | Rigid-body transforms and fixed-axis RPY authoring/display conversions. | `Transform`<br/>`quat_from_rpy`<br/>`quat_to_rpy`<br/>`quat_rotate` |
 | `validation.py` | Small reusable validators for finite numeric configuration values. | `require_finite`<br/>`require_finite_nonnegative`<br/>`require_finite_positive` |
 
 ## Connector semantics
@@ -264,9 +282,11 @@ still belongs to its worker or process controller, independently of loading UI.
 | `appearance.py` | Application-wide Studio colors and local user appearance preferences. | `StudioTheme`<br/>`ThemeManager` |
 | `chrome.py` | Shared native Studio header, theme picker, and compact property widgets. | `ThemePicker`<br/>`StudioHeader`<br/>`VectorEdit` |
 | `icons.py` | Theme-matched packaged toolbar glyphs, in-memory color selection, and small fallback glyphs for search, joints, and files. | `studio_icon` |
-| `launcher.py` | Dependency-friendly launcher for the optional ``modsim-robotics-studio`` command. | `cli` |
+| `display_units_dialog.py` | Shared physical-quantity preference chooser for Studio and the standalone Inspector. | `show_display_units_dialog` |
+| `launcher.py` | Dependency-friendly launcher for the included ``modsim-robotics-studio`` command. | `cli` |
 | `main_window.py` | Studio shell, Robot Pack authoring, workspace switching, and guarded persistence during runtime execution. | `MainWindow` |
 | `project.py` | GUI-independent document model for ModSim Studio. | `StudioProject` |
+| `quantity_widgets.py` | Unit-aware scalar, optional, vector, and list editors retaining canonical values and unfinished drafts. | `QuantityEdit`<br/>`OptionalQuantityEdit`<br/>`QuantityVectorEdit`<br/>`QuantityListEdit` |
 | `runtime_app.py` | Process entry point for the standalone ModSim Runtime Inspector. | `main` |
 | `runtime_events.py` | Qt event-table widgets for immutable runtime event rows. | `RuntimeEventTableModel`<br/>`RuntimeEventLogWidget` |
 | `runtime_graph.py` | PyQtGraph renderer for immutable runtime graph presentations. | `TopologyGraphWidget` |
@@ -276,12 +296,14 @@ still belongs to its worker or process controller, independently of loading UI.
 | `runtime_mblocks_planning.py` | Retained planner graphics for the one-plane M-Blocks demonstration. | `LatticePlanningWorkspace` |
 | `runtime_planning.py` | Planar workspace, intent overlays, and execution history from immutable frames. | `ActionHistory`<br/>`PlanningWorkspace` |
 | `runtime_presenter.py` | Qt-free presentation state for the Studio Runtime Inspector. | `RuntimePresentationError`<br/>`RuntimeEventSequenceError`<br/>`GraphSelection` |
+| `runtime_quantity.py` | Unit-aware runtime controls with canonical values and display-only physical plot axes. | `UnitSpinBox`<br/>`QuantityAxis` |
 | `runtime_process.py` | Execution controllers shared by standalone and embedded Runtime Inspectors. | `RuntimeViewerLaunchError`<br/>`RuntimeInspectorThreadController`<br/>`RuntimeInspectorProcessController` |
 | `runtime_window.py` | Reusable standalone or embedded Inspector, retained results, and playback/lifecycle signals. | `RuntimeInspectorWindow` |
 | `runtime_worker.py` | Background execution for the Studio Runtime Inspector. | `RuntimeInspectorWorker` |
 | `runtime_workspace.py` | Runtime launch form, readiness display, saved-pack handoff, and one embedded Inspector's lifetime. | `RuntimeWorkspace` |
 | `session_logging.py` | Per-launch file logging for ModSim Studio. | `resolve_session_log_path`<br/>`configure_session_logging`<br/>`shutdown_session_logging` |
 | `user_errors.py` | Readable user and diagnostic formatting for Studio input failures. | `IdentifierInputError` |
+| `unit_preferences.py` | Application-owned display choices and change notification, scoped to the selected ModSim home. | `UnitManager`<br/>`units_manager` |
 | `viewport.py` | Embedded PyVistaQt viewport for imported URDF and Robot Pack overlays. | `RobotViewport` |
 | `visual_colors.py` | Categorical visualization colors, independent of Qt and application accents. | `CategoryColors` |
 

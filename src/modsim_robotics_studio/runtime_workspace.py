@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
@@ -32,14 +31,18 @@ from modsim_robotics.backends.registry import available_backends
 from modsim_robotics.robot_packs import RobotPackLoader, ValidationReport
 from modsim_robotics.runtime import RuntimeInspectorConfig
 from modsim_robotics.runtime.demos import RuntimeDemo
+from modsim_robotics.units import QuantityKind, UnitError
 from modsim_robotics_studio.chrome import DetailsSection, property_group
 from modsim_robotics_studio.project import StudioProject
+from modsim_robotics_studio.quantity_widgets import OptionalQuantityEdit
 from modsim_robotics_studio.runtime_launch import (
     add_default_topology_view,
     runtime_config_defaults,
     runtime_recipes,
     validate_runtime_launch,
 )
+from modsim_robotics_studio.runtime_quantity import QuantitySpinBox
+from modsim_robotics_studio.unit_preferences import UnitManager, units_manager
 
 if TYPE_CHECKING:
     from modsim_robotics_studio.runtime_window import RuntimeInspectorWindow
@@ -67,15 +70,12 @@ def _number(name: str, minimum: float, maximum: float, decimals: int = 3) -> QDo
     return field
 
 
-def _optional_number(field: QLineEdit, name: str) -> float | None:
-    text = field.text().strip()
-    if not text:
-        return None
+def _optional_number(field: OptionalQuantityEdit, name: str) -> float | None:
     try:
-        return float(text)
-    except ValueError as error:
+        return field.value_si()
+    except UnitError as error:
         raise ValueError(
-            f"{name} must be a number, or left empty for automatic settings"
+            f"{name} must be a number with a compatible unit, or left empty for automatic settings"
         ) from error
 
 
@@ -86,6 +86,7 @@ class RuntimeWorkspace(QWidget):
         project_provider: Return the current in-memory authoring project.
         save_project: Save that project transactionally and report success.
         parent: Studio widget owning this workspace.
+        units: Shared display preferences for Studio's selected ModSim home.
 
     Signals report explicit recipe edits and execution lifetime to the Studio
     shell. The runtime always loads the saved pack; edited authoring objects
@@ -100,8 +101,11 @@ class RuntimeWorkspace(QWidget):
         project_provider: Callable[[], StudioProject | None],
         save_project: Callable[[], bool],
         parent: QWidget | None = None,
+        *,
+        units: UnitManager | None = None,
     ) -> None:
         super().__init__(parent)
+        self._units = units or units_manager()
         self._project_provider = project_provider
         self._save_project = save_project
         self._pack_root: Path | None = None
@@ -130,6 +134,11 @@ class RuntimeWorkspace(QWidget):
         guidance.setWordWrap(True)
         guidance.setObjectName("Muted")
         setup_layout.addWidget(guidance)
+        self.units_notice = QLabel()
+        self.units_notice.setWordWrap(True)
+        self.units_notice.setObjectName("Muted")
+        self.units_notice.hide()
+        setup_layout.addWidget(self.units_notice)
 
         self.settings = QWidget()
         settings_layout = QVBoxLayout(self.settings)
@@ -157,9 +166,9 @@ class RuntimeWorkspace(QWidget):
         form.addRow("Missing a model view?", self.add_view_button)
         self.viewer = QCheckBox("Open MuJoCo's native 3D companion")
         form.addRow("Native 3D viewer", self.viewer)
-        self.duration = _number("Duration (s)", 0.001, 1_000_000)
+        self.duration = self._quantity("Duration", QuantityKind.TIME, 0.001, 1_000_000)
         self.duration.setSingleStep(1)
-        form.addRow("Duration (s)", self.duration)
+        form.addRow("Duration", self.duration)
         self.speed = _number("Playback speed", 0.001, 1000)
         self.speed.setSingleStep(0.25)
         form.addRow("Playback speed", self.speed)
@@ -168,36 +177,35 @@ class RuntimeWorkspace(QWidget):
         advanced_form = QFormLayout(advanced)
         advanced_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         advanced_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        self.timestep = _number("Timestep (s)", 0.000001, 1, 6)
-        advanced_form.addRow("Timestep (s)", self.timestep)
-        self.publish_hz = _number("UI updates (Hz)", 0.1, 1000, 1)
-        advanced_form.addRow("UI updates (Hz)", self.publish_hz)
+        self.timestep = self._quantity("Timestep", QuantityKind.TIME, 0.000001, 1)
+        advanced_form.addRow("Timestep", self.timestep)
+        self.publish_hz = self._quantity("UI update rate", QuantityKind.FREQUENCY, 0.1, 1000)
+        advanced_form.addRow("UI update rate", self.publish_hz)
         self.gravity = QCheckBox("Enable gravity")
         advanced_form.addRow("Gravity", self.gravity)
         self.ground = QCheckBox("Add ground plane")
         advanced_form.addRow("Ground", self.ground)
-        self.initial_height = _number("Initial height (m)", -1000, 1000, 6)
-        advanced_form.addRow("Initial height (m)", self.initial_height)
+        self.initial_height = self._quantity("Initial height", QuantityKind.LENGTH, -1000, 1000)
+        advanced_form.addRow("Initial height", self.initial_height)
         self.fixed_connector = _choice("Fixed connector")
         self.moving_connector = _choice("Moving connector")
         advanced_form.addRow("Fixed connector", self.fixed_connector)
         advanced_form.addRow("Moving connector", self.moving_connector)
-        self.gap = QLineEdit()
-        self.gap.setPlaceholderText("Automatic")
-        self.gap.setAccessibleName("Connector gap (m)")
-        advanced_form.addRow("Connector gap (m)", self.gap)
-        self.orientation = _number("Orientation (rad)", -1000, 1000, 6)
-        advanced_form.addRow("Orientation (rad)", self.orientation)
-        self.approach = _number("Approach speed (m/s)", 0.000001, 1000, 6)
-        advanced_form.addRow("Approach speed (m/s)", self.approach)
-        self.undock_at = QLineEdit()
-        self.undock_at.setPlaceholderText("Automatic")
-        self.undock_at.setAccessibleName("Undock at (s)")
-        advanced_form.addRow("Undock at (s)", self.undock_at)
-        self.retract = QLineEdit()
-        self.retract.setPlaceholderText("Automatic")
-        self.retract.setAccessibleName("Retraction speed (m/s)")
-        advanced_form.addRow("Retraction speed (m/s)", self.retract)
+        self.gap = self._optional_quantity("Connector gap", QuantityKind.LENGTH)
+        self.gap.setPlaceholderText(f"Automatic ({self.gap.unit})")
+        advanced_form.addRow("Connector gap", self.gap)
+        self.orientation = self._quantity("Orientation", QuantityKind.ANGLE, -1000, 1000)
+        advanced_form.addRow("Orientation", self.orientation)
+        self.approach = self._quantity(
+            "Approach speed", QuantityKind.LINEAR_VELOCITY, 0.000001, 1000
+        )
+        advanced_form.addRow("Approach speed", self.approach)
+        self.undock_at = self._optional_quantity("Undock at", QuantityKind.TIME)
+        self.undock_at.setPlaceholderText(f"Automatic ({self.undock_at.unit})")
+        advanced_form.addRow("Undock at", self.undock_at)
+        self.retract = self._optional_quantity("Retraction speed", QuantityKind.LINEAR_VELOCITY)
+        self.retract.setPlaceholderText(f"Automatic ({self.retract.unit})")
+        advanced_form.addRow("Retraction speed", self.retract)
         self.advanced = DetailsSection("Advanced runtime settings", advanced)
         settings_layout.addWidget(self.advanced)
         defaults = QPushButton("Reset demonstration settings")
@@ -278,7 +286,49 @@ class RuntimeWorkspace(QWidget):
             check.toggled.connect(self._invalidate_readiness)
         for field in (self.gap, self.undock_at, self.retract):
             field.textChanged.connect(self._invalidate_readiness)
+        self._units.changed.connect(self._refresh_units)
         self.refresh_project()
+
+    def _quantity(
+        self, name: str, kind: QuantityKind, minimum: float, maximum: float
+    ) -> QuantitySpinBox:
+        field = QuantitySpinBox(kind=kind, unit=self._units.preferences.unit_for(kind))
+        field.setAccessibleName(name)
+        field.setRange(minimum, maximum)
+        field.setSingleStep(0.01)
+        return field
+
+    def _optional_quantity(self, name: str, kind: QuantityKind) -> OptionalQuantityEdit:
+        field = OptionalQuantityEdit(None, kind=kind, unit=self._units.preferences.unit_for(kind))
+        field.setAccessibleName(name)
+        return field
+
+    def _refresh_units(self) -> None:
+        preserved = False
+        for field in (
+            self.duration,
+            self.timestep,
+            self.publish_hz,
+            self.initial_height,
+            self.orientation,
+            self.approach,
+            self.gap,
+            self.undock_at,
+            self.retract,
+        ):
+            try:
+                if not field.set_unit(self._units.preferences.unit_for(field.kind)):
+                    preserved = True
+            except UnitError:
+                preserved = True
+                field.setToolTip(f"This input retains its previous unit: {field.unit}.")
+            if isinstance(field, OptionalQuantityEdit):
+                field.setPlaceholderText(f"Automatic ({field.unit})")
+        self.units_notice.setText(
+            "Unfinished inputs retain their previous units. "
+            "Correct them before changing their display units again."
+        )
+        self.units_notice.setVisible(preserved)
 
     @property
     def is_running(self) -> bool:
@@ -382,7 +432,7 @@ class RuntimeWorkspace(QWidget):
             (self.undock_at, config.undock_at_s),
             (self.retract, config.retract_m_s),
         ):
-            field.setText("" if value is None else f"{value:g}")
+            field.set_value_si(value)
         self.fixed_connector.setCurrentIndex(0)
         self.moving_connector.setCurrentIndex(0)
         if config.view_id is not None:
@@ -414,19 +464,19 @@ class RuntimeWorkspace(QWidget):
             backend=self.backend.currentData(),
             module_type=self.module_type.currentData(),
             view_id=self.model_view.currentData(),
-            duration_s=self.duration.value(),
+            duration_s=self.duration.value_si(),
             real_time_factor=self.speed.value(),
-            dt_s=self.timestep.value(),
-            publish_hz=self.publish_hz.value(),
+            dt_s=self.timestep.value_si(),
+            publish_hz=self.publish_hz.value_si(),
             viewer_enabled=self.viewer.isChecked(),
             gravity=self.gravity.isChecked(),
             ground=self.ground.isChecked(),
-            height_m=self.initial_height.value(),
+            height_m=self.initial_height.value_si(),
             fixed_connector=self.fixed_connector.currentData(),
             moving_connector=self.moving_connector.currentData(),
             connector_gap_m=_optional_number(self.gap, "Connector gap"),
-            orientation_rad=self.orientation.value(),
-            approach_m_s=self.approach.value(),
+            orientation_rad=self.orientation.value_si(),
+            approach_m_s=self.approach.value_si(),
             undock_at_s=_optional_number(self.undock_at, "Undock time"),
             retract_m_s=_optional_number(self.retract, "Retraction speed"),
         )
@@ -537,7 +587,7 @@ class RuntimeWorkspace(QWidget):
 
             self._discard_inspector()
             self.inspector = RuntimeInspectorWindow(
-                config, self.live_page, embedded=True, auto_start=False
+                config, self.live_page, embedded=True, auto_start=False, units=self._units
             )
             self.inspector.execution_finished.connect(self._execution_finished)
             self.inspector.execution_failed.connect(self._execution_failed)

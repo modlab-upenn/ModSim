@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import replace
 from pathlib import Path
@@ -18,7 +19,7 @@ from PySide6.QtWidgets import QApplication
 
 from modsim_robotics.core.ids import ModuleInstanceId
 from modsim_robotics.core.scene import ModulePlacement, SceneSpec
-from modsim_robotics.core.transforms import Transform
+from modsim_robotics.core.transforms import Transform, quat_from_rpy
 from modsim_robotics.model_views import ModelViewFactory
 from modsim_robotics.planning import plan_assembly
 from modsim_robotics.planning.models import ActionInterval, ActionObservation, PlanningSnapshot
@@ -28,9 +29,11 @@ from modsim_robotics.runtime import RuntimeSession
 from modsim_robotics.runtime.inspection import RuntimeInspectorFrame, build_runtime_inspector_frame
 from modsim_robotics.runtime.inspector_runner import RuntimeInspectorConfig, resolve_runtime_recipe
 from modsim_robotics.runtime.reconfiguration import ReconfigurationPhase, ReconfigurationStatus
+from modsim_robotics.units import UnitPreferences
 from modsim_robotics_studio.appearance import THEMES, theme_manager
 from modsim_robotics_studio.runtime_planning import PlanningWorkspace
 from modsim_robotics_studio.runtime_window import RuntimeInspectorWindow
+from modsim_robotics_studio.unit_preferences import UnitManager
 
 
 @pytest.fixture
@@ -121,6 +124,77 @@ def test_planner_workspace_displays_goal_actions_timeline_and_theme(
     finally:
         manager.set_theme(original, persist=False)
         widget.close()
+
+
+def test_selected_plot_units_survive_frames_and_theme_refreshes(
+    planning_frame: RuntimeInspectorFrame,
+) -> None:
+    existing = QApplication.instance()
+    app = existing if isinstance(existing, QApplication) else QApplication([])
+    widget = PlanningWorkspace()
+    manager = theme_manager()
+    original = manager.theme.id
+    try:
+        widget.set_frame(planning_frame)
+        widget.set_units(UnitPreferences("cm", "rad", time_unit="ms"))
+        widget.history.follow.setChecked(False)
+        widget.workspace.setRange(xRange=(-1.0, 1.0), yRange=(-1.0, 1.0), padding=0)
+        widget.history.plot.setXRange(1.0, 3.0, padding=0)
+        world_bounds = widget.workspace.viewRange()
+        history_bounds = widget.history.plot.viewRange()
+        for theme in THEMES:
+            manager.set_theme(theme, persist=False)
+            widget.set_frame(planning_frame)
+            assert widget.workspace.getAxis("bottom").labelUnits == "cm"
+            assert widget.workspace.getAxis("left").labelUnits == "cm"
+            assert widget.history.plot.getAxis("bottom").labelUnits == "ms"
+            assert widget.workspace.getAxis("bottom").tickStrings([0.1], 1.0, 0.1) == ["10"]
+            assert widget.workspace.viewRange() == world_bounds
+            assert widget.history.plot.viewRange() == history_bounds
+            assert "ms" in next(iter(widget.history._bars.values())).toolTip()
+        app.processEvents()
+    finally:
+        manager.set_theme(original, persist=False)
+        widget.close()
+
+
+def test_inspector_reads_quaternion_as_rpy_without_mutating_measured_pose(
+    planning_frame: RuntimeInspectorFrame, tmp_path: Path
+) -> None:
+    existing = QApplication.instance()
+    app = existing if isinstance(existing, QApplication) else QApplication([])
+    manager = UnitManager(app, home=tmp_path, preferences=UnitPreferences())
+    node = planning_frame.view.nodes[0]
+    changed = node.model_copy(
+        update={
+            "world_position_m": (0.05, 0.0, 0.025),
+            "world_orientation_wxyz": quat_from_rpy((0.0, 0.0, math.pi / 2)),
+        }
+    )
+    frame = planning_frame.model_copy(
+        update={
+            "view": planning_frame.view.model_copy(
+                update={"nodes": (changed, *planning_frame.view.nodes[1:])}
+            )
+        }
+    )
+    before = frame.model_dump()
+    window = RuntimeInspectorWindow(
+        RuntimeInspectorConfig(pack_path=tmp_path, backend="mock"), auto_start=False, units=manager
+    )
+    try:
+        window._receive_frame(frame)
+        window._flush_pending_frames()
+        window._select_entity("node", node.id)
+        assert "world XYZ (50, 0, 25) mm" in window.pose_label.text()
+        assert "RPY (0, 0, 90) deg" in window.pose_label.text()
+        manager.set_preferences(UnitPreferences("cm", "rad"), persist=False)
+        assert "world XYZ (5, 0, 2.5) cm" in window.pose_label.text()
+        assert "1.5708) rad" in window.pose_label.text()
+        assert frame.model_dump() == before
+    finally:
+        window.close()
+        manager.deleteLater()
 
 
 def test_planner_headers_and_history_axis_fit_long_labels_and_large_fonts(

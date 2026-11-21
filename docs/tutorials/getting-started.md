@@ -20,8 +20,8 @@ Inspector. This tutorial launches Studio once and uses its graphical controls.
 
 ## Prerequisites
 
-Complete [Installation](../how-to/installation.md), including the Studio
-dependencies and `modsim-robotics setup`. Keep that Python environment active.
+Complete [Installation](../how-to/installation.md) and `modsim-robotics setup`.
+Studio is included in the default installation. Keep that Python environment active.
 You can add MuJoCo when you reach the simulation step below.
 
 ## Explore and simulate Generic Cube

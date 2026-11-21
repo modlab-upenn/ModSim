@@ -7,7 +7,6 @@ import {loadSiteConfig} from '@docusaurus/core/lib/server/config.js';
 import serveHandler from 'serve-handler';
 
 const siteDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const buildDir = resolve(siteDir, 'build');
 
 async function fileInfo(filename) {
   try {
@@ -28,14 +27,16 @@ async function main() {
     options: {
       host: {type: 'string', default: '127.0.0.1'},
       port: {type: 'string', default: '3000'},
+      dir: {type: 'string', default: 'build'},
       help: {type: 'boolean', short: 'h', default: false},
     },
   });
   if (values.help) {
-    console.log('Usage: npm run docs:serve -- [--host 127.0.0.1] [--port 3000]');
+    console.log('Usage: npm run docs:serve -- [--host 127.0.0.1] [--port 3000] [--dir build]');
     return;
   }
   const port = Number(values.port);
+  const buildDir = resolve(siteDir, values.dir);
   if (!/^\d+$/.test(values.port) || !Number.isInteger(port) || port > 65535) {
     throw new Error('--port must be an integer between 0 and 65535.');
   }

@@ -202,7 +202,7 @@ def test_protocol_pause_state_requires_a_strict_boolean(kind: str) -> None:
     malformed = (
         RUNTIME_PROTOCOL_PREFIX.encode()
         + json.dumps(
-            {"protocol_version": 3, "kind": kind, "paused": 1},
+            {"protocol_version": 4, "kind": kind, "paused": 1},
             separators=(",", ":"),
         ).encode()
         + b"\n"

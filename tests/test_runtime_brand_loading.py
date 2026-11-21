@@ -209,7 +209,7 @@ def test_loading_reveals_workspace_after_first_presented_frame(
         assert progress.isHidden()
         assert all(state.endswith(": complete") for state in _step_states(window))
         assert tuple(row.sequence for row in window.events.model.events) == (0, 1)
-        assert window.source_label.text() == "generic_cube@0.1.0 | t=1.000 s | sample=1"
+        assert window.source_label.text() == "generic_cube@0.1.0 | t=1 s | sample=1"
         worker.running = False
         worker.finished.emit()
         assert window.workspace_stack.currentWidget() is window.workspace_tabs
@@ -490,7 +490,7 @@ def test_startup_failure_closes_visible_splash_and_restores_exception_hook(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    def fail_window(_config: RuntimeInspectorConfig) -> None:
+    def fail_window(_config: RuntimeInspectorConfig, **_kwargs: object) -> None:
         assert any(
             widget.objectName() == "ModSimStartupSplash" and widget.isVisible()
             for widget in application.topLevelWidgets()

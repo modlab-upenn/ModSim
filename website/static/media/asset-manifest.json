@@ -1,0 +1,62 @@
+{
+  "source_repository": "https://github.com/modlab-upenn/ModSim",
+  "source_ref_at_migration": "origin/gh-pages",
+  "source_commit": "c5193755e991f6b89e7af1408970df866f79f217",
+  "copy_policy": "Verbatim copies from the existing website; original filenames and public media URLs are preserved.",
+  "assets": [
+    {
+      "file": "inspector_lattice.mp4",
+      "description": "Runtime Inspector cubic-lattice view",
+      "note": "Recorded application view; original playback rate.",
+      "source_path": "media/inspector_lattice.mp4",
+      "source_blob": "3f5d4787f5aca09ded0243708c463cf38a4e36bf",
+      "size_bytes": 1063831,
+      "sha256": "3ed75bc3262486abd6cbe5d435370a4b904ee681936a3996b944faac95921ebd"
+    },
+    {
+      "file": "inspector_mblocks_planning.mp4",
+      "description": "Runtime Inspector M-Blocks planning view",
+      "note": "Recorded application view; original playback rate.",
+      "source_path": "media/inspector_mblocks_planning.mp4",
+      "source_blob": "583abf73be0e3c72b89c58e501d76ca97a055d25",
+      "size_bytes": 1579833,
+      "sha256": "002d70748e62664bfac3832e4b088f8bf081424a2b3d092f1b12b7779c8b779c"
+    },
+    {
+      "file": "inspector_smores_planning.mp4",
+      "description": "Runtime Inspector SMORES planning view",
+      "note": "Recorded application view; original playback rate.",
+      "source_path": "media/inspector_smores_planning.mp4",
+      "source_blob": "dbe5bc257e5bc9b0b9e7f4ddbda118232167a13a",
+      "size_bytes": 1997061,
+      "sha256": "0f07b431aa5c200811381891c0dac6b1bbb343c650e2768366f68473a12bf200"
+    },
+    {
+      "file": "mblocks_planar_reconf_3x.mp4",
+      "description": "M-Blocks planar reconfiguration",
+      "note": "Recording plays at 3× simulation playback.",
+      "source_path": "media/mblocks_planar_reconf_3x.mp4",
+      "source_blob": "67dd173f711ab2bb7f573bcb3abcae62e47ed7e6",
+      "size_bytes": 3314311,
+      "sha256": "039305e791c9f0f483ce4d780f45e70968b58214f63c649093d3533f2b6f058c"
+    },
+    {
+      "file": "smores_online_assembly_6x.mp4",
+      "description": "SMORES-EP online self-assembly",
+      "note": "Recording plays at 6× simulation playback.",
+      "source_path": "media/smores_online_assembly_6x.mp4",
+      "source_blob": "715f4ec697e3e003700351b556dfd7dfcb2eb736",
+      "size_bytes": 2331752,
+      "sha256": "324ed6c70f9fb2bbebbab5a6c29de74ad12cbb1eb56038f2a73878b2c7923ecb"
+    },
+    {
+      "file": "studio_walkthrough_2x.mp4",
+      "description": "Studio authoring walkthrough",
+      "note": "Recording plays at 2× application playback; reflects the interface captured for the former website.",
+      "source_path": "media/studio_walkthrough_2x.mp4",
+      "source_blob": "3322e00d999ccf2f57413e897b513ec6e736d891",
+      "size_bytes": 2625692,
+      "sha256": "e6374155ce33f56818d6f8d0b3575384080eac96ea8c4391ade8713aa5517222"
+    }
+  ]
+}

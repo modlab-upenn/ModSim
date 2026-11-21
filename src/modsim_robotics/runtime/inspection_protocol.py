@@ -8,19 +8,22 @@ runtime session or relying on Python pickle.
 
 from __future__ import annotations
 
+import json
 from enum import StrEnum
-from typing import Annotated, Literal, TypeAlias
+from typing import Annotated, Literal, TypeAlias, cast
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, field_validator
 
 from modsim_robotics.runtime.inspection import RuntimeInspectorFrame
 from modsim_robotics.runtime.inspector_runner import RuntimeInspectorConfig
+from modsim_robotics.units import to_si
 
-RUNTIME_PROTOCOL_VERSION = 3
-RUNTIME_PROTOCOL_PREFIX = "MODSIM_RUNTIME/3 "
+RUNTIME_PROTOCOL_VERSION = 4
+RUNTIME_PROTOCOL_PREFIX = "MODSIM_RUNTIME/4 "
 MAX_RUNTIME_MESSAGE_BYTES = 8 * 1024 * 1024
 
 _PREFIX_BYTES = RUNTIME_PROTOCOL_PREFIX.encode("ascii")
+_LEGACY_PREFIX_BYTES = b"MODSIM_RUNTIME/3 "
 
 
 class RuntimeProtocolError(ValueError):
@@ -46,7 +49,14 @@ class _RuntimeProtocolDTO(BaseModel):
         validate_default=True,
     )
 
-    protocol_version: Literal[3] = RUNTIME_PROTOCOL_VERSION
+    protocol_version: Literal[4] = RUNTIME_PROTOCOL_VERSION
+
+    @field_validator("protocol_version", mode="before")
+    @classmethod
+    def _require_integer_version(cls, value: object) -> int:
+        if type(value) is not int:
+            raise ValueError("protocol_version must be an integer")
+        return value
 
 
 class RuntimeHello(_RuntimeProtocolDTO):
@@ -126,6 +136,32 @@ RuntimeProtocolMessage: TypeAlias = Annotated[
 _MESSAGE_ADAPTER: TypeAdapter[RuntimeProtocolMessage] = TypeAdapter(RuntimeProtocolMessage)
 
 
+def _upgrade_legacy_planning(document: dict[str, object]) -> None:
+    """Normalize only declared v3 telemetry fields before strict JSON validation."""
+    raw_frame = document.get("frame")
+    if not isinstance(raw_frame, dict):
+        return
+    frame = cast(dict[str, object], raw_frame)
+    for name in ("planning", "lattice_planning"):
+        raw_planning = frame.get(name)
+        if not isinstance(raw_planning, dict):
+            continue
+        planning = cast(dict[str, object], raw_planning)
+        mappings = [("planning_ms", "planning_time_s", "ms")]
+        if name == "lattice_planning":
+            mappings.extend(
+                [
+                    ("flywheel_rpm", "flywheel_angular_velocity_rad_s", "rpm"),
+                    ("pivot_angle_deg", "pivot_angle_rad", "deg"),
+                ]
+            )
+        for old, new, unit in mappings:
+            if old in planning:
+                if new in planning:
+                    raise ValueError(f"Legacy record contains both {old} and {new}.")
+                planning[new] = to_si(cast(float, planning.pop(old)), unit)
+
+
 def encode_runtime_message(message: RuntimeProtocolMessage) -> bytes:
     """Encode one typed record as a prefixed UTF-8 JSON line."""
     try:
@@ -162,12 +198,27 @@ def decode_runtime_message(
         record = record[:-1]
     if b"\n" in record or b"\r" in record:
         raise RuntimeProtocolError("runtime message must contain exactly one line")
-    if not record.startswith(_PREFIX_BYTES):
+    legacy = record.startswith(_LEGACY_PREFIX_BYTES)
+    if not record.startswith(_PREFIX_BYTES) and not legacy:
         raise RuntimeProtocolError(f"runtime message must begin with '{RUNTIME_PROTOCOL_PREFIX}'")
-    payload = record[len(_PREFIX_BYTES) :]
+    prefix = _LEGACY_PREFIX_BYTES if legacy else _PREFIX_BYTES
+    payload = record[len(prefix) :]
     if not payload:
         raise RuntimeProtocolError("runtime message has an empty JSON payload")
     try:
+        if legacy:
+            document: object = json.loads(payload)
+            if not isinstance(document, dict):
+                raise ValueError("legacy message must be a JSON object")
+            migrated = dict(cast(dict[str, object], document))
+            if (
+                type(migrated.get("protocol_version")) is not int
+                or migrated["protocol_version"] != 3
+            ):
+                raise ValueError("legacy prefix requires protocol_version 3")
+            migrated["protocol_version"] = RUNTIME_PROTOCOL_VERSION
+            _upgrade_legacy_planning(migrated)
+            payload = json.dumps(migrated, allow_nan=False).encode("utf-8")
         return _MESSAGE_ADAPTER.validate_json(payload)
     except (ValidationError, ValueError) as error:
         raise RuntimeProtocolError(f"invalid runtime protocol message: {error}") from error

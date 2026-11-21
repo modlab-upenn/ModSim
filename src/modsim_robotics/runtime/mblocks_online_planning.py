@@ -34,6 +34,8 @@ from modsim_robotics.planning.models import PlannerDecision
 from modsim_robotics.robot_packs.schema import ControlMode
 from modsim_robotics.runtime.coordinated_pivot import CoordinatedMomentumPivotScenario
 from modsim_robotics.runtime.mblocks_lattice import (
+    DEFAULT_HALF_SPEED_RAD_S,
+    DEFAULT_QUARTER_SPEED_RAD_S,
     PLAN_ID,
     PLAN_NAME,
     face_pairs,
@@ -43,21 +45,37 @@ from modsim_robotics.runtime.mblocks_lattice import (
     observe_lattice,
     starter_state,
 )
+from modsim_robotics.runtime.momentum_pivot import PUBLISHED_FLYWHEEL_SPEED_CAP_RAD_S
 from modsim_robotics.runtime.reconfiguration import (
     ReconfigurationPhase,
     ReconfigurationScenarioError,
     ReconfigurationStatus,
 )
 from modsim_robotics.runtime.session import RuntimeSession
+from modsim_robotics.units import QuantityKind, from_si, to_si
 
 
 @dataclass(slots=True)
 class OnlineLatticeScenario:
+    """Execute measured lattice plans while retaining canonical SI configuration.
+
+    Args:
+        session: Session exclusively owned by this executor.
+        plan: Discrete plan and its initial lattice observation.
+        dt_s: Physics timestep in seconds, at most 0.0005.
+        quarter_speed_rad_s: Keyword-only quarter-turn flywheel target in rad/s.
+        half_speed_rad_s: Keyword-only half-turn flywheel target in rad/s.
+
+    Use create() for validated initialization and legacy RPM authoring options.
+    The instance never stores RPM values; compatibility properties format the
+    canonical targets only when explicitly read.
+    """
+
     session: RuntimeSession
     plan: LatticePlan
     dt_s: float
-    quarter_rpm: float = 14000.0
-    half_rpm: float = 17000.0
+    quarter_speed_rad_s: float = field(default=DEFAULT_QUARTER_SPEED_RAD_S, kw_only=True)
+    half_speed_rad_s: float = field(default=DEFAULT_HALF_SPEED_RAD_S, kw_only=True)
     _state: LatticeState = field(init=False)
     _remaining: list[LatticePivot] = field(init=False)
     _controller: CoordinatedMomentumPivotScenario | None = None
@@ -69,7 +87,7 @@ class OnlineLatticeScenario:
     _completed: int = 0
     _revision: int = 1
     _replans: int = 0
-    _planning_ms: float = 0.0
+    _planning_time_s: float = 0.0
     _landing_error_m: float = 0.0
     _decisions: list[PlannerDecision] = field(default_factory=list[PlannerDecision])
     _history: list[LatticeActionRecord] = field(default_factory=list[LatticeActionRecord])
@@ -80,11 +98,21 @@ class OnlineLatticeScenario:
     _landing_effort_nm: float = 0.0
 
     def __post_init__(self) -> None:
+        """Validate SI timing and speed bounds before initializing execution state.
+
+        Raises:
+            ValueError: Timing or a target exceeds the supported physical range.
+            UnitError: A target is nonnumeric, boolean, or non-finite.
+        """
         if not math.isfinite(self.dt_s) or not 0 < self.dt_s <= 0.0005:
             raise ValueError("tabletop planning requires 0 < dt_s <= 0.0005")
-        for rpm in (self.quarter_rpm, self.half_rpm):
-            if not math.isfinite(rpm) or not 0 < rpm <= 20000:
-                raise ValueError("flywheel targets must be in (0, 20000] RPM")
+        for speed in (self.quarter_speed_rad_s, self.half_speed_rad_s):
+            canonical = to_si(speed, "rad/s", kind=QuantityKind.ANGULAR_VELOCITY)
+            if not 0 < canonical <= PUBLISHED_FLYWHEEL_SPEED_CAP_RAD_S:
+                raise ValueError(
+                    "flywheel targets must be positive and must not exceed "
+                    f"{PUBLISHED_FLYWHEEL_SPEED_CAP_RAD_S:g} rad/s"
+                )
         self._state = self.plan.initial
         self._remaining = list(self.plan.actions)
 
@@ -96,9 +124,56 @@ class OnlineLatticeScenario:
         *,
         initial: LatticeState | None = None,
         dt_s: float = 0.0005,
-        quarter_rpm: float = 14000.0,
-        half_rpm: float = 17000.0,
+        quarter_rpm: float | None = None,
+        half_rpm: float | None = None,
+        quarter_speed_rad_s: float | None = None,
+        half_speed_rad_s: float | None = None,
     ) -> OnlineLatticeScenario:
+        """Plan and initialize a fresh physical session using explicit input units.
+
+        A named RPM argument is converted once. Canonical rad/s arguments pass
+        directly into the executor. Omitted targets retain the existing 14,000
+        RPM quarter-turn and 17,000 RPM half-turn reference speeds.
+
+        Args:
+            session: Fresh runtime with supported joint/hinge dynamics.
+            goal: Target lattice shape; None selects the registered line goal.
+            initial: Initial lattice identities/poses; None uses the starter state.
+            dt_s: Physics timestep in seconds, positive and no greater than 0.0005.
+            quarter_rpm: Legacy quarter-turn target in RPM, or None.
+            half_rpm: Legacy half-turn target in RPM, or None.
+            quarter_speed_rad_s: Quarter-turn target in rad/s, mutually exclusive
+                with quarter_rpm. None selects the legacy input or reference default.
+            half_speed_rad_s: Half-turn target in rad/s, mutually exclusive with
+                half_rpm. None selects the legacy input or reference default.
+
+        Returns:
+            An initialized executor retaining only canonical SI configuration.
+
+        Raises:
+            ValueError: Both units are supplied for one target, or timing/speed
+                is outside the supported finite positive range.
+            UnitError: A target is nonnumeric, boolean, or non-finite.
+            ReconfigurationScenarioError: The session is not fresh, dynamics,
+                module identities, pitch, measured poses, or face captures are unsupported.
+            LatticePlanningError: The geometric planner cannot construct the requested plan.
+        """
+        if quarter_rpm is not None and quarter_speed_rad_s is not None:
+            raise ValueError("Supply quarter_rpm or quarter_speed_rad_s, not both")
+        if half_rpm is not None and half_speed_rad_s is not None:
+            raise ValueError("Supply half_rpm or half_speed_rad_s, not both")
+        quarter_speed = (
+            to_si(quarter_rpm, "rpm", kind=QuantityKind.ANGULAR_VELOCITY)
+            if quarter_rpm is not None
+            else (
+                DEFAULT_QUARTER_SPEED_RAD_S if quarter_speed_rad_s is None else quarter_speed_rad_s
+            )
+        )
+        half_speed = (
+            to_si(half_rpm, "rpm", kind=QuantityKind.ANGULAR_VELOCITY)
+            if half_rpm is not None
+            else (DEFAULT_HALF_SPEED_RAD_S if half_speed_rad_s is None else half_speed_rad_s)
+        )
         if session.world.time_s != 0.0 or session.world.connections:
             raise ReconfigurationScenarioError(
                 "online lattice initialization requires a fresh session"
@@ -115,8 +190,14 @@ class OnlineLatticeScenario:
             raise ReconfigurationScenarioError("scene modules do not match the requested lattice")
         started = perf_counter()
         plan = plan_reconfiguration(requested, selected_goal)
-        scenario = cls(session, plan, dt_s, quarter_rpm, half_rpm)
-        scenario._planning_ms = (perf_counter() - started) * 1000
+        scenario = cls(
+            session,
+            plan,
+            dt_s,
+            quarter_speed_rad_s=quarter_speed,
+            half_speed_rad_s=half_speed,
+        )
+        scenario._planning_time_s = perf_counter() - started
         observed, _ = observe_lattice(session, scenario.frame_transform, selected_goal.pitch_m)
         if observed != requested:
             raise ReconfigurationScenarioError(
@@ -134,6 +215,24 @@ class OnlineLatticeScenario:
             "planned", f"Sung 2015 planar construction: {len(plan.actions)} generated pivots"
         )
         return scenario
+
+    @property
+    def quarter_rpm(self) -> float:
+        """Return the legacy quarter-turn RPM presentation of the canonical target.
+
+        Returns:
+            Equivalent RPM magnitude; this compatibility property is read-only.
+        """
+        return from_si(self.quarter_speed_rad_s, "rpm", kind=QuantityKind.ANGULAR_VELOCITY)
+
+    @property
+    def half_rpm(self) -> float:
+        """Return the legacy half-turn RPM presentation of the canonical target.
+
+        Returns:
+            Equivalent RPM magnitude; this compatibility property is read-only.
+        """
+        return from_si(self.half_speed_rad_s, "rpm", kind=QuantityKind.ANGULAR_VELOCITY)
 
     @property
     def frame_transform(self) -> Transform:
@@ -181,11 +280,11 @@ class OnlineLatticeScenario:
             history=tuple(self._history),
             completed_actions=self._completed,
             replans=self._replans,
-            planning_ms=self._planning_ms,
-            flywheel_rpm=(
-                telemetry.flywheel_speeds_rad_s[0][1] * 60 / math.tau if telemetry else 0.0
+            planning_time_s=self._planning_time_s,
+            flywheel_angular_velocity_rad_s=(
+                telemetry.flywheel_speeds_rad_s[0][1] if telemetry else 0.0
             ),
-            pivot_angle_deg=(math.degrees(telemetry.pivot_angle_rad) if telemetry else 0.0),
+            pivot_angle_rad=(telemetry.pivot_angle_rad if telemetry else 0.0),
             landing_error_m=self._landing_error_m,
             landing_effort_nm=self._landing_effort_nm,
             phase="planning" if self._search is not None else self._phase.value,
@@ -279,8 +378,8 @@ class OnlineLatticeScenario:
                 self.frame_transform,
                 pitch_m=self.plan.goal.pitch_m,
                 dt_s=self.dt_s,
-                quarter_rpm=self.quarter_rpm,
-                half_rpm=self.half_rpm,
+                quarter_speed_rad_s=self.quarter_speed_rad_s,
+                half_speed_rad_s=self.half_speed_rad_s,
             )
             self._controller = CoordinatedMomentumPivotScenario.create_from_existing(
                 self.session, compiled, capture_ready=self._capture_ready
@@ -321,7 +420,10 @@ class OnlineLatticeScenario:
         """
         assert self._active is not None and self._controller is not None
         telemetry = self._controller.current_telemetry
-        if any(abs(speed) > 20000 * math.tau / 60 for _, speed in telemetry.flywheel_speeds_rad_s):
+        if any(
+            abs(speed) > PUBLISHED_FLYWHEEL_SPEED_CAP_RAD_S
+            for _, speed in telemetry.flywheel_speeds_rad_s
+        ):
             self._fail("Landing feedback exceeded the 20,000 RPM ceiling")
             return
         moving = self.session.world.modules[ModuleInstanceId(self._active.moving)]
@@ -390,7 +492,7 @@ class OnlineLatticeScenario:
         except LatticePlanningError as error:
             self._fail(str(error))
         finally:
-            self._planning_ms = max(self._planning_ms, (perf_counter() - start) * 1000)
+            self._planning_time_s = max(self._planning_time_s, (perf_counter() - start))
 
     def _record_phase(self, phase: str) -> None:
         if self._active is None:

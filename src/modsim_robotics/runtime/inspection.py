@@ -64,6 +64,9 @@ class RuntimeEventRow(_RuntimeInspectionDTO):
     time_s: float = Field(ge=0.0)
     kind: str = Field(min_length=1)
     detail: str = ""
+    subject: str = ""
+    measured_force_n: float | None = None
+    force_limit_n: float | None = None
 
 
 class RuntimeInspectorFrame(_RuntimeInspectionDTO):
@@ -118,6 +121,9 @@ def event_row(event: Event) -> RuntimeEventRow:
         time_s=event.time_s,
         kind=event.kind,
         detail=format_event_detail(event),
+        subject=str(event.connection_id) if isinstance(event, ConnectorOverloaded) else "",
+        measured_force_n=event.measured_force_n if isinstance(event, ConnectorOverloaded) else None,
+        force_limit_n=event.limit_n if isinstance(event, ConnectorOverloaded) else None,
     )
 
 

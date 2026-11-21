@@ -38,19 +38,22 @@ In the selected type's Inspector, complete the following fields. Scroll down
 to reach each section, then click **Apply connector type** after entering all
 the values.
 
+Enter the suffixes shown below. Bare numbers use the unit currently displayed
+in that field; explicit units keep the same physical values under any profile.
+
 | Section and field | Value |
 | --- | --- |
 | **Identity & compatibility → Compatible with** | `fixed_face` |
 | **Allowed orientations → Orientation mode** | `discrete` |
-| **Allowed values (rad)** | `0, 1.5707963267948966, 3.141592653589793, 4.71238898038469` |
+| **Allowed values** | `0 deg, 90 deg, 180 deg, 270 deg` |
 | **Acceptance region → Acceptance shape** | `box` |
-| **Position tolerance (m)** | `0.006` |
-| **Orientation tolerance (rad)** | `0.13962634015954636` |
-| **Max relative velocity (m/s)** | `0.05` |
+| **Position tolerance** | `6 mm` |
+| **Orientation tolerance** | `8 deg` |
+| **Max relative velocity** | `50 mm/s` |
 | **Physical connection → Physical constraint** | `fixed` |
-| **Load limits → Max normal force (N)** | `90` |
-| **Max shear force (N)** | `40` |
-| **Max bending moment (Nm)** | `1.8` |
+| **Load limits → Max normal force** | `90 N` |
+| **Max shear force** | `40 N` |
+| **Max bending moment** | `1.8 N*m` |
 | **Docking policy → Supports undocking** | Checked |
 | **Declare docking policy** | Unchecked |
 
@@ -63,7 +66,7 @@ A `fixed` connection asks MuJoCo for a rigid weld after acceptance. Its
 compliance and hinge controls remain disabled. The teaching load ratings make
 the declared interface complete; they are not general force limits enforced
 by the runtime. Automatic overload release uses a separately declared
-**Break force (N)** policy and backend force feedback.
+**Break force** policy and backend force feedback.
 
 Leaving **Declare docking policy** unchecked uses the current defaults:
 automatic latching off, measured alignment, and no declared cooldown or break
@@ -72,6 +75,12 @@ force. The docking demonstration sends the required explicit request.
 Click on Apply Connector Type to save the changes. 
 
 ## Place the front and rear interfaces
+
+Choose **View → Display units**, set **Length** to **mm** and **Angle** to
+**deg**, and click **OK**. These are the defaults for a new local profile.
+The same profile applies to connector rules, placements, joint metadata,
+runtime setup, and Inspector readouts. Explicit suffixes in this guide remain
+unambiguous even when your saved preferences differ.
 
 Expand **Module Types → Workshop Cube → Links** and select **base_link**. If
 you kept the importer's display name, the module row is `workshop_cube` instead.
@@ -84,23 +93,31 @@ In **Add connector to base_link**, enter the first column below and click
 | --- | --- | --- |
 | **Connector ID** | `front` | `rear` |
 | **Connector type** | `fixed_face` | `fixed_face` |
-| **Position xyz (m)** | `0.05, 0, 0` | `-0.05, 0, 0` |
-| **Rotation rpy (rad)** | `0, 0, 0` | `0, 0, 3.141592653589793` |
+| **Position XYZ** | `50 mm`, `0 mm`, `0 mm` | `-50 mm`, `0 mm`, `0 mm` |
+| **Rotation RPY** | `0 deg`, `0 deg`, `0 deg` | `0 deg`, `0 deg`, `180 deg` |
 | **Docking axis** | `1, 0, 0` | `-1, 0, 0` |
 | **Approach axis** | `1, 0, 0` | `-1, 0, 0` |
 | **Custom fields** | Empty | Empty |
 
 Positions and orientations are local to the parent link. The rear frame is
-rotated by π about Z. Both axes are unit vectors expressed in the
+rotated by 180° about Z. Studio stores this as π radians; the runtime uses a
+quaternion for the resulting orientation. Both axes are unit vectors expressed in the
 **parent-link frame**, independently of the connector's rotation. Point each
 docking axis outward from its face; the rear axis therefore remains
 `-1, 0, 0` even after setting its RPY.
 
 The two connector rows now appear under the module's **Connectors** branch.
 Select each to inspect its location and axes. Existing connectors use
-**Numeric pose**, **Position XYZ (m)**, and **Rotation RPY (rad)** controls;
+**Numeric pose**, **Position XYZ**, and **Rotation RPY** controls;
 keep **Numeric pose** checked and **Named frame** empty. After editing an
 existing connector, click **Apply connector**.
+
+Each position or angle component shows its unit. A bare number uses that
+field's displayed unit; an explicit suffix such as `5 cm` or `180 deg` overrides
+the display choice for that input. Switching display units preserves valid
+pending values without applying them to the document. An unfinished or invalid
+triple keeps its previous units and text until corrected. See
+[Units and orientation](../explanation/units-and-orientation.md) for details.
 
 The viewport draws placed connector frames and axes after an edit is applied.
 Connector selection and placement use the tree and numeric fields; there is

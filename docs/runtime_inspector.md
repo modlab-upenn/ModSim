@@ -19,7 +19,7 @@ XY footprints, goals, generated paths, action dependencies/status, and action
 history. **Event log** is its own tab with canonical events and a separate planner
 decision table. See [Online planar planning](planning.md) for the algorithms,
 launch settings, validation scope, and remaining physical-control limitations.
-Planner intent travels separately from canonical state in protocol version 3.
+Planner intent travels separately from canonical state in protocol version 4.
 The `mblocks_online_lattice` and `mblocks_online_lattice_large` demos add a measured/target cubic-lattice pair,
 generated pivot and clearance overlays, actuator telemetry, and the same event
 log and completion states. See [M-Blocks planning](mblocks_planning.md) for the
@@ -34,6 +34,33 @@ process and window, not an embedded widget or a second simulation.
 The Inspector is embedded in Studio's **Runtime** workspace and can also run
 as a standalone Qt window. Authoring and live simulation retain separate state
 and execution ownership even when they share one application window.
+
+## Display physical quantities
+
+Studio's **View → Display units** and the standalone Inspector's **Display units**
+button open the same local profile. Length, angle, time, speed, mass, force,
+torque, inertia, acceleration, stiffness, damping, and frequency choices map
+onto fixed canonical simulation values. The active profile is restored from the
+selected ModSim home's `units.toml`; `--home` and the environment/default rules
+match the pack-library home.
+
+Select a module to inspect its measured world XYZ and fixed-axis RPY readout.
+The underlying orientation remains a quaternion. Planning times, flywheel
+speed, pivot angles, pose residuals, event times, typed event details, and plot
+axis labels use the selected units. Plot coordinates, camera ranges, hit tests,
+and simulation state remain canonical. Integer lattice coordinates remain
+**cells**, and the MuJoCo companion retains its native viewer controls.
+
+Runtime setup fields accept compatible explicit suffixes, such as `2 ms`,
+`10 mm`, `90 deg`, or `20 mm/s`. Bare input uses the field's displayed unit;
+blank optional fields remain automatic. Switching profiles preserves physical
+launch values, valid pending edits, and unfinished text in its previous units.
+Changing units during execution does not reset or restart the run.
+
+Machine-readable JSON and raw event payloads retain canonical units. Diagnostic
+prose can include explicitly labeled values; it is not rewritten through text
+matching. [Units and orientation](explanation/units-and-orientation.md) documents
+the quantity registry, profile, rotation conventions, and legacy decoding.
 
 ## Launch from Studio
 
@@ -84,10 +111,11 @@ available for repeatable standalone launches.
 
 ## Install and launch
 
-Install both optional surfaces from a source checkout:
+Studio is included in the default package installation. Add the optional MuJoCo
+backend to a source checkout with:
 
 ```bash
-python -m pip install -e ".[studio,mujoco]"
+python -m pip install -e ".[mujoco]"
 ```
 
 Prepare the local home once with `modsim-robotics setup`. The home's `config.toml`
@@ -674,7 +702,8 @@ provisional limitations described for the two-module physical demo.
 
 The commands in this section are the complete reference for the committed
 `examples/robot_packs/smores_ep` pack. Run them from the repository root after
-installing the `studio` and `mujoco` extras. The examples use `modsim-robotics`; an
+installing the package with its `mujoco` extra. Studio is included by default.
+The examples use `modsim-robotics`; an
 unactivated source checkout can use `uv run --no-sync modsim-robotics` or
 `.venv/bin/modsim-robotics` instead.
 

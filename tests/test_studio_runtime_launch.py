@@ -25,6 +25,7 @@ from modsim_robotics.robot_packs import (
 )
 from modsim_robotics.runtime import RuntimeDemo, RuntimeInspectorConfig
 from modsim_robotics.runtime.inspector_runner import validate_runtime_inspector_config
+from modsim_robotics.units import UnitPreferences
 from modsim_robotics_studio import runtime_launch
 from modsim_robotics_studio.project import StudioProject
 from modsim_robotics_studio.runtime_launch import (
@@ -200,7 +201,13 @@ def test_studio_defaults_stay_equivalent_to_cli_presets(
 ) -> None:
     captured: list[RuntimeInspectorConfig] = []
 
-    def capture(config: RuntimeInspectorConfig) -> int:
+    def capture(
+        config: RuntimeInspectorConfig,
+        *,
+        home: str | Path | None = None,
+        preferences: UnitPreferences | None = None,
+    ) -> int:
+        assert home is None and preferences is None
         captured.append(config)
         return 0
 

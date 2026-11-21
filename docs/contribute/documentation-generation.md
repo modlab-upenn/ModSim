@@ -20,11 +20,13 @@ the locked Python documentation group:
 uv sync --locked --group docs --inexact --python 3.12
 ```
 
-The `--inexact` option preserves any Studio, MuJoCo, or development tools already
+Project sync installs Studio as part of the default package dependencies. The
+`--inexact` option preserves additional MuJoCo or development tools already
 installed in the shared environment. The docs group contains Sphinx,
 Sphinx-AutoAPI, sphinx-markdown-builder, and Pylint's Pyreverse tool. These are
 documentation dependencies; they are separate from ModSim's package runtime
 requirements and Ruff checks.
+API extraction reads source without importing Studio or simulator libraries.
 
 Install Graphviz so that its `dot` executable is on `PATH`. On Ubuntu/Debian:
 

@@ -15,6 +15,7 @@ from typer.testing import CliRunner
 
 from modsim_robotics import cli
 from modsim_robotics.runtime import RuntimeInspectorConfig
+from modsim_robotics.units import UnitPreferences
 from modsim_robotics.user_data import initialize_user_home, resolve_robot_pack
 
 runner = CliRunner()
@@ -39,17 +40,31 @@ def application_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 @pytest.fixture
-def gui_launches(monkeypatch: pytest.MonkeyPatch) -> list[Path | None]:
+def studio_homes() -> list[Path | None]:
+    """Capture display-preference home forwarding independently of pack selection."""
+    return []
+
+
+@pytest.fixture
+def gui_launches(
+    monkeypatch: pytest.MonkeyPatch, studio_homes: list[Path | None]
+) -> list[Path | None]:
     """Capture GUI dispatch without importing native desktop dependencies."""
     paths: list[Path | None] = []
     studio = ModuleType("modsim_robotics_studio.app")
     runtime = ModuleType("modsim_robotics_studio.runtime_app")
 
-    def studio_main(pack_path: Path | None) -> int:
+    def studio_main(pack_path: Path | None, *, home: Path | None = None) -> int:
         paths.append(pack_path)
+        studio_homes.append(home)
         return 0
 
-    def runtime_main(config: RuntimeInspectorConfig) -> int:
+    def runtime_main(
+        config: RuntimeInspectorConfig,
+        *,
+        home: Path | None = None,
+        preferences: UnitPreferences | None = None,
+    ) -> int:
         paths.append(config.pack_path)
         return 0
 
@@ -130,6 +145,7 @@ def test_studio_without_a_selector_opens_blank_without_reading_the_library(
     application_home: Path,
     tmp_path: Path,
     gui_launches: list[Path | None],
+    studio_homes: list[Path | None],
     monkeypatch: pytest.MonkeyPatch,
     initialized: bool,
     override_home: bool,
@@ -154,12 +170,13 @@ def test_studio_without_a_selector_opens_blank_without_reading_the_library(
 
     assert result.exit_code == 0, result.output
     assert gui_launches == [None]
+    assert studio_homes == [selected_home if override_home else None]
     assert selected_home.exists() == initialized
     if initialized:
         assert (selected_home / "config.toml").read_bytes() == configuration
 
 
-def test_blank_studio_explains_missing_optional_dependencies(
+def test_blank_studio_explains_missing_dependencies(
     application_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setitem(sys.modules, "modsim_robotics_studio.app", None)
@@ -167,7 +184,7 @@ def test_blank_studio_explains_missing_optional_dependencies(
     result = runner.invoke(cli.app, ["studio"])
 
     assert result.exit_code == 2
-    assert "modsim-robotics[studio]" in result.stderr
+    assert "pip install modsim-robotics" in result.stderr
     assert not application_home.exists()
 
 
@@ -232,6 +249,7 @@ def test_home_override_selects_the_library_for_a_named_pack(
     tmp_path: Path,
     application_home: Path,
     gui_launches: list[Path],
+    studio_homes: list[Path | None],
     command: tuple[str, ...],
 ) -> None:
     selected = initialize_user_home(tmp_path / "selected-home")
@@ -241,6 +259,31 @@ def test_home_override_selects_the_library_for_a_named_pack(
     assert result.exit_code == 0, result.output
     if gui_launches:
         assert gui_launches == [selected.starter_pack]
+    if command == ("studio",):
+        assert studio_homes == [selected.home]
+    assert not application_home.exists()
+
+
+@pytest.mark.parametrize("style", ["positional", "option"])
+def test_studio_explicit_path_keeps_home_for_display_preferences(
+    application_home: Path,
+    tmp_path: Path,
+    example_pack_dir: Path,
+    gui_launches: list[Path | None],
+    studio_homes: list[Path | None],
+    style: str,
+) -> None:
+    selected_home = tmp_path / "display-preferences"
+    selector = (
+        [str(example_pack_dir)] if style == "positional" else ["--pack", str(example_pack_dir)]
+    )
+
+    result = runner.invoke(cli.app, ["studio", *selector, "--home", str(selected_home)])
+
+    assert result.exit_code == 0, result.output
+    assert gui_launches == [example_pack_dir]
+    assert studio_homes == [selected_home]
+    assert not selected_home.exists()
     assert not application_home.exists()
 
 

@@ -19,6 +19,7 @@ from modsim_robotics.core.state import WorldState
 from modsim_robotics.model_views import ModelViewContext, ModelViewFactory
 from modsim_robotics.robot_packs import RobotPackLoader
 from modsim_robotics.runtime import RuntimeDemo, RuntimeInspectorConfig
+from modsim_robotics.units import UnitPreferences
 
 runner = CliRunner()
 
@@ -364,7 +365,7 @@ def test_cli_runtime_requires_both_selected_connectors(example_pack_dir: Path) -
         ("mujoco", ("--no-viewer",), False),
     ),
 )
-def test_cli_runtime_launches_the_optional_inspector_with_resolved_viewer_mode(
+def test_cli_runtime_launches_the_standalone_inspector_with_resolved_viewer_mode(
     example_pack_dir: Path,
     monkeypatch: pytest.MonkeyPatch,
     command: tuple[str, ...],
@@ -376,7 +377,9 @@ def test_cli_runtime_launches_the_optional_inspector_with_resolved_viewer_mode(
 
     runtime_app = ModuleType("modsim_robotics_studio.runtime_app")
 
-    def fake_main(config: object) -> int:
+    def fake_main(
+        config: object, *, home: Path | None = None, preferences: UnitPreferences | None = None
+    ) -> int:
         captured["config"] = config
         return 0
 
@@ -421,7 +424,9 @@ def test_cli_runtime_accepts_the_descriptive_real_time_factor_alias(
     captured: dict[str, object] = {}
     runtime_app = ModuleType("modsim_robotics_studio.runtime_app")
 
-    def fake_main(config: object) -> int:
+    def fake_main(
+        config: object, *, home: Path | None = None, preferences: UnitPreferences | None = None
+    ) -> int:
         captured["config"] = config
         return 0
 
@@ -466,7 +471,9 @@ def test_cli_runtime_demo_selects_a_reproducible_default_duration(
     captured: dict[str, object] = {}
     runtime_app = ModuleType("modsim_robotics_studio.runtime_app")
 
-    def fake_main(config: object) -> int:
+    def fake_main(
+        config: object, *, home: Path | None = None, preferences: UnitPreferences | None = None
+    ) -> int:
         captured["config"] = config
         return 0
 
@@ -513,7 +520,9 @@ def test_cli_runtime_physical_smores_demos_supply_physics_defaults(
     captured: dict[str, object] = {}
     runtime_app = ModuleType("modsim_robotics_studio.runtime_app")
 
-    def fake_main(config: object) -> int:
+    def fake_main(
+        config: object, *, home: Path | None = None, preferences: UnitPreferences | None = None
+    ) -> int:
         captured["config"] = config
         return 0
 

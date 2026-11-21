@@ -6,10 +6,9 @@ slug: /installation
 
 To use ModSim we recommend creating a virtual environment and installing the modsim package with it dependancies.
 
-Getting started requires ModSim Studio for inspection, authoring, and its
-integrated runtime workspace. The installation commands below include its
-desktop dependencies; use a working
-desktop display to open and edit RobotPacks.
+`pip install modsim-robotics` installs ModSim Studio, its desktop dependencies,
+the core library, and the mock backend. Getting started uses Studio for
+inspection, authoring, and the integrated runtime workspace to build RobotPacks and run the Simulation. Simulator backends such as MuJoCo and IssacSim are installed separately when needed.
 
 ## Setup a virtual environment
 
@@ -22,7 +21,7 @@ it is not an additional ModSim setup requirement. The examples use Python 3.12.
 ```bash
 python3.12 -m venv .venv
 source .venv/bin/activate
-python -m pip install "modsim-robotics[studio]"
+python -m pip install modsim-robotics
 ```
 
 ### Windows PowerShell
@@ -30,7 +29,7 @@ python -m pip install "modsim-robotics[studio]"
 ```powershell
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install "modsim-robotics[studio]"
+python -m pip install modsim-robotics
 ```
 ModSim requires Python 3.11 or newer. Install it from PyPI in your Python
 environment:
@@ -38,13 +37,14 @@ environment:
 ## Install the modsim package
 
 ```bash
-pip install "modsim-robotics[studio]"
+pip install modsim-robotics
 ```
 
 This installs Studio, the core library, command-line tools, mock backend, and
-bundled **Generic Cube** RobotPack.
+bundled **Generic Cube** RobotPack.  MuJoCo is not
+included in the default installation.
 
-The package and terminal command are named `modsim-robotics`. 
+The python package and CLI are named `modsim-robotics`. 
 
 ## Install MuJoCo
 
@@ -52,18 +52,10 @@ When you reach the physics simulation step in Getting started, add MuJoCo to
 the same Python environment:
 
 ```bash
-pip install "modsim-robotics[studio,mujoco]"
+pip install "modsim-robotics[mujoco]"
 ```
+This installs the MuJoCo backend to your ModSim installation. Studio inspection and authoring do not need the MuJoCo backend and the mock backend can run the kinematic simulations without physics and dynamics. You need to install MuJoCo for dynamic and physcis based implementations.
 
-This adds the physics dependencies to your Studio installation. You do not need
-to create another environment, reinstall Studio separately, or repeat RobotPack
-setup. Studio inspection and authoring do not require MuJoCo. The **Mock**
-backend also runs supported kinematic demonstrations in Studio without it;
-choose **MuJoCo** for the physics examples.
-
-If you came from Getting started, return to
-[the docking example](../tutorials/getting-started.md#5-run-the-docking-example)
-after installing.
 
 ## Verify the installation
 

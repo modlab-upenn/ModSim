@@ -279,13 +279,40 @@ window and receives copies of state. On macOS the launcher selects `mjpython`
 beside the active interpreter so the viewer can own the appropriate native
 main-thread loop; other platforms use the active Python interpreter.
 
+## Unit ownership across the desktop
+
+`UnitManager` is scoped to the resolved ModSim data home and owns local display
+preferences. The shared chooser updates that manager; Builder, Runtime setup,
+and embedded Inspector subscribe to the same signal. A standalone Inspector
+restores the same home profile and exposes its own **Display units** button.
+
+`QuantityEdit`, `OptionalQuantityEdit`, `QuantityVectorEdit`, and
+`QuantityListEdit` retain SI caches independently of formatted text.
+`UnitSpinBox` retains canonical runtime values while converting displayed input;
+`QuantityAxis` converts ticks without rescaling curve coordinates, camera
+ranges, or interaction geometry. Unfinished edits remain visible in their
+previous units. Unit changes do not replace `StudioProject`, mark it dirty,
+advance a runtime, or change its configuration.
+
+Typed cubic-lattice configuration converts known physical fields and uses RPY
+for readable orientation input, preserving the existing quaternion until that
+input is edited. Other builder configuration and custom metadata remain opaque.
+Module selection in the Inspector formats measured world XYZ and RPY from its
+canonical frame. See [Units and orientation](units-and-orientation.md) for the
+closed field registry, contextual joint quantities, and all profile choices.
+
 ## Process protocol and playback
 
 The child and parent communicate using strict, newline-delimited JSON records
 defined in `modsim_robotics/runtime/inspection_protocol.py`. The current
-prefix is `MODSIM_RUNTIME/3 `, with an 8 MiB limit per encoded record.
+prefix is `MODSIM_RUNTIME/4 `, with an 8 MiB limit per encoded record.
 `RuntimeProtocolFramer` handles records split across reads and rejects malformed
 or unterminated input. Stdout carries protocol records; diagnostics use stderr.
+The low-level decoder also accepts version-3 records and converts only the
+explicit legacy planning telemetry fields to seconds, rad/s, and radians before
+strict validation. Live parent and child processes should use the same installed
+version; this reader migration is not general mixed-version runtime support.
+
 
 ```mermaid
 sequenceDiagram

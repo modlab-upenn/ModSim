@@ -7,8 +7,8 @@ Import a mechanical model into a new self-contained RobotPack. The Builder
 copies the URDF and resolved mesh assets, creates the YAML documents and URDF
 name mapping, and opens the resulting draft.
 
-Before starting, complete [Prepare a URDF](prepare-urdf.md) and install the Studio
-dependencies from [Installation](installation.md). This page uses
+Before starting, complete [Prepare a URDF](prepare-urdf.md) and
+[Installation](installation.md), which includes Studio by default. This page uses
 `workshop_cube.urdf` and the default destination
 `~/.modsim/workspaces/workshop_cube`.
 

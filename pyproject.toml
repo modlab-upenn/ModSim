@@ -11,7 +11,12 @@ license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
+  "numpy>=1.26,<3",
   "pydantic>=2.10,<3",
+  "pyqtgraph>=0.13,<1",
+  "PySide6>=6.7,<7",
+  "pyvista>=0.45,<1",
+  "pyvistaqt>=0.11,<1",
   "rich>=13,<15",
   "ruamel.yaml>=0.18,<0.20",
   "typer>=0.12,<1",
@@ -38,15 +43,9 @@ Releases = "https://github.com/modlab-upenn/ModSim/releases"
 [project.optional-dependencies]
 mujoco = [
   "mujoco>=3.3.3,<4",
-  "numpy>=1.26,<3",
 ]
-studio = [
-  "numpy>=1.26,<3",
-  "pyqtgraph>=0.13,<1",
-  "PySide6>=6.7,<7",
-  "pyvista>=0.45,<1",
-  "pyvistaqt>=0.11,<1",
-]
+# Compatibility with older installation commands; Studio is included by default.
+studio = []
 dev = [
   "pre-commit>=4,<5",
   "pyright>=1.1.390,<2",

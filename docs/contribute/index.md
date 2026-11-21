@@ -12,6 +12,11 @@ For documentation changes, begin with [Local development](local-development.md).
 It explains how to run the documentation application, edit Markdown, and check
 the rendered pages.
 
+For the combined project website and manual, follow
+[Website preview and GitHub Pages](github-pages.md). It covers local review,
+downloadable branch builds, an isolated hosted branch preview, and the later
+production cutover.
+
 For colors, logos, illustrations, and visual changes, follow the
 [Brand guidelines](branding.md). They describe the shared production assets and
 how to apply them consistently across the manual and desktop applications.

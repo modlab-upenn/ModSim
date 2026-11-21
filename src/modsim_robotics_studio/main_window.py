@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from collections.abc import Callable, Mapping
 from enum import StrEnum
 from pathlib import Path
@@ -46,6 +47,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from modsim_robotics.core.transforms import quat_from_rpy, quat_to_rpy
 from modsim_robotics.importers import URDFImporter
 from modsim_robotics.robot_packs import (
     AcceptanceRegion,
@@ -71,13 +73,22 @@ from modsim_robotics.robot_packs import (
     PoseSpec,
     ValidationProfile,
 )
+from modsim_robotics.units import QuantityKind, UnitError, UnitPreferences
 from modsim_robotics_studio._loading import BusyDialog, LoadingPanel
 from modsim_robotics_studio._window_sizing import WindowSizingPolicy, manage_window
 from modsim_robotics_studio.appearance import theme_manager
-from modsim_robotics_studio.chrome import DetailsSection, StudioHeader, VectorEdit, property_group
+from modsim_robotics_studio.chrome import DetailsSection, StudioHeader, property_group
+from modsim_robotics_studio.display_units_dialog import show_display_units_dialog
 from modsim_robotics_studio.icons import studio_icon
 from modsim_robotics_studio.project import StudioProject
+from modsim_robotics_studio.quantity_widgets import (
+    OptionalQuantityEdit,
+    QuantityEdit,
+    QuantityListEdit,
+    QuantityVectorEdit,
+)
 from modsim_robotics_studio.runtime_workspace import RuntimeWorkspace
+from modsim_robotics_studio.unit_preferences import units_manager
 from modsim_robotics_studio.user_errors import (
     error_log_details,
     user_error_message,
@@ -314,6 +325,216 @@ class _MetadataEditor(QWidget):
         self.table.setItem(row, 1, QTableWidgetItem(value))
 
 
+class _CubicLatticeFields(QWidget):
+    """Author the built-in lattice's declared quantities without guessing JSON units."""
+
+    def __init__(self, data: dict[str, JsonValue], preferences: UnitPreferences) -> None:
+        super().__init__()
+        self._original = dict(data)
+        form = QFormLayout(self)
+        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        self.scalars: dict[str, OptionalQuantityEdit] = {}
+        for label, name, kind in (
+            ("Cell pitch", "pitch_m", QuantityKind.LENGTH),
+            ("Position tolerance", "position_tolerance_m", QuantityKind.LENGTH),
+            ("Orientation tolerance", "orientation_tolerance_rad", QuantityKind.ANGLE),
+        ):
+            value = data.get(name)
+            if value is not None and (
+                isinstance(value, bool) or not isinstance(value, int | float)
+            ):
+                raise ValueError(f"{name} needs numeric JSON editing")
+            field = OptionalQuantityEdit(
+                float(value) if value is not None else None,
+                kind=kind,
+                unit=preferences.unit_for(kind),
+            )
+            field.setObjectName(name)
+            field.setAccessibleName(label)
+            field.refresh_tooltip()
+            form.addRow(label, field)
+            self.scalars[name] = field
+        origin = self._vector(data.get("origin_world_m", [0.0, 0.0, 0.0]), 3)
+        quaternion = self._vector(data.get("orientation_world_wxyz", [1.0, 0.0, 0.0, 0.0]), 4)
+        if not math.isclose(math.hypot(*quaternion), 1.0, rel_tol=1e-6, abs_tol=1e-6):
+            raise ValueError("lattice orientation requires a unit quaternion")
+        self._quaternion = cast(tuple[float, float, float, float], quaternion)
+        self._rpy = quat_to_rpy(self._quaternion)
+        self.origin = QuantityVectorEdit(
+            cast(tuple[float, float, float], origin),
+            kind=QuantityKind.LENGTH,
+            unit=preferences.unit_for(QuantityKind.LENGTH),
+            name="Lattice origin",
+            labels="XYZ",
+        )
+        self.origin.setObjectName("origin_world_m")
+        self.orientation = QuantityVectorEdit(
+            self._rpy,
+            kind=QuantityKind.ANGLE,
+            unit=preferences.unit_for(QuantityKind.ANGLE),
+            name="Lattice orientation",
+            labels="RPY",
+        )
+        self.orientation.setObjectName("orientation_world_rpy")
+        form.addRow("World origin XYZ", self.origin)
+        form.addRow("World orientation RPY", self.orientation)
+
+    @staticmethod
+    def _vector(value: JsonValue, size: int) -> tuple[float, ...]:
+        if not isinstance(value, list) or len(value) != size:
+            raise ValueError("configuration vector requires JSON numeric components")
+        if any(isinstance(item, bool) or not isinstance(item, int | float) for item in value):
+            raise ValueError("configuration vector requires JSON numeric components")
+        vector = tuple(float(cast(int | float, item)) for item in value)
+        if not all(math.isfinite(item) for item in vector):
+            raise ValueError("configuration vector must be finite")
+        return vector
+
+    def value(self) -> dict[str, JsonValue]:
+        scalars = {name: field.value_si() for name, field in self.scalars.items()}
+        if any(value is None for value in scalars.values()):
+            raise ValueError("Cell pitch and both lattice tolerances are required")
+        pitch = cast(float, scalars["pitch_m"])
+        position = cast(float, scalars["position_tolerance_m"])
+        angle = cast(float, scalars["orientation_tolerance_rad"])
+        if pitch <= 0 or not 0 <= position < pitch / 2 or not 0 <= angle <= math.pi / 4:
+            raise ValueError(
+                "Lattice pitch must be positive; position tolerance less than half a cell; "
+                "orientation tolerance from 0 to 45 degrees."
+            )
+        result = dict(self._original)
+        result.update(scalars)
+        result["origin_world_m"] = list(self.origin.value_si())
+        rpy = self.orientation.value_si()
+        quaternion = self._quaternion if rpy == self._rpy else quat_from_rpy(rpy)
+        result["orientation_world_wxyz"] = list(quaternion)
+        return result
+
+
+class _ModelViewConfigurationEditor(QWidget):
+    """Offer typed lattice quantities and preserve arbitrary other builder configuration."""
+
+    def __init__(
+        self,
+        data: dict[str, JsonValue],
+        builder: str,
+        preferences: Callable[[], UnitPreferences],
+    ) -> None:
+        super().__init__()
+        self._preferences = preferences
+        self._builder = ""
+        self._data = dict(data)
+        self._typed: _CubicLatticeFields | None = None
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.guidance = QLabel()
+        self.guidance.setWordWrap(True)
+        layout.addWidget(self.guidance)
+        self.stack = QStackedWidget()
+        self._raw = _MetadataEditor(data)
+        self.stack.addWidget(self._raw)
+        layout.addWidget(self.stack)
+        self._mode_button = QPushButton("Edit raw builder configuration")
+        self._mode_button.setToolTip(
+            "Edit the builder's declared JSON fields directly. Physical values use canonical SI."
+        )
+        self._mode_button.clicked.connect(self._toggle_editor)
+        layout.addWidget(self._mode_button)
+        self.set_builder(builder)
+
+    def _toggle_editor(self) -> None:
+        if self._typed is not None and self.stack.currentWidget() is self._typed:
+            self._show_raw()
+            return
+        try:
+            data = self._raw.value()
+            if self._typed is not None and data == self._data:
+                self.stack.setCurrentWidget(self._typed)
+            else:
+                typed = _CubicLatticeFields(data, self._preferences())
+                if self._typed is not None:
+                    self.stack.removeWidget(self._typed)
+                    self._typed.deleteLater()
+                self._typed = typed
+                self.stack.addWidget(typed)
+                self.stack.setCurrentWidget(typed)
+                self._data = dict(data)
+        except ValueError as error:
+            self.guidance.setText(f"Correct the raw configuration first: {error}")
+            return
+        self._mode_button.setText("Edit raw builder configuration")
+        self.guidance.setText(
+            "Lattice fields use your preferred units; runtime orientation is a quaternion."
+        )
+
+    def _show_raw(self) -> None:
+        try:
+            data = self.value()
+        except ValueError:
+            data = self._data
+        self._data = dict(data)
+        raw = _MetadataEditor(data)
+        self.stack.removeWidget(self._raw)
+        self._raw.deleteLater()
+        self._raw = raw
+        self.stack.addWidget(raw)
+        self.stack.setCurrentWidget(raw)
+        self._mode_button.setText("Use quantity-aware lattice fields")
+        self.guidance.setText(
+            "Raw configuration uses each builder's declared units. "
+            "Unfinished quantity fields remain available in their previous editor."
+        )
+
+    def set_builder(self, builder: str) -> None:
+        builder = builder.strip()
+        if builder == self._builder:
+            return
+        try:
+            data = self.value()
+        except ValueError:
+            self.guidance.setText("Finish the current configuration before changing its editor.")
+            return
+        self._builder = builder
+        self._mode_button.setVisible(builder == "cubic_lattice")
+        self._data = dict(data)
+        if builder == "cubic_lattice":
+            try:
+                typed = _CubicLatticeFields(data, self._preferences())
+            except ValueError:
+                self.guidance.setText(
+                    "This lattice configuration needs raw JSON editing to repair its values."
+                )
+            else:
+                if self._typed is not None:
+                    self.stack.removeWidget(self._typed)
+                    self._typed.deleteLater()
+                self._typed = typed
+                self.stack.addWidget(typed)
+                self.stack.setCurrentWidget(typed)
+                self._mode_button.setText("Edit raw builder configuration")
+                self.guidance.setText(
+                    "Lattice positions and angles use your display units; "
+                    "orientation is saved as a quaternion."
+                )
+                return
+        raw = _MetadataEditor(data)
+        self.stack.removeWidget(self._raw)
+        self._raw.deleteLater()
+        self._raw = raw
+        self.stack.addWidget(raw)
+        self.stack.setCurrentWidget(raw)
+        self._mode_button.setText("Use quantity-aware lattice fields")
+        if builder != "cubic_lattice":
+            self.guidance.setText(
+                "Builder-specific JSON retains its declared units. Custom values are not rescaled."
+            )
+
+    def value(self) -> dict[str, JsonValue]:
+        if self._typed is not None and self.stack.currentWidget() is self._typed:
+            return self._typed.value()
+        return self._raw.value()
+
+
 class MainWindow(QMainWindow):
     """Studio shell with Robot Pack authoring and live Runtime workspaces."""
 
@@ -321,12 +542,14 @@ class MainWindow(QMainWindow):
         self,
         *,
         initial_path: str | Path | None = None,
+        home: str | Path | None = None,
         session_logger: logging.Logger | None = None,
         session_log_path: str | Path | None = None,
     ) -> None:
         super().__init__()
         self.setWindowTitle("ModSim Studio")
         self._appearance = theme_manager()
+        self._units = units_manager(home)
         self.header = StudioHeader(self, "Robot Pack Builder")
         self.header.setObjectName("StudioHeader")
         self.addToolBar(self.header)
@@ -492,7 +715,7 @@ class MainWindow(QMainWindow):
         self._authoring_docks = (project_dock, properties_dock, bottom_dock)
         self._authoring_dock_visibility: dict[QDockWidget, bool] = {}
         self.runtime_workspace = RuntimeWorkspace(
-            lambda: self.project, self._save_for_runtime, self
+            lambda: self.project, self._save_for_runtime, self, units=self._units
         )
         self.runtime_workspace.project_changed.connect(self._set_project)
         self.runtime_workspace.execution_active_changed.connect(self._runtime_active_changed)
@@ -510,7 +733,12 @@ class MainWindow(QMainWindow):
         self.save_state = QLabel("No pack open")
         self.save_state.setObjectName("SaveState")
         self.statusBar().addPermanentWidget(self.save_state)
+        self.units_status = QLabel()
+        self.units_status.setToolTip("Authoring and runtime display units; Robot Packs remain SI")
+        self.statusBar().addPermanentWidget(self.units_status)
         self._appearance.changed.connect(self._refresh_chrome)
+        self._units.changed.connect(self._refresh_units)
+        self._refresh_units()
         self._refresh_chrome()
         self.statusBar().showMessage("Ready")
         self._logger.info("Studio window initialized")
@@ -572,6 +800,11 @@ class MainWindow(QMainWindow):
         view_menu = self.menuBar().addMenu("&View")
         for dock in self.findChildren(QDockWidget):
             view_menu.addAction(dock.toggleViewAction())
+        view_menu.addSeparator()
+        self.units_action = QAction("Display &units", self)
+        self.units_action.setObjectName("displayUnitsAction")
+        self.units_action.triggered.connect(self._display_units_dialog)
+        view_menu.addAction(self.units_action)
 
         toolbar = QToolBar("Document actions", self)
         toolbar.setObjectName("DocumentToolbar")
@@ -631,6 +864,48 @@ class MainWindow(QMainWindow):
                 studio_icon(icon, self._appearance.theme.on_accent if primary else color)
             )
         self._decorate_tree()
+
+    def _refresh_units(self) -> None:
+        preferences = self._units.preferences
+        preserved_draft = False
+        editors = (
+            self.findChildren(QuantityVectorEdit)
+            + self.findChildren(OptionalQuantityEdit)
+            + self.findChildren(QuantityListEdit)
+            + self.findChildren(QuantityEdit)
+        )
+        for editor in editors:
+            if self.runtime_workspace.isAncestorOf(editor):
+                continue
+            if isinstance(editor.parentWidget(), QuantityVectorEdit):
+                continue
+            try:
+                changed = editor.set_unit(preferences.unit_for(editor.kind))
+            except UnitError:
+                changed = False
+            if not changed:
+                preserved_draft = True
+        self.units_status.setText(
+            f"Units: {preferences.length_unit} · {preferences.angle_unit} · {preferences.time_unit}"
+        )
+        if preserved_draft:
+            self.statusBar().showMessage(
+                "Unfinished fields retain their previous units until corrected."
+            )
+
+    def _display_units_dialog(self) -> None:
+        show_display_units_dialog(self, self._units)
+
+    def _quantity(
+        self, value_si: float | None, kind: QuantityKind, name: str
+    ) -> OptionalQuantityEdit:
+        field = OptionalQuantityEdit(
+            value_si, kind=kind, unit=self._units.preferences.unit_for(kind)
+        )
+        field.setObjectName(name)
+        field.setAccessibleName(name.replace("_", " "))
+        field.refresh_tooltip()
+        return field
 
     def _decorate_tree(self) -> None:
         icons = {
@@ -1157,9 +1432,9 @@ class MainWindow(QMainWindow):
         )
         root_link.addItems(link_names)
         root_link.setCurrentText(module.root_link)
-        mass = QLineEdit(_optional_number(module.mass_kg))
+        mass = self._quantity(module.mass_kg, QuantityKind.MASS, "mass_kg")
         form.addRow("Root link", root_link)
-        form.addRow("Mass (kg)", mass)
+        form.addRow("Mass", mass)
         form.addRow(
             "Capabilities",
             QLabel(", ".join(module.capabilities) if module.capabilities else "none"),
@@ -1172,7 +1447,7 @@ class MainWindow(QMainWindow):
                     module_id,
                     name.text().strip() or None,
                     root_link.currentText(),
-                    _optional_float(mass.text()),
+                    mass.value_si(),
                 )
             )
         )
@@ -1211,9 +1486,9 @@ class MainWindow(QMainWindow):
         modes = QLineEdit(", ".join(mode.value for mode in joint.control_modes))
         form.addRow("Control modes", modes)
         limits = joint.limits or JointLimits()
-        fields: dict[str, QLineEdit] = {}
-        for label, field_name in _joint_limit_fields(joint.type):
-            field = QLineEdit(_optional_number(getattr(limits, field_name)))
+        fields: dict[str, OptionalQuantityEdit] = {}
+        for label, field_name, kind in _joint_limit_fields(joint.type):
+            field = self._quantity(getattr(limits, field_name), kind, field_name)
             fields[field_name] = field
             form.addRow(label, field)
         apply_button = QPushButton("Apply joint metadata")
@@ -1222,9 +1497,7 @@ class MainWindow(QMainWindow):
             parsed_modes = tuple(
                 ControlMode(value.strip()) for value in modes.text().split(",") if value.strip()
             )
-            limit_data = {
-                field_name: _optional_float(field.text()) for field_name, field in fields.items()
-            }
+            limit_data = {field_name: field.value_si() for field_name, field in fields.items()}
             updated_limits = (
                 JointLimits(**limit_data)
                 if any(value is not None for value in limit_data.values())
@@ -1272,8 +1545,20 @@ class MainWindow(QMainWindow):
         form.addRow("Named frame", frame)
         form.addRow("Numeric pose", use_local_pose)
         pose = connector.local_pose or PoseSpec()
-        xyz = VectorEdit(pose.xyz_m, "XYZ", "Position (m)")
-        rpy = VectorEdit(pose.rpy_rad, "RPY", "Rotation (rad)")
+        xyz = QuantityVectorEdit(
+            pose.xyz_m,
+            kind=QuantityKind.LENGTH,
+            unit=self._units.preferences.length_unit,
+            labels="XYZ",
+            name="Position",
+        )
+        rpy = QuantityVectorEdit(
+            pose.rpy_rad,
+            kind=QuantityKind.ANGLE,
+            unit=self._units.preferences.angle_unit,
+            labels="RPY",
+            name="Roll / Pitch / Yaw",
+        )
         use_local_pose.toggled.connect(xyz.setEnabled)
         use_local_pose.toggled.connect(rpy.setEnabled)
         xyz.setEnabled(use_local_pose.isChecked())
@@ -1284,8 +1569,8 @@ class MainWindow(QMainWindow):
         approach = QLineEdit(
             _vector_text(connector.approach_axis) if connector.approach_axis is not None else ""
         )
-        form.addRow("Position XYZ (m)", xyz)
-        form.addRow("Rotation RPY (rad)", rpy)
+        form.addRow("Position XYZ", xyz)
+        form.addRow("Rotation RPY", rpy)
         form = property_group("Axes", sections)
         form.addRow("Docking axis", docking)
         form.addRow("Approach axis", approach)
@@ -1303,8 +1588,8 @@ class MainWindow(QMainWindow):
                     "frame": frame.text().strip() or None,
                     "local_pose": (
                         PoseSpec(
-                            xyz_m=_parse_vector(xyz.text()),
-                            rpy_rad=_parse_vector(rpy.text()),
+                            xyz_m=xyz.value_si(),
+                            rpy_rad=rpy.value_si(),
                         )
                         if use_local_pose.isChecked()
                         else None
@@ -1375,7 +1660,10 @@ class MainWindow(QMainWindow):
         runtime_mode.setChecked(ModelViewMode.RUNTIME in model_view.modes)
         default_view = QCheckBox()
         default_view.setChecked(model_view.default)
-        configuration = _MetadataEditor(model_view.configuration)
+        configuration = _ModelViewConfigurationEditor(
+            model_view.configuration, model_view.builder, lambda: self._units.preferences
+        )
+        builder.textChanged.connect(configuration.set_builder)
         form.addRow("Name", name)
         form.addRow("Builder", builder)
         form.addRow("Available while authoring", authoring_mode)
@@ -1426,7 +1714,10 @@ class MainWindow(QMainWindow):
         runtime_mode = QCheckBox()
         runtime_mode.setChecked(True)
         default_view = QCheckBox()
-        configuration = _MetadataEditor({})
+        configuration = _ModelViewConfigurationEditor(
+            {}, builder.text(), lambda: self._units.preferences
+        )
+        builder.textChanged.connect(configuration.set_builder)
         layout.addRow("Model view ID", model_view_id)
         id_help = QLabel("Lowercase YAML ID, such as topology or smores_topology.")
         id_help.setWordWrap(True)
@@ -1484,21 +1775,22 @@ class MainWindow(QMainWindow):
 
         form = property_group("Allowed orientations", sections)
         orientation_mode = QComboBox()
+        orientation_mode.setObjectName("orientation_mode")
         orientation_mode.addItems(["", *[item.value for item in OrientationMode]])
         if connector_type.allowed_orientations is not None:
             orientation_mode.setCurrentText(connector_type.allowed_orientations.mode.value)
-        orientation_values = QLineEdit(
-            ", ".join(
-                f"{value:g}"
-                for value in (
-                    connector_type.allowed_orientations.values_rad
-                    if connector_type.allowed_orientations is not None
-                    else ()
-                )
-            )
+        orientation_values = QuantityListEdit(
+            connector_type.allowed_orientations.values_rad
+            if connector_type.allowed_orientations is not None
+            else (),
+            kind=QuantityKind.ANGLE,
+            unit=self._units.preferences.unit_for(QuantityKind.ANGLE),
         )
+        orientation_values.setObjectName("values_rad")
+        orientation_values.setAccessibleName("Allowed orientation values")
+        orientation_values.refresh_tooltip()
         form.addRow("Orientation mode", orientation_mode)
-        form.addRow("Allowed values (rad)", orientation_values)
+        form.addRow("Allowed values", orientation_values)
 
         form = property_group("Acceptance region", sections)
         acceptance = connector_type.acceptance_region
@@ -1506,55 +1798,59 @@ class MainWindow(QMainWindow):
             AcceptanceShape,
             acceptance.shape.value if acceptance is not None else AcceptanceShape.BOX.value,
         )
-        position_tolerance = QLineEdit(
-            _optional_number(acceptance.position_tolerance_m if acceptance is not None else None)
+        position_tolerance = self._quantity(
+            acceptance.position_tolerance_m if acceptance is not None else None,
+            QuantityKind.LENGTH,
+            "position_tolerance_m",
         )
-        orientation_tolerance = QLineEdit(
-            _optional_number(
-                acceptance.orientation_tolerance_rad if acceptance is not None else None
-            )
+        orientation_tolerance = self._quantity(
+            acceptance.orientation_tolerance_rad if acceptance is not None else None,
+            QuantityKind.ANGLE,
+            "orientation_tolerance_rad",
         )
-        relative_velocity = QLineEdit(
-            _optional_number(
-                acceptance.max_relative_velocity_m_s if acceptance is not None else None
-            )
+        relative_velocity = self._quantity(
+            acceptance.max_relative_velocity_m_s if acceptance is not None else None,
+            QuantityKind.LINEAR_VELOCITY,
+            "max_relative_velocity_m_s",
         )
         form.addRow("Acceptance shape", acceptance_shape)
-        form.addRow("Position tolerance (m)", position_tolerance)
-        form.addRow("Orientation tolerance (rad)", orientation_tolerance)
-        form.addRow("Max relative velocity (m/s)", relative_velocity)
+        form.addRow("Position tolerance", position_tolerance)
+        form.addRow("Orientation tolerance", orientation_tolerance)
+        form.addRow("Max relative velocity", relative_velocity)
 
         form = property_group("Physical connection", sections)
         physical = connector_type.physical_connection
         constraint = QComboBox()
+        constraint.setObjectName("constraint")
         constraint.addItems(["", *[item.value for item in PhysicalConstraintType]])
         if physical is not None:
             constraint.setCurrentText(physical.constraint.value)
-        translational_stiffness = QLineEdit(
-            _optional_number(
-                physical.compliance.translational_stiffness_n_per_m
-                if physical is not None and physical.compliance is not None
-                else None
-            )
+        translational_stiffness = self._quantity(
+            physical.compliance.translational_stiffness_n_per_m
+            if physical is not None and physical.compliance is not None
+            else None,
+            QuantityKind.LINEAR_STIFFNESS,
+            "translational_stiffness_n_per_m",
         )
-        rotational_stiffness = QLineEdit(
-            _optional_number(
-                physical.compliance.rotational_stiffness_nm_per_rad
-                if physical is not None and physical.compliance is not None
-                else None
-            )
+        rotational_stiffness = self._quantity(
+            physical.compliance.rotational_stiffness_nm_per_rad
+            if physical is not None and physical.compliance is not None
+            else None,
+            QuantityKind.ANGULAR_STIFFNESS,
+            "rotational_stiffness_nm_per_rad",
         )
         hinge_axis = QLineEdit(
             _vector_text(physical.hinge.axis)
             if physical is not None and physical.hinge is not None
             else ""
         )
-        hinge_anchor_separation = QLineEdit(
-            _optional_number(
-                physical.hinge.anchor_separation_m
-                if physical is not None and physical.hinge is not None
-                else None
-            )
+        hinge_axis.setObjectName("hinge_axis")
+        hinge_anchor_separation = self._quantity(
+            physical.hinge.anchor_separation_m
+            if physical is not None and physical.hinge is not None
+            else None,
+            QuantityKind.LENGTH,
+            "anchor_separation_m",
         )
 
         def set_constraint_fields_enabled(value: str) -> None:
@@ -1568,32 +1864,39 @@ class MainWindow(QMainWindow):
         constraint.currentTextChanged.connect(set_constraint_fields_enabled)
         set_constraint_fields_enabled(constraint.currentText())
         form.addRow("Physical constraint", constraint)
-        form.addRow("Translation stiffness (N/m)", translational_stiffness)
-        form.addRow("Rotation stiffness (Nm/rad)", rotational_stiffness)
+        form.addRow("Translation stiffness", translational_stiffness)
+        form.addRow("Rotation stiffness", rotational_stiffness)
         form.addRow("Hinge axis (x, y, z)", hinge_axis)
-        form.addRow("Hinge anchor separation (m)", hinge_anchor_separation)
+        form.addRow("Hinge anchor separation", hinge_anchor_separation)
 
         form = property_group("Load limits", sections)
         limits = connector_type.limits
-        max_normal = QLineEdit(
-            _optional_number(limits.max_normal_force_n if limits is not None else None)
+        max_normal = self._quantity(
+            limits.max_normal_force_n if limits is not None else None,
+            QuantityKind.FORCE,
+            "max_normal_force_n",
         )
-        max_shear = QLineEdit(
-            _optional_number(limits.max_shear_force_n if limits is not None else None)
+        max_shear = self._quantity(
+            limits.max_shear_force_n if limits is not None else None,
+            QuantityKind.FORCE,
+            "max_shear_force_n",
         )
-        max_bending = QLineEdit(
-            _optional_number(limits.max_bending_moment_nm if limits is not None else None)
+        max_bending = self._quantity(
+            limits.max_bending_moment_nm if limits is not None else None,
+            QuantityKind.TORQUE,
+            "max_bending_moment_nm",
         )
         supports_undocking = QCheckBox()
         supports_undocking.setChecked(connector_type.supports_undocking)
-        form.addRow("Max normal force (N)", max_normal)
-        form.addRow("Max shear force (N)", max_shear)
-        form.addRow("Max bending moment (Nm)", max_bending)
+        form.addRow("Max normal force", max_normal)
+        form.addRow("Max shear force", max_shear)
+        form.addRow("Max bending moment", max_bending)
         form = property_group("Docking policy", sections)
         form.addRow("Supports undocking", supports_undocking)
 
         policy = connector_type.docking_policy
         declare_policy = QCheckBox()
+        declare_policy.setObjectName("declare_policy")
         declare_policy.setChecked(policy is not None)
         auto_latch = QCheckBox()
         auto_latch.setChecked(policy.auto_latch if policy is not None else False)
@@ -1601,11 +1904,15 @@ class MainWindow(QMainWindow):
             AlignmentMode,
             policy.alignment.value if policy is not None else AlignmentMode.MEASURED.value,
         )
-        redock_cooldown = QLineEdit(
-            _optional_number(policy.redock_cooldown_s if policy is not None else None)
+        redock_cooldown = self._quantity(
+            policy.redock_cooldown_s if policy is not None else None,
+            QuantityKind.TIME,
+            "redock_cooldown_s",
         )
-        break_force = QLineEdit(
-            _optional_number(policy.break_force_n if policy is not None else None)
+        break_force = self._quantity(
+            policy.break_force_n if policy is not None else None,
+            QuantityKind.FORCE,
+            "break_force_n",
         )
 
         def set_policy_fields_enabled(enabled: bool) -> None:
@@ -1619,8 +1926,8 @@ class MainWindow(QMainWindow):
         form.addRow("Declare docking policy", declare_policy)
         form.addRow("Automatic latching", auto_latch)
         form.addRow("Docking alignment", alignment)
-        form.addRow("Redock cooldown (s)", redock_cooldown)
-        form.addRow("Break force (N)", break_force)
+        form.addRow("Redock cooldown", redock_cooldown)
+        form.addRow("Break force", break_force)
         metadata = _MetadataEditor(connector_type.metadata)
         form = property_group("Custom metadata", sections)
         form.addRow(metadata)
@@ -1633,7 +1940,7 @@ class MainWindow(QMainWindow):
                 AllowedOrientations(
                     mode=OrientationMode(mode_value),
                     values_rad=(
-                        _parse_float_list(orientation_values.text())
+                        orientation_values.value_si()
                         if mode_value == OrientationMode.DISCRETE.value
                         else ()
                     ),
@@ -1642,9 +1949,9 @@ class MainWindow(QMainWindow):
                 else None
             )
             acceptance_values = (
-                _optional_float(position_tolerance.text()),
-                _optional_float(orientation_tolerance.text()),
-                _optional_float(relative_velocity.text()),
+                position_tolerance.value_si(),
+                orientation_tolerance.value_si(),
+                relative_velocity.value_si(),
             )
             if any(value is not None for value in acceptance_values) and any(
                 value is None for value in acceptance_values
@@ -1666,8 +1973,8 @@ class MainWindow(QMainWindow):
             )
             constraint_value = constraint.currentText()
             compliance_values = (
-                _optional_float(translational_stiffness.text()),
-                _optional_float(rotational_stiffness.text()),
+                translational_stiffness.value_si(),
+                rotational_stiffness.value_si(),
             )
             compliance = (
                 ComplianceSpec(
@@ -1680,7 +1987,7 @@ class MainWindow(QMainWindow):
             hinge = None
             if constraint_value == PhysicalConstraintType.HINGE.value:
                 axis = _optional_vector(hinge_axis.text())
-                anchor_separation_m = _optional_float(hinge_anchor_separation.text())
+                anchor_separation_m = hinge_anchor_separation.value_si()
                 if axis is None or anchor_separation_m is None:
                     raise ValueError(
                         "hinge constraints require a three-component axis and anchor separation"
@@ -1699,9 +2006,9 @@ class MainWindow(QMainWindow):
                 else None
             )
             limit_values = (
-                _optional_float(max_normal.text()),
-                _optional_float(max_shear.text()),
-                _optional_float(max_bending.text()),
+                max_normal.value_si(),
+                max_shear.value_si(),
+                max_bending.value_si(),
             )
             connector_limits = (
                 ConnectorLimits(
@@ -1716,8 +2023,8 @@ class MainWindow(QMainWindow):
                 DockingPolicySpec(
                     auto_latch=auto_latch.isChecked(),
                     alignment=AlignmentMode(alignment.currentText()),
-                    redock_cooldown_s=_optional_float(redock_cooldown.text()),
-                    break_force_n=_optional_float(break_force.text()),
+                    redock_cooldown_s=redock_cooldown.value_si(),
+                    break_force_n=break_force.value_si(),
                 )
                 if declare_policy.isChecked()
                 else None
@@ -1825,8 +2132,20 @@ class MainWindow(QMainWindow):
         connector_id.setPlaceholderText("for example: front_face")
         connector_type = QComboBox()
         connector_type.addItems(connector_type_ids)
-        xyz = QLineEdit("0, 0, 0")
-        rpy = QLineEdit("0, 0, 0")
+        xyz = QuantityVectorEdit(
+            (0.0, 0.0, 0.0),
+            kind=QuantityKind.LENGTH,
+            unit=self._units.preferences.length_unit,
+            labels="XYZ",
+            name="Position",
+        )
+        rpy = QuantityVectorEdit(
+            (0.0, 0.0, 0.0),
+            kind=QuantityKind.ANGLE,
+            unit=self._units.preferences.angle_unit,
+            labels="RPY",
+            name="Roll / Pitch / Yaw",
+        )
         docking = QLineEdit("1, 0, 0")
         approach = QLineEdit("1, 0, 0")
         metadata = _MetadataEditor({})
@@ -1835,8 +2154,8 @@ class MainWindow(QMainWindow):
         id_help.setWordWrap(True)
         layout.addRow("", id_help)
         layout.addRow("Connector type", connector_type)
-        layout.addRow("Position xyz (m)", xyz)
-        layout.addRow("Rotation rpy (rad)", rpy)
+        layout.addRow("Position XYZ", xyz)
+        layout.addRow("Rotation RPY", rpy)
         layout.addRow("Docking axis", docking)
         layout.addRow("Approach axis", approach)
         layout.addRow("Custom fields", metadata)
@@ -1852,8 +2171,8 @@ class MainWindow(QMainWindow):
                     connector_type=connector_type.currentText(),
                     parent_link=link_name,
                     local_pose=PoseSpec(
-                        xyz_m=_parse_vector(xyz.text()),
-                        rpy_rad=_parse_vector(rpy.text()),
+                        xyz_m=xyz.value_si(),
+                        rpy_rad=rpy.value_si(),
                     ),
                     docking_axis=_parse_vector(docking.text()),
                     approach_axis=_parse_vector(approach.text()),
@@ -2088,19 +2407,6 @@ def _vector_text(value: tuple[float, float, float]) -> str:
     return ", ".join(f"{component:g}" for component in value)
 
 
-def _optional_float(value: str) -> float | None:
-    stripped = value.strip()
-    return float(stripped) if stripped else None
-
-
-def _optional_number(value: float | None) -> str:
-    return "" if value is None else f"{value:g}"
-
-
-def _parse_float_list(value: str) -> tuple[float, ...]:
-    return tuple(float(part) for part in value.replace(",", " ").split())
-
-
 def _enum_combo(enum_type: type[StrEnum], current: str) -> QComboBox:
     combo = QComboBox()
     combo.addItems([item.value for item in enum_type])
@@ -2123,26 +2429,28 @@ def _model_view_modes(
     )
 
 
-def _joint_limit_fields(joint_type: JointType) -> tuple[tuple[str, str], ...]:
+def _joint_limit_fields(
+    joint_type: JointType,
+) -> tuple[tuple[str, str, QuantityKind], ...]:
     if joint_type in {JointType.REVOLUTE, JointType.CONTINUOUS}:
         bounds = (
             ()
             if joint_type is JointType.CONTINUOUS
             else (
-                ("Lower position (rad)", "lower_position_rad"),
-                ("Upper position (rad)", "upper_position_rad"),
+                ("Lower position", "lower_position_rad", QuantityKind.ANGLE),
+                ("Upper position", "upper_position_rad", QuantityKind.ANGLE),
             )
         )
         return (
             *bounds,
-            ("Max velocity (rad/s)", "max_velocity_rad_per_s"),
-            ("Max effort (Nm)", "max_effort_nm"),
+            ("Max velocity", "max_velocity_rad_per_s", QuantityKind.ANGULAR_VELOCITY),
+            ("Max effort", "max_effort_nm", QuantityKind.TORQUE),
         )
     if joint_type is JointType.PRISMATIC:
         return (
-            ("Lower position (m)", "lower_position_m"),
-            ("Upper position (m)", "upper_position_m"),
-            ("Max velocity (m/s)", "max_velocity_m_per_s"),
-            ("Max effort (N)", "max_effort_n"),
+            ("Lower position", "lower_position_m", QuantityKind.LENGTH),
+            ("Upper position", "upper_position_m", QuantityKind.LENGTH),
+            ("Max velocity", "max_velocity_m_per_s", QuantityKind.LINEAR_VELOCITY),
+            ("Max effort", "max_effort_n", QuantityKind.FORCE),
         )
     return ()

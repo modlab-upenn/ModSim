@@ -32,6 +32,7 @@ def main() -> None:
         home = work / "modsim-home"
         environment["MODSIM_PATH"] = str(home)
         environment.pop("MODSIM_HOME", None)
+        environment["MPLCONFIGDIR"] = str(work / "matplotlib")
 
         def run(*command: str) -> subprocess.CompletedProcess[str]:
             return subprocess.run(
@@ -81,6 +82,7 @@ def main() -> None:
                 "assert files('modsim_robotics').joinpath('data', 'robot_packs', 'generic_cube', "
                 "'robot_pack.yaml').is_file(); "
                 "assert 'mujoco' not in sys.modules; assert 'PySide6' not in sys.modules; "
+                "assert find_spec('mujoco') is None, 'Base installation pulled in MuJoCo'; "
                 "assert find_spec('ruff') is None, 'Base installation pulled in Ruff'; "
                 "import modsim; assert modsim.COLLISION_SENTINEL is True; "
                 "print(modsim_robotics.__file__)",
@@ -88,6 +90,21 @@ def main() -> None:
             run(str(cli), "--version")
             run(str(python), "-m", "modsim_robotics", "--version")
             run(str(studio_cli), "--help")
+            # A plain artifact install must provide the actual desktop imports.
+            # Importing them exercises packaged modules and shared libraries
+            # without opening a window, creating a GPU context, or starting Qt.
+            run(
+                str(python),
+                "-c",
+                "from importlib.util import find_spec; "
+                "from PySide6.QtWidgets import QApplication; "
+                "import numpy, pyqtgraph, pyvista, pyvistaqt; "
+                "from modsim_robotics_studio import app, main_window, runtime_app, runtime_window; "
+                "assert QApplication.instance() is None, 'Studio import created an application'; "
+                "assert find_spec('mujoco') is None, 'Studio pulled in MuJoCo'; "
+                "assert callable(app.main) and callable(runtime_app.main); "
+                "assert main_window.MainWindow and runtime_window.RuntimeInspectorWindow",
+            )
             if home.exists():
                 raise RuntimeError("Importing ModSim or printing its version created user data.")
             result = json.loads(

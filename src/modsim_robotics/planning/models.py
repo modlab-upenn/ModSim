@@ -13,6 +13,13 @@ class PlanningValue(BaseModel):
 
 
 class Pose2(PlanningValue):
+    """Planar planning position in meters and heading in radians.
+
+    Heading is a scalar rotation about the fixed plane normal. Full 3D runtime
+    orientations remain quaternions in Transform; this planar model has no
+    Euler pitch/roll singularity.
+    """
+
     x: float
     y: float
     yaw: float = 0.0
@@ -186,7 +193,12 @@ class PlanningSnapshot(PlanningValue):
     actions: tuple[ActionObservation, ...]
     decisions: tuple[PlannerDecision, ...] = ()
     replans: int = 0
-    planning_ms: float = 0.0
+    planning_time_s: float = 0.0
     path_length_m: float = 0.0
     footprint_half_m: tuple[float, float] = (0.044, 0.044)
     footprint_center_x_m: float = 0.033
+
+    @property
+    def planning_ms(self) -> float:
+        """Return legacy display milliseconds; serialization retains planning_time_s."""
+        return self.planning_time_s * 1000.0

@@ -2,7 +2,7 @@
   "name": "modsim-documentation",
   "version": "0.0.0",
   "private": true,
-  "description": "Local documentation application for ModSim.",
+  "description": "ModSim project website and documentation.",
   "packageManager": "npm@10.9.7",
   "engines": {
     "node": ">=22 <23",
@@ -19,6 +19,7 @@
     "docs:build": "docusaurus build",
     "docs:serve": "node scripts/serve.mjs",
     "docs:clear": "docusaurus clear",
+    "site:check": "node --test scripts/tests/*.test.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

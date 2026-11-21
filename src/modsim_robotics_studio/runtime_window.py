@@ -23,12 +23,15 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from modsim_robotics.core.transforms import quat_to_rpy
 from modsim_robotics.runtime import RuntimeInspectorConfig, RuntimeInspectorFrame
 from modsim_robotics.runtime.reconfiguration import ReconfigurationPhase
+from modsim_robotics.units import QuantityKind, format_quantity, from_si_vector
 from modsim_robotics_studio._loading import LoadingPanel
 from modsim_robotics_studio._window_sizing import manage_window
 from modsim_robotics_studio.appearance import theme_manager
 from modsim_robotics_studio.chrome import StudioHeader
+from modsim_robotics_studio.display_units_dialog import show_display_units_dialog
 from modsim_robotics_studio.icons import studio_icon
 from modsim_robotics_studio.runtime_events import RuntimeEventLogWidget
 from modsim_robotics_studio.runtime_graph import TopologyGraphWidget
@@ -48,6 +51,7 @@ from modsim_robotics_studio.runtime_process import (
     RuntimeInspectorProcessController,
     RuntimeInspectorThreadController,
 )
+from modsim_robotics_studio.unit_preferences import UnitManager, units_manager
 from modsim_robotics_studio.visual_colors import CategoryColors
 
 _LOGGER = logging.getLogger("modsim_robotics.runtime_inspector")
@@ -96,6 +100,7 @@ class RuntimeInspectorWindow(QMainWindow):
         *,
         embedded: bool = False,
         auto_start: bool = True,
+        units: UnitManager | None = None,
     ) -> None:
         """Build the session controls without creating a backend yet.
 
@@ -106,8 +111,10 @@ class RuntimeInspectorWindow(QMainWindow):
                 branding or standalone window geometry preferences.
             auto_start: Start once on first show. Set false when a containing
                 workspace explicitly calls ``start`` after its readiness checks.
+            units: Shared display preferences for the selected ModSim home.
         """
         super().__init__(parent)
+        self._units = units or units_manager()
         self._embedded = embedded
         self._auto_start = auto_start
         self._closed = False
@@ -135,6 +142,9 @@ class RuntimeInspectorWindow(QMainWindow):
         self.header = StudioHeader(self, "Runtime Inspector")
         self.header.setObjectName("StudioHeader")
         self.addToolBar(self.header)
+        self.units_button = QPushButton("Display units")
+        self.units_button.clicked.connect(lambda: show_display_units_dialog(self, self._units))
+        self.header.addWidget(self.units_button)
         if embedded:
             self.header.hide()
 
@@ -154,6 +164,9 @@ class RuntimeInspectorWindow(QMainWindow):
         self.source_label.setObjectName("Muted")
         self.source_label.setWordWrap(True)
         self.source_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.pose_label = QLabel("Select a module to inspect its measured world pose.")
+        self.pose_label.setWordWrap(True)
+        self.pose_label.setObjectName("Muted")
         self.stop_button = QPushButton("Stop")
         self.stop_button.setProperty("danger", True)
         self.stop_button.setEnabled(False)
@@ -189,6 +202,7 @@ class RuntimeInspectorWindow(QMainWindow):
         header_layout.addLayout(status_row)
         header_layout.addWidget(self.speed_label)
         header_layout.addWidget(self.source_label)
+        header_layout.addWidget(self.pose_label)
 
         category_colors = CategoryColors()
         self.graph = TopologyGraphWidget(category_colors=category_colors)
@@ -315,10 +329,52 @@ class RuntimeInspectorWindow(QMainWindow):
         self.lattice.orbit_requested.connect(self._orbit_lattice)
         theme_manager().changed.connect(self._refresh_action_icons)
         self._refresh_action_icons()
+        self._units.changed.connect(self._refresh_units)
+        self._refresh_units()
         self._window_sizing = (
             None
             if embedded
             else manage_window(self, "runtime-inspector", preferred=QSize(1180, 820))
+        )
+
+    def _refresh_units(self) -> None:
+        preferences = self._units.preferences
+        for widget in (
+            self.lattice,
+            self.target_lattice,
+            self.planning,
+            self.lattice_planning,
+            self.events,
+        ):
+            widget.set_units(preferences)
+        self._update_run_state()
+        presentation = self._presenter.presentation
+        if presentation is not None:
+            self._apply_presentation(presentation)
+
+    def _update_pose_readout(self, presentation: RuntimeInspectorPresentation) -> None:
+        frame = self._presenter.frame
+        selection = presentation.selection
+        if frame is None or selection is None or selection.kind != "node":
+            self.pose_label.setText("Select a module to inspect its measured world pose.")
+            return
+        node = next((item for item in frame.view.nodes if item.id == selection.entity_id), None)
+        if node is None:
+            return
+        preferences = self._units.preferences
+        position = from_si_vector(
+            node.world_position_m, preferences.length_unit, kind=QuantityKind.LENGTH
+        )
+        rpy = from_si_vector(
+            quat_to_rpy(node.world_orientation_wxyz),
+            preferences.angle_unit,
+            kind=QuantityKind.ANGLE,
+        )
+        xyz_text = ", ".join(f"{value:.6g}" for value in position)
+        rpy_text = ", ".join(f"{value:.6g}" for value in rpy)
+        self.pose_label.setText(
+            f"{node.id} · world XYZ ({xyz_text}) {preferences.length_unit} · "
+            f"fixed-axis RPY ({rpy_text}) {preferences.angle_unit}"
         )
 
     def showEvent(self, event: QShowEvent) -> None:
@@ -669,7 +725,26 @@ class RuntimeInspectorWindow(QMainWindow):
                 self.target_title.setText(f"Target lattice · {frame.lattice_planning.goal.id}")
         self.events.set_events(presentation.events)
         self.status_label.setText(presentation.status_text)
-        self.source_label.setText(presentation.source_text)
+        frame = self._presenter.frame
+        if frame is not None:
+            source = frame.view.source
+            fields = [f"{source.pack_id}@{source.pack_version}"]
+            if source.world_time_s is not None:
+                fields.append(
+                    "t=" + format_quantity(source.world_time_s, self._units.preferences.time_unit)
+                )
+            for name, value in (
+                ("sample", source.sample_sequence),
+                ("topology", source.topology_revision),
+                ("docking", source.docking_revision),
+                ("events", source.event_revision),
+            ):
+                if value is not None:
+                    fields.append(f"{name}={value}")
+            self.source_label.setText(" | ".join(fields))
+        else:
+            self.source_label.setText(presentation.source_text)
+        self._update_pose_readout(presentation)
         selection = presentation.selection
         if selection is None:
             self.statusBar().showMessage(presentation.status_text)
@@ -706,7 +781,9 @@ class RuntimeInspectorWindow(QMainWindow):
                 else "Simulation complete"
             )
             detail = (
-                f"Finished at {scenario.time_s:.3f} s. The final state is frozen for inspection."
+                "Finished at "
+                f"{format_quantity(scenario.time_s, self._units.preferences.time_unit)}. "
+                "The final state is frozen for inspection."
                 if scenario is not None
                 else ""
             )

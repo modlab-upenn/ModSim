@@ -64,8 +64,9 @@ this maintainer guide and the setup tracker.
 
 For a desktop change, also exercise the
 [Studio workflow checks](development-setup.md#exercise-the-studio-workflow)
-using the built wheel in a clean environment with its `studio` extra. Add
-`mujoco` for the native viewer check. Confirm that **Robot Pack → Runtime**,
+using a plain installation of the built wheel in a clean environment. Studio
+and its dependencies must be installed without requesting an extra. Add `mujoco`
+for the native viewer check. Confirm that **Robot Pack → Runtime**,
 model-view selection or creation, launch validation, save-before-start, and
 playback/shutdown work from the installed artifact. The core installation
 smoke check below does not launch a GUI; an editable checkout can also conceal

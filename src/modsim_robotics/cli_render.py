@@ -9,6 +9,7 @@ dispatch.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 import typer
@@ -16,9 +17,12 @@ from rich.console import Console
 from rich.table import Table
 
 from modsim_robotics.cli_options import OutputFormat
-from modsim_robotics.model_views import ModuleTopologyGraphView
+from modsim_robotics.core.events import ConnectorOverloaded
+from modsim_robotics.core.transforms import quat_to_rpy
+from modsim_robotics.model_views import CubicLatticeView, ModuleTopologyGraphView
 from modsim_robotics.robot_packs import Severity
 from modsim_robotics.runtime.inspection import format_event_detail
+from modsim_robotics.units import UnitPreferences, format_quantity, from_si
 
 if TYPE_CHECKING:
     from modsim_robotics.core.events import Event
@@ -94,19 +98,32 @@ def render_model_view_catalog(
     console.print(builders_table)
 
 
-def render_generated_model_view(generated: ModelView, *, output: OutputFormat) -> None:
-    """Render a generated immutable model-view result."""
+def _display_vector(values: Sequence[float], unit: str) -> str:
+    return "(" + ", ".join(f"{from_si(value, unit):.6g}" for value in values) + ")"
+
+
+def render_generated_model_view(
+    generated: ModelView, *, output: OutputFormat, units: UnitPreferences | None = None
+) -> None:
+    """Render a generated model view with optional human-only unit conversion.
+
+    Args:
+        generated: Immutable canonical model-view data; never modified.
+        output: Text for presentation or unchanged canonical JSON.
+        units: Human-readable unit choices. None retains SI display defaults.
+    """
     if output is OutputFormat.JSON:
         typer.echo(json.dumps(generated.model_dump(mode="json"), indent=2))
         return
 
+    preferences = units or UnitPreferences(length_unit="m", angle_unit="rad")
     console = Console(width=160)
     console.print(
         f"Generated [bold]{generated.id}[/bold] with "
         f"[bold]{generated.builder}[/bold] from "
         f"{generated.source.pack_id}@{generated.source.pack_version}."
     )
-    if not isinstance(generated, ModuleTopologyGraphView):
+    if not isinstance(generated, ModuleTopologyGraphView | CubicLatticeView):
         console.print(json.dumps(generated.model_dump(mode="json"), indent=2))
         return
 
@@ -114,14 +131,32 @@ def render_generated_model_view(generated: ModelView, *, output: OutputFormat) -
     nodes.add_column("Module", no_wrap=True)
     nodes.add_column("Module type", no_wrap=True)
     nodes.add_column("Assembly", no_wrap=True)
-    nodes.add_column("World position (m)", no_wrap=True)
-    for node in generated.nodes:
-        nodes.add_row(
+    nodes.add_column(f"World position ({preferences.length_unit})", no_wrap=True)
+    nodes.add_column(f"World RPY ({preferences.angle_unit})", no_wrap=True)
+    if isinstance(generated, CubicLatticeView):
+        nodes.add_column("Cell (integer)")
+        nodes.add_column("Pose residual")
+    for index, node in enumerate(generated.nodes):
+        row = [
             node.id,
             node.module_type_id,
             node.assembly_id,
-            "(" + ", ".join(f"{value:.6g}" for value in node.world_position_m) + ")",
-        )
+            _display_vector(node.world_position_m, preferences.length_unit),
+            _display_vector(quat_to_rpy(node.world_orientation_wxyz), preferences.angle_unit),
+        ]
+        if isinstance(generated, CubicLatticeView):
+            lattice_node = generated.nodes[index]
+            row.extend(
+                [
+                    str(lattice_node.cell),
+                    format_quantity(lattice_node.pose_residual.position_m, preferences.length_unit)
+                    + " / "
+                    + format_quantity(
+                        lattice_node.pose_residual.orientation_rad, preferences.angle_unit
+                    ),
+                ]
+            )
+        nodes.add_row(*row)
     console.print(nodes)
 
     if not generated.edges:
@@ -132,14 +167,14 @@ def render_generated_model_view(generated: ModelView, *, output: OutputFormat) -
     edges.add_column("Source module", no_wrap=True)
     edges.add_column("Target module", no_wrap=True)
     edges.add_column("Connectors")
-    edges.add_column("Created (s)", justify="right", no_wrap=True)
+    edges.add_column(f"Created ({preferences.time_unit})", justify="right", no_wrap=True)
     for edge in generated.edges:
         edges.add_row(
             edge.connection_id,
             edge.source,
             edge.target,
             f"{edge.connector_a} <-> {edge.connector_b}",
-            f"{edge.created_at_s:.6g}",
+            f"{from_si(edge.created_at_s, preferences.time_unit):.6g}",
         )
     console.print(edges)
 
@@ -151,7 +186,18 @@ def render_docking_session(
     output: OutputFormat,
     latch: bool,
     backend: str,
+    units: UnitPreferences | None = None,
 ) -> None:
+    """Render canonical docking outcomes with optional human display units.
+
+    Args:
+        session: Runtime session owning the canonical world and diagnostics.
+        recorded: Canonical event sequence produced by the completed run.
+        output: Text presentation or unchanged SI JSON data.
+        latch: Whether this run attempted explicit docking requests.
+        backend: Backend label shown in the report.
+        units: Human display choices; None retains metres/radians/seconds.
+    """
     world = session.world
     metrics = session.metrics()
     proposals = session.proposals()
@@ -178,6 +224,7 @@ def render_docking_session(
         typer.echo(json.dumps(payload, indent=2))
         return
 
+    preferences = units or UnitPreferences(length_unit="m", angle_unit="rad")
     console = Console(width=160)
     console.print(
         f"Docking session for [bold]{world.pack.id}@{world.pack.version}[/bold] "
@@ -191,17 +238,35 @@ def render_docking_session(
     if recorded:
         table = Table(title="Events", show_header=True)
         table.add_column("Seq", justify="right", no_wrap=True)
-        table.add_column("Time (s)", justify="right", no_wrap=True)
+        table.add_column(f"Time ({preferences.time_unit})", justify="right", no_wrap=True)
         table.add_column("Event", no_wrap=True)
         table.add_column("Detail")
         for event in recorded:
             table.add_row(
                 str(event.sequence),
-                f"{event.time_s:.4g}",
+                f"{from_si(event.time_s, preferences.time_unit):.4g}",
                 event.kind,
-                format_event_detail(event),
+                (
+                    f"{event.connection_id}: "
+                    f"{format_quantity(event.measured_force_n, preferences.force_unit)} exceeded "
+                    f"{format_quantity(event.limit_n, preferences.force_unit)}"
+                    if isinstance(event, ConnectorOverloaded)
+                    else format_event_detail(event)
+                ),
             )
         console.print(table)
+
+    poses = Table(title="Module poses")
+    poses.add_column("Module")
+    poses.add_column(f"World position ({preferences.length_unit})")
+    poses.add_column(f"World RPY ({preferences.angle_unit})")
+    for module_id, module in sorted(world.modules.items()):
+        poses.add_row(
+            module_id,
+            _display_vector(module.pose.translation, preferences.length_unit),
+            _display_vector(quat_to_rpy(module.pose.rotation), preferences.angle_unit),
+        )
+    console.print(poses)
 
     assemblies = Table(title="Assemblies", show_header=True)
     assemblies.add_column("Assembly", no_wrap=True)
@@ -236,7 +301,8 @@ def render_docking_session(
     elif not proposals:
         radius = session.docking.detection_radius(world)
         console.print(
-            f"[yellow]No connector pair came within the {radius:.4g} m detection radius, "
+            "[yellow]No connector pair came within the "
+            f"{format_quantity(radius, preferences.length_unit, precision=4)} detection radius, "
             "so nothing was evaluated. Reduce --spacing so that two connectors meet, or widen "
             "the connector type's acceptance region.[/yellow]"
         )

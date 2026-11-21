@@ -1,4 +1,4 @@
-"""Dependency-friendly launcher for the optional ``modsim-robotics-studio`` command."""
+"""Dependency-friendly launcher for the bundled ``modsim-robotics-studio`` command."""
 
 from __future__ import annotations
 
@@ -50,8 +50,8 @@ def cli() -> None:
     except ImportError as error:
         print(
             "ModSim Studio dependencies are not installed. "
-            "Install with: pip install 'modsim-robotics[studio]'",
+            "Install with: pip install modsim-robotics",
             file=sys.stderr,
         )
         raise SystemExit(2) from error
-    raise SystemExit(main(initial_path))
+    raise SystemExit(main(initial_path, home=arguments.home))

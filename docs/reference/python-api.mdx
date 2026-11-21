@@ -27,9 +27,19 @@ canonical state and the backend interface:
 | [WorldState](api/modsim_robotics/core/state/index.md) | Track live module, connector, connection, assembly, and event state. |
 | [BackendAdapter](api/modsim_robotics/backends/base/index.md) | See the simulator-independent contract for observations and physical constraints. |
 | [RobotPack schema types](api/modsim_robotics/robot_packs/schema/index.md) | Read the typed descriptions consumed by scenes and sessions. |
+| [Unit conversions](api/modsim_robotics/units/conversion/index.md) | Parse explicit quantities, map compatible units, and format canonical values. |
+| [Physical field metadata](api/modsim_robotics/units/fields/index.md) | Resolve declared physical fields and joint-type-specific quantities. |
+| [Display profiles](api/modsim_robotics/units/preferences/index.md) | Choose supported units for all fifteen quantity kinds and derived speed/acceleration. |
+| [Local profile storage](api/modsim_robotics/unit_settings/index.md) | Read without side effects and save preferences atomically in the selected data home. |
+| [Unit definitions](api/modsim_robotics/units/definitions/index.md) and [conversions](api/modsim_robotics/units/conversion/index.md) | Convert explicit user units to canonical SI, parse quantities, and format readouts. |
+| [UnitPreferences](api/modsim_robotics/units/preferences/index.md) and [local settings](api/modsim_robotics/unit_settings/index.md) | Define display choices and explicitly load or save local preferences. |
 
 The generated pages also include supporting runtime entities, snapshots,
-events, identifiers, transforms, and docking metrics. Studio widgets, concrete
+events, identifiers, transforms, and docking metrics. `PoseSpec.from_rpy()` and
+`Transform.from_rpy()` accept explicit length and angle units; transforms keep
+runtime orientation as a quaternion. The
+[units and orientation chapter](../explanation/units-and-orientation.md) explains
+those boundaries with verified examples. Studio widgets, concrete
 simulator adapters, planners, and the remaining API will be added as we review
 each subsystem.
 
@@ -39,6 +49,13 @@ performs Inspector-specific launch checks before using the execution runner;
 the core `RuntimeSession` API documented here does not require a model-view
 recipe or GUI. The [Studio architecture chapter](../explanation/studio-and-inspector.md)
 maps the shell, readiness checks, and embedded Inspector to their source files.
+
+For human-friendly pose authoring, use `PoseSpec.from_rpy()` or
+`Transform.from_rpy()` with explicit `length_unit` and `angle_unit` arguments.
+Runtime orientations remain scalar-first quaternions; preference changes never
+alter a Python call's default SI meaning. The
+[units chapter](../explanation/units-and-orientation.md) includes verified examples,
+profile commands, and presentation/transport boundaries.
 
 ## How this reference stays current
 

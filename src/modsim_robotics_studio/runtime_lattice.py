@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from modsim_robotics.units import UnitPreferences, format_quantity
 from modsim_robotics_studio.appearance import theme_manager
 from modsim_robotics_studio.chrome import LegendWidget
 from modsim_robotics_studio.runtime_lattice_presenter import (
@@ -65,6 +66,7 @@ class CubicLatticeWidget(QWidget):
     ) -> None:
         super().__init__(parent)
         self._appearance = theme_manager()
+        self._units = UnitPreferences()
         self._category_colors = category_colors or CategoryColors()
         self._colors = visual_colors(self._appearance.theme.id)
         self.setObjectName("Panel")
@@ -233,7 +235,7 @@ class CubicLatticeWidget(QWidget):
         assembly_ids = tuple(sorted({node.assembly_id for node in geometry.nodes}))
         self._category_colors.prepare(assembly_ids)
         self._sync_controls(presentation)
-        self.detail_label.setText(_selection_text(presentation))
+        self.detail_label.setText(_selection_text(presentation, self._units))
         fingerprint = (
             geometry,
             presentation.selection,
@@ -270,6 +272,13 @@ class CubicLatticeWidget(QWidget):
         if self._fit_key is None or fit_key[:3] != self._fit_key[:3]:
             self.fit_presentation()
         self._fit_key = fit_key
+
+    def set_units(self, preferences: UnitPreferences) -> None:
+        """Refresh physical residual labels without changing lattice geometry."""
+        self._units = preferences
+        self._fingerprint = None
+        if self._presentation is not None:
+            self.set_presentation(self._presentation)
 
     def fit_presentation(self) -> None:
         """Fit the retained finite grid and visible modules in the plot."""
@@ -510,7 +519,7 @@ class CubicLatticeWidget(QWidget):
             pen.setCosmetic(True)
             polygon.setPen(pen)
             polygon.setZValue(10.0 + index * 0.01)
-            polygon.setToolTip(_module_tooltip(node))
+            polygon.setToolTip(_module_tooltip(node, self._units))
 
         for node in geometry.nodes:
             outline = self._colors["magenta"] if node.selected else self._appearance.theme.text
@@ -584,7 +593,7 @@ class CubicLatticeWidget(QWidget):
             label.fill = pg.mkBrush(self._appearance.theme.viewport)
             label.setText(f"{node.label}\n{node.cell}")
             label.setPos(*node.center)
-            label.setToolTip(_module_tooltip(node))
+            label.setToolTip(_module_tooltip(node, self._units))
             label.setVisible(presentation.show_labels)
 
     def _draw_lattice_axes(self, presentation: CubicLatticePresentation) -> None:
@@ -678,19 +687,27 @@ def _remove_items(plot_item: Any, items: list[Any]) -> None:
         plot_item.removeItem(item)
 
 
-def _module_tooltip(node: PresentedLatticeModule) -> str:
+def _module_tooltip(
+    node: PresentedLatticeModule, preferences: UnitPreferences | None = None
+) -> str:
+    preferences = preferences or UnitPreferences()
+    position = format_quantity(node.position_residual_m, preferences.length_unit)
+    orientation = format_quantity(node.orientation_residual_rad, preferences.angle_unit)
     return (
         f"{node.id}\ncell={node.cell}\n"
         f"measured=({node.measured_lattice_position[0]:.3f}, "
         f"{node.measured_lattice_position[1]:.3f}, "
         f"{node.measured_lattice_position[2]:.3f}) cells\n"
-        f"position residual={node.position_residual_m:.4g} m\n"
-        f"orientation residual={node.orientation_residual_rad:.4g} rad\n"
+        f"position residual={position}\n"
+        f"orientation residual={orientation}\n"
         f"assembly={node.assembly_id}"
     )
 
 
-def _selection_text(presentation: CubicLatticePresentation) -> str:
+def _selection_text(
+    presentation: CubicLatticePresentation, preferences: UnitPreferences | None = None
+) -> str:
+    preferences = preferences or UnitPreferences()
     geometry = presentation.geometry
     selection = presentation.selection
     if selection is None:
@@ -704,10 +721,12 @@ def _selection_text(presentation: CubicLatticePresentation) -> str:
     if selection.kind == "node":
         node = next((item for item in geometry.nodes if item.id == selection.entity_id), None)
         if node is not None:
+            position = format_quantity(node.position_residual_m, preferences.length_unit)
+            orientation = format_quantity(node.orientation_residual_rad, preferences.angle_unit)
             return (
                 f"Module {node.id} · cell={node.cell} · "
-                f"position residual={node.position_residual_m:.4g} m · "
-                f"orientation residual={node.orientation_residual_rad:.4g} rad · "
+                f"position residual={position} · "
+                f"orientation residual={orientation} · "
                 f"assembly={node.assembly_id}"
             )
     elif selection.kind == "edge":

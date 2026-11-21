@@ -1,7 +1,16 @@
-# ModSim documentation development
+# ModSim website and documentation development
 
-This directory contains the local Docusaurus application. Authored pages live in
-[`../docs`](../docs/); the application reads them directly.
+This directory contains one Docusaurus application for the project homepage
+and manual. The homepage is `src/pages/index.tsx`; authored manual pages live
+in [`../docs`](../docs/) and are read directly. Both share navigation, theme,
+fonts, logos, and one static build.
+
+Open <http://localhost:3000/ModSim/> for the homepage and
+<http://localhost:3000/ModSim/docs/> for the manual after starting the local server.
+The interactive React/SVG demos live in `src/components/home/`. Existing videos
+are kept under `static/media/`, with source and hash provenance. The legacy
+`quickstart.html` URL forwards to the appropriate current guide, including old
+section bookmarks.
 
 Follow the [local development guide](../docs/contribute/local-development.md) for installation,
 live editing, and production preview commands. Track the remaining setup work in
@@ -58,8 +67,10 @@ Use `docs:api` or `docs:uml` for one generator, or `docs:generate` for both. Set
 
 Authored API configuration lives in `website/api/`; UML generation lives in
 `tools/docs/`. AutoAPI parses the selected Python source without importing
-ModSim or its optional dependencies. Sphinx and sphinx-markdown-builder produce
-Markdown module pages, which the generator materializes under the ignored
+ModSim, Studio, or simulator libraries. The default Python project installation
+includes Studio; the generators do not initialize its GUI. Sphinx and
+sphinx-markdown-builder produce Markdown module pages, which the generator
+materializes under the ignored
 `docs/reference/api/` directory. The same docs plugin renders them at routes
 such as `/ModSim/docs/reference/api/modsim_robotics/runtime/session/`.
 
@@ -74,8 +85,13 @@ Contributors must follow the
 [API documentation rules](../docs/contribute/api-documentation.md).
 `npm --prefix website run docs:check` validates the current published API scope;
 the documentation CI job runs that check and builds the complete site on pull
-requests and pushes to `main`. Publishing the built website remains a separate
-setup stage.
+requests and pushes to `main`. The separate **Website and Pages** workflow
+builds relevant branch pushes and pull requests, uploads downloadable previews,
+and publishes only after explicit opt-in on the configured deployment branch.
+Follow [Website preview and GitHub Pages](../docs/contribute/github-pages.md)
+for an isolated hosted `refactor` preview, repository settings, main-branch
+cutover, and rollback. The existing public site is unchanged by local work or
+build-only runs.
 
 Authored pages are read directly from `docs/`, so saving them triggers live
 reload. After changing Python source, run
@@ -83,12 +99,41 @@ reload. After changing Python source, run
 Docusaurus watches the regenerated Markdown; it does not rerun Python
 extraction on source changes.
 
-The local documentation opens at <http://localhost:3000/ModSim/docs/>. The
-development server binds to `127.0.0.1`; stop it with **Ctrl+C**.
+The development server binds to `127.0.0.1`; stop it with **Ctrl+C**.
 
 Node and npm dependencies are isolated here. This scaffold uses Node 22 and npm 10,
-with the tested Node version recorded in `.nvmrc`. Python runtime dependencies,
-GitHub Pages settings, and the public website are outside this local setup step.
+with the tested Node version recorded in `.nvmrc`. Python dependencies are locked
+in the repository's `uv.lock`. Local builds do not change GitHub Pages settings.
+
+To check publication guards and base-aware legacy links, run
+`npm --prefix website run site:check`. To keep two production previews separate,
+build the alternate address with `docs:build -- --out-dir .generated/preview-build`
+and serve it with `docs:serve -- --dir .generated/preview-build --port 3198`,
+keeping the same `MODSIM_SITE_URL` and `MODSIM_BASE_URL` set for both commands.
+The main build in `website/build/` remains available at its usual address.
+
+For a preview repository, set `MODSIM_SITE_URL` and `MODSIM_BASE_URL` before both
+building and serving. Defaults are `https://modlab-upenn.github.io` and `/ModSim/`.
+The Pages workflow derives these values from its own repository, so a separate
+`ModSim-preview` project uses `/ModSim-preview/`. Run the publication-setting
+checks with `npm --prefix website run site:check`.
+
+## RobotPack Library link
+
+The homepage introduces the community RobotPack Library. Its optional external
+link is configured at build time, separately from the ModSim website address.
+For the library currently running locally, use:
+
+```bash
+MODSIM_ROBOTPACK_LIBRARY_URL=http://localhost:3214 npm --prefix website run docs:dev
+```
+
+Set the same variable before `docs:build` to include that address in a local
+production preview. For GitHub Pages, set the Actions repository variable
+`MODSIM_ROBOTPACK_LIBRARY_URL` to the library's public HTTP(S) URL before building.
+When unset, the section retains its explanation and guide links but omits the
+external library link. No localhost address is included by default in a public
+build. Restart the development server or rebuild after changing the setting.
 
 ## Dependency maintenance
 

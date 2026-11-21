@@ -61,6 +61,15 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+.footer {
+  --ifm-footer-background-color: var(--modsim-navigation-bg);
+  --ifm-footer-color: var(--modsim-muted);
+  --ifm-footer-title-color: var(--modsim-ink);
+  --ifm-footer-link-color: var(--modsim-muted);
+  --ifm-footer-link-hover-color: var(--modsim-link);
+  border-top: 1px solid var(--modsim-border);
+}
+
 :focus-visible {
   outline: 2px solid var(--modsim-focus);
   outline-offset: 3px;
@@ -115,6 +124,10 @@ body {
   border-radius: var(--modsim-radius);
   margin-left: 0.5rem;
   padding: 0.35rem 0.75rem;
+}
+
+.navbar__items--right > .modsim-github-link {
+  margin-inline-end: 1rem;
 }
 
 .theme-doc-sidebar-container,

@@ -1,4 +1,4 @@
-# ModSim documentation theme
+# ModSim website and documentation theme
 
 The documentation follows **ModSim brand asset release 5.0 / Final Honeycomb
 System**. Docusaurus light mode uses Light / Glacier & Steel; dark mode uses
@@ -70,8 +70,9 @@ chosen surfaces. Do not extract colors from lighting variations in cover art.
 
 ## Logos and typography
 
-The navbar uses the supplied horizontal SVG wordmark with a separate **Docs**
-label. Its lettering is outlined artwork, not a guessed font. Preserve its
+The shared navbar uses the supplied horizontal SVG wordmark with **Home**,
+**Documentation**, and **Contribute** links. Its lettering is outlined artwork.
+Preserve its
 proportions and clear space; switch to the corresponding production asset
 with the color mode. Use supplied theme variants rather than recoloring or
 inverting a logo. The source guideline recommends at least 160 px for the
@@ -154,11 +155,17 @@ analysis aid rather than the primary architecture illustration.
 
 ## Reuse and deployment scope
 
-`tokens.css`, `fonts.css`, and the production asset subset can support a future
-homepage or API theme. Each consumer supplies its own adapter, preserves valid
-relative font paths, and uses the same `data-theme` convention. Static assets
-remain local to the site and work with the existing GitHub Pages base URL.
+The homepage in `src/pages/index.tsx`, browser widgets in `src/components/home/`,
+and manual share `tokens.css`, `fonts.css`, production logos, navigation, and
+the same `data-theme` preference. Homepage and widget CSS modules keep their
+layouts independent of article, API-table, and Mermaid styling. The historical
+homepage's global CSS and external Google Fonts are replaced by these shared
+resources. Recordings retain their original public `/media/` paths and carry
+source/hash provenance in `static/media/`.
 
-This repository-local documentation update does not deploy a public website or
-modify the separate website branch. Homepage migration and publication remain
-separate steps.
+All internal links and media use Docusaurus's base-aware helpers. `site-config.ts`
+accepts `MODSIM_SITE_URL` and `MODSIM_BASE_URL` for isolated preview repositories;
+defaults remain `https://modlab-upenn.github.io` and `/ModSim/`. Test another
+repository prefix before publishing. Local builds and branch artifacts remain
+separate from publication; follow
+[Website preview and GitHub Pages](../docs/contribute/github-pages.md).

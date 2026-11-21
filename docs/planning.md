@@ -188,9 +188,12 @@ Paths and goal poses can be hidden independently. Theme switching and manual
 camera ranges are preserved. Pause/Resume/Stop control the same authoritative
 simulation as the MuJoCo window. Planner intent is an optional immutable field
 in `RuntimeInspectorFrame`, separate from generated world views and canonical
-events. IPC protocol version 3 carries the extended frame; parent and companion
-must use the same installation. Peers using older protocol versions are
-explicitly rejected.
+events. IPC protocol version 4 carries the extended frame with canonical
+`planning_time_s` timing; parent and companion must use the same installation.
+The record decoder can import version-3 records and convert legacy telemetry
+to SI. That import path does not negotiate live compatibility between mixed
+software versions. Studio formats readouts and physical plot axes using the
+shared display-unit profile while retaining canonical coordinates.
 
 Interactive runs stop advancing on a terminal scenario result. **Target reached ·
 Simulation complete** appears only after the planner reports completion. Failures,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import sys
+from pathlib import Path
 from types import TracebackType
 from typing import TYPE_CHECKING
 
@@ -22,15 +23,29 @@ from modsim_robotics_studio.session_logging import (
 
 if TYPE_CHECKING:
     from modsim_robotics.runtime import RuntimeInspectorConfig
+    from modsim_robotics.units import UnitPreferences
     from modsim_robotics_studio.runtime_window import RuntimeInspectorWindow
 
 
-def main(config: RuntimeInspectorConfig) -> int:
+def main(
+    config: RuntimeInspectorConfig,
+    *,
+    home: str | Path | None = None,
+    preferences: UnitPreferences | None = None,
+) -> int:
     """Play the startup intro, then show the inspector and auto-start ``config``.
 
     The branded splash stays visible for at least three seconds. Runtime
     execution begins after the Inspector is shown, never behind that intro.
     Closing startup returns 0 without starting a runtime.
+
+    Args:
+        config: Canonical SI runtime request.
+        home: ModSim home used to restore local display units.
+        preferences: Optional session-only display overrides, such as CLI choices.
+
+    Returns:
+        The Qt exit status or the Inspector's execution result.
     """
     log_path = resolve_session_log_path(config.pack_path)
     logger = configure_session_logging(config.pack_path)
@@ -75,10 +90,14 @@ def main(config: RuntimeInspectorConfig) -> int:
         # Paint the branded startup surface before importing the plotting widgets.
         application.processEvents()
         from modsim_robotics_studio.runtime_window import RuntimeInspectorWindow
+        from modsim_robotics_studio.unit_preferences import units_manager
 
         splash.set_stage("Preparing runtime controls…")
         application.processEvents()
-        window = RuntimeInspectorWindow(config)
+        units = units_manager(home)
+        if preferences is not None:
+            units.set_preferences(preferences, persist=False)
+        window = RuntimeInspectorWindow(config, units=units)
         if not splash.present(window):
             window.close()
             return 0

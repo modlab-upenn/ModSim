@@ -24,6 +24,7 @@ how clients, planners, and generated views use that world.
 | --- | --- |
 | [Source map](codebase-map.md) | Where is every application module, and which subsystem owns a responsibility? |
 | [RobotPack pipeline](robot-pack-pipeline.md) | How do URDF assets become typed pack data, editable documents, and safely persisted files? |
+| [Units and orientation](units-and-orientation.md) | How do authoring, runtime, Inspector, and CLI units map onto canonical SI and quaternion poses? |
 | [Runtime and state](runtime-model.mdx) | How do scenes become module instances, and how does a session maintain canonical state? |
 | [Docking lifecycle](docking-lifecycle.md) | How does a candidate become a backend-confirmed connection or an explicit failure? |
 | [Backend boundary](backends.md) | What must a simulator implement, and how do mock and MuJoCo differ? |
@@ -80,13 +81,15 @@ into new mechanical geometry.
 ## The deployment units
 
 The distribution is `modsim-robotics`. It contains three Python namespaces with
-separate dependency responsibilities:
+separate code and dependency responsibilities. The default installation includes
+Studio and its GUI libraries; simulator backends are added through extras such
+as `modsim-robotics[mujoco]`:
 
 | Namespace | Responsibility | Dependency boundary |
 | --- | --- | --- |
 | `modsim_robotics` | Schema, import, validation, persistence, state, docking, runtime coordination, planners, and view generation. | No Qt, PyVista, PyQtGraph, or MuJoCo imports are required by the core. |
 | `modsim_robotics_backend_mujoco` | MuJoCo scene compilation, observations, actuators, runtime constraints, and native viewer hosting. | Installed physics dependencies are needed when this backend is selected. |
-| `modsim_robotics_studio` | Authoring document UI, Runtime setup and preflight, Inspector controllers, and desktop presentation. | Installed Studio dependencies and a working display are needed for its windows. |
+| `modsim_robotics_studio` | Authoring document UI, Runtime setup and preflight, Inspector controllers, and desktop presentation. | Included in the default installation; a working display is needed for its windows. |
 
 These are software packages within one distribution, not three network
 services. The native-viewer execution path uses a child process on the same

@@ -131,7 +131,7 @@ class OnlineAssemblyScenario:
     _next_plan_s: float = 0.0
     _revision: int = 1
     _replans: int = 0
-    _planning_ms: float = 0.0
+    _planning_time_s: float = 0.0
     _distance_m: float = 0.0
     _decisions: list[PlannerDecision] = field(default_factory=list[PlannerDecision])
     _failed: str | None = None
@@ -264,7 +264,7 @@ class OnlineAssemblyScenario:
             ),
             decisions=tuple(self._decisions),
             replans=self._replans,
-            planning_ms=self._planning_ms,
+            planning_time_s=self._planning_time_s,
             path_length_m=self._distance_m,
             footprint_half_m=(self.footprint.half_x, self.footprint.half_y),
             footprint_center_x_m=self.footprint.center_x,
@@ -295,7 +295,7 @@ class OnlineAssemblyScenario:
             if self._released and now >= self._next_plan_s:
                 started = time.perf_counter()
                 self._schedule()
-                self._planning_ms = max(self._planning_ms, (time.perf_counter() - started) * 1000)
+                self._planning_time_s = max(self._planning_time_s, (time.perf_counter() - started))
                 self._next_plan_s = now + self.planning_period_s
             events.extend(self._advance())
         self._submit_commands()

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex">
+    <meta name="color-scheme" content="light dark">
+    <title>ModSim quickstart has moved</title>
+    <link rel="stylesheet" href="./theme/tokens.css">
+    <style>
+      body { margin: 0; background: var(--modsim-bg); color: var(--modsim-ink); font-family: var(--modsim-font-body); line-height: 1.7; }
+      main { max-width: 42rem; margin: 12vh auto; padding: 2rem; }
+      h1 { font-family: var(--modsim-font-display); line-height: 1.25; }
+      a { color: var(--modsim-link); text-underline-offset: 0.2em; }
+      a:focus-visible { outline: 2px solid var(--modsim-focus); outline-offset: 4px; }
+      @media (prefers-color-scheme: dark) { html:not([data-theme]) { color-scheme: dark; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>The quickstart is now part of the ModSim manual</h1>
+      <p>The URDF-to-RobotPack workflow is organized into focused how-to guides.</p>
+      <p><a id="destination" href="./docs/how-to/">Continue to the current guide</a></p>
+      <noscript><p>Automatic navigation requires JavaScript. Follow the guide link above to continue.</p></noscript>
+    </main>
+    <script>
+      (() => {
+        const pages = {
+          ideas: 'docs/how-to/#the-five-ideas-you-need-to-work-with-modsim',
+          install: 'docs/installation/',
+          pack: 'docs/how-to/import-urdf/#create-the-draft',
+          types: 'docs/how-to/author-connectors/#create-the-reusable-type',
+          place: 'docs/how-to/author-connectors/#place-the-front-and-rear-interfaces',
+          joints: 'docs/how-to/configure-joints/',
+          validate: 'docs/how-to/validate-and-save/#run-both-validation-profiles',
+          dock: 'docs/cli/#check-fixed-docking-with-the-mock-backend',
+          mujoco: 'docs/how-to/run-robot-pack/',
+          python: 'docs/how-to/write-runtime-experiment/#save-the-experiment',
+          trouble: 'docs/how-to/troubleshoot-robot-pack/',
+          next: 'docs/how-to/#extend-the-workflow'
+        };
+        let fragment = location.hash.slice(1);
+        try { fragment = decodeURIComponent(fragment); } catch { /* Unknown fragments use the guide index. */ }
+        const target = Object.prototype.hasOwnProperty.call(pages, fragment) ? pages[fragment] : 'docs/how-to/';
+        const destination = new URL(target, location.href);
+        const current = new URL(location.href);
+        destination.search = current.search;
+        document.getElementById('destination').href = destination.href;
+        try {
+          const theme = localStorage.getItem('theme');
+          if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+          else if (matchMedia('(prefers-color-scheme: dark)').matches) document.documentElement.dataset.theme = 'dark';
+        } catch { /* Navigation works when local storage is unavailable. */ }
+        location.replace(destination.href);
+      })();
+    </script>
+  </body>
+</html>

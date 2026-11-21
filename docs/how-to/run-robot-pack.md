@@ -34,12 +34,22 @@ Choose these settings:
 | **Module type** | `workshop_cube` uses the imported module definition. |
 | **Model view** | **Module Topology (module_topology_graph)** selects the `module_topology` recipe that displays committed connections. |
 | **Native 3D viewer** | Enabled to show the physical scene in the companion window. |
-| **Duration (s)** | `6` gives the demonstration a six-second simulated-time budget. |
+| **Duration** | `6 s` gives the demonstration a six-second simulated-time budget. |
 | **Playback speed** | `0.25` requests quarter-speed playback. |
 
 Expand **Advanced runtime settings**, select `front` as the fixed connector
 and `rear` as the moving connector, and disable gravity and ground. These
 settings isolate connector behavior without falling or floor contact.
+
+Physical fields show their selected units. For example, enter `6 s` or
+`6000 ms` for the same duration, and use suffixes such as `2 ms`, `10 mm`,
+`90 deg`, or `20 mm/s` in the relevant advanced fields. A bare number uses
+that field's displayed unit. Empty **Connector gap**, **Undock at**, and
+**Retraction speed** retain the demonstration's automatic behavior.
+**View → Display units** changes the profile without changing the launch's
+physical values or pending valid edits. See
+[Units and orientation](../explanation/units-and-orientation.md).
+
 
 Click **Validate runtime** and inspect the result. This checks the actual
 backend, demo settings, and selected Inspector view in addition to structural
@@ -92,6 +102,12 @@ before a further retraction step produces a visible gap. Confirm release from
 `UndockCommitted`, the removed edge, and the two final assemblies.
 
 ## Inspect and finish the run
+
+Select a module in **Runtime state** to read its measured world XYZ and
+fixed-axis roll/pitch/yaw. The runtime retains a quaternion; the readout converts
+that orientation for inspection. Inspector times, tolerances, event quantities,
+and planning plots follow the same profile. Lattice axes remain **cells**.
+The standalone Inspector exposes its own **Display units** button.
 
 Use **Pause** and **Resume** in the Inspector to stop and continue at simulation
 step boundaries. Pressing **Space** in the native MuJoCo window controls the

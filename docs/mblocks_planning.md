@@ -9,7 +9,8 @@ is used.
 
 ## Launch
 
-With the `studio` and `mujoco` extras installed, open the supplied pack in Studio:
+Studio is installed with ModSim. Add the physics backend with
+`pip install "modsim-robotics[mujoco]"`, then open the supplied pack in Studio:
 
 ```bash
 .venv/bin/modsim-robotics studio examples/robot_packs/mblocks_3d
@@ -189,10 +190,17 @@ commanded through the existing lifecycle. See [Docking semantics](docking_semant
   Completion, failure, user stop, and time-budget exhaustion have persistent,
   distinct status banners.
 
-Protocol version 3 adds the optional immutable `lattice_planning` payload. It
+Protocol version 4 carries the optional immutable `lattice_planning` payload. It
 must match the live view's time, sample sequence and topology revision. SMORES
 continues using `planning`; frames cannot contain both. GUI and runtime child
 must use the same installed version. Robot Pack persistence is unchanged.
+
+Planning duration, flywheel velocity, and pivot angle are transported as
+`planning_time_s`, `flywheel_angular_velocity_rad_s`, and `pivot_angle_rad`.
+The Inspector formats them using the selected display profile. The record
+decoder can import version-3 telemetry and normalize those legacy fields.
+Online executor targets are stored in rad/s; named RPM inputs remain available
+at the authoring boundary, where they are converted once.
 
 ## Validation and next work
 

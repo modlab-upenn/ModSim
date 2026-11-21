@@ -32,6 +32,43 @@ DEVELOPMENT_TOOLS = {
     "twine",
     "hatchling",
 }
+STUDIO_DEPENDENCIES = {"numpy", "pyqtgraph", "pyside6", "pyvista", "pyvistaqt"}
+
+
+def _check_dependency_policy(requirements: list[str], extras: list[str]) -> None:
+    """Require the default desktop stack and keep MuJoCo behind its extra."""
+    required: set[str] = set()
+    mujoco_markers: list[str] = []
+    for requirement in requirements:
+        match = re.match(r"[A-Za-z0-9][A-Za-z0-9_.-]*", requirement)
+        if match is None:
+            raise RuntimeError(f"Malformed dependency metadata: {requirement!r}")
+        name = re.sub(r"[-_.]+", "-", match[0]).lower()
+        marker = requirement.partition(";")[2].strip()
+        if not marker:
+            required.add(name)
+        if name == "mujoco":
+            mujoco_markers.append(marker)
+        if name in DEVELOPMENT_TOOLS and not re.fullmatch(r"extra\s*==\s*(['\"])dev\1", marker):
+            raise RuntimeError(f"Development tool appears outside the dev extra: {requirement!r}")
+
+    missing = STUDIO_DEPENDENCIES - required
+    if missing:
+        raise RuntimeError(
+            "Studio dependencies must be installed by default; missing unconditional "
+            f"requirements: {sorted(missing)}"
+        )
+    if "mujoco" in required:
+        raise RuntimeError("MuJoCo must remain an optional backend, outside default dependencies.")
+    if "mujoco" not in extras or len(mujoco_markers) != 1:
+        raise RuntimeError("Distribution must declare the mujoco extra and its backend dependency.")
+    # This project uses one extra-only marker for the backend. Restricting that
+    # expression also rejects an OR branch that leaks MuJoCo into a base install.
+    marker = mujoco_markers[0]
+    while marker.startswith("(") and marker.endswith(")"):
+        marker = marker[1:-1].strip()
+    if not re.fullmatch(r"extra\s*==\s*(['\"])mujoco\1", marker):
+        raise RuntimeError("MuJoCo must be selected only by the mujoco extra.")
 
 
 def _check_members(members: set[PurePosixPath], starter_root: PurePosixPath) -> None:
@@ -131,14 +168,9 @@ def _check_metadata(
     if read_package_version(read(version_path).decode("utf-8")) != version:
         raise RuntimeError("Packaged code and distribution metadata have different versions.")
 
-    for requirement in metadata.get_all("Requires-Dist", []):
-        match = re.match(r"[A-Za-z0-9][A-Za-z0-9_.-]*", requirement)
-        if match is None:
-            raise RuntimeError(f"Malformed dependency metadata: {requirement!r}")
-        name = re.sub(r"[-_.]+", "-", match[0]).lower()
-        marker = requirement.partition(";")[2].strip()
-        if name in DEVELOPMENT_TOOLS and not re.fullmatch(r"extra\s*==\s*(['\"])dev\1", marker):
-            raise RuntimeError(f"Development tool appears outside the dev extra: {requirement!r}")
+    _check_dependency_policy(
+        metadata.get_all("Requires-Dist", []), metadata.get_all("Provides-Extra", [])
+    )
 
 
 def verify_artifact_contents(distribution: Path) -> None:

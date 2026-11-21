@@ -2,8 +2,9 @@
 
 Build a local Docusaurus documentation environment on the current `refactor`
 branch, then develop the manual in small steps that we can inspect and discuss.
-The public website, GitHub Pages deployment, profiling, and scalability work are
-deferred. This tracker covers the local documentation setup and its content.
+The public homepage is now being integrated into this local Docusaurus app.
+GitHub Pages publication stays separate from local review; profiling and
+scalability work remain deferred. This tracker covers the site and manual.
 
 ## How we will track progress
 
@@ -29,6 +30,11 @@ installation without a checkout and preparing the bundled starter;
 D2 covers the release pipeline and maintainer setup. L1 tracks the separate
 community RobotPack library as future work. Public publication remains separate
 from preparing and verifying local artifacts.
+
+The standard installation is now `pip install modsim-robotics`, including Studio
+and the mock backend. Simulator backends remain extras, such as
+`modsim-robotics[mujoco]`. Earlier evidence about a base install omitting GUI
+dependencies records the former packaging policy.
 
 For each page, we will work through this loop:
 
@@ -56,6 +62,7 @@ manual-edit and review tasks unchecked until the user confirms doing them.
 | S6 | Generate class and package diagrams from code | First runtime-state diagrams generated | Pending |
 | S8 | Expand explanations, guides, and authored reference | Architecture chapters and Studio authoring guides drafted | Pending |
 | R1 | Document the integrated Studio runtime workflow | Implemented; documentation and rendered-page checks complete | Desktop walkthrough pending |
+| W1 | Integrate the homepage, manual, and Pages preview workflow | Implemented; local browser/build checks passed | Visual review and hosted preview pending |
 | S9 | Verify the complete local documentation workflow | Planned | Pending |
 | L1 | Design the independent community RobotPack library | Planned | Pending |
 
@@ -264,10 +271,10 @@ Library location and per-command selection within D1:
 
 Studio-first documentation within D1:
 
-- [x] Make `modsim-robotics[studio]` the standard installation command, including
-  both virtual-environment examples, and state the desktop-display requirement.
+- [x] Make `modsim-robotics` the standard installation command with Studio
+  included in both virtual-environment examples, and state the display requirement.
 - [x] Add a separate `Install MuJoCo` section for
-  `modsim-robotics[studio,mujoco]`, linked when simulation is introduced.
+  `modsim-robotics[mujoco]`, linked when simulation is introduced.
 - [x] Keep setup, library location, pack selection, and `MODSIM_PATH` persistence
   in Installation while moving terminal inspection and docking to `docs/how-to/cli.md`.
 - [x] Verify the new guide links, MuJoCo anchor, and documentation build.
@@ -344,8 +351,10 @@ current library-selection update.
   These focused checks are included in the regression count, not extra tests.
 - Rebuilt wheel and source archives passed metadata/content checks, strict
   Twine validation, and fresh no-path setup/inspect/validate/mock docking checks
-  outside the checkout. The base installation does not install Ruff or GUI
-  dependencies, and standalone Studio help remains available without them.
+  outside the checkout. At that stage the base installation omitted GUI
+  dependencies; Studio's inclusion by default now supersedes that installation
+  behavior. Ruff remains development-only, and standalone Studio help retains
+  its lazy import behavior.
 - A separate installed-wheel MuJoCo 3.17.0 run loaded the default from a new
   `MODSIM_PATH` and completed one dock and one undock with no failures, zero
   final active connections, and two assemblies. `--home` and `--pack` overrides
@@ -668,7 +677,7 @@ Readability and contributor requirements within S5:
 - [ ] Review the readable API pages and contributor rules together.
 
 Evidence: thirteen standalone policy regression tests pass. The static checker
-covers 202 objects in the eleven published modules; 105 objects retain 242
+covers 230 objects in the sixteen published modules; 105 objects retain 242
 explicitly recorded legacy issues. Unchanged signatures may keep or reduce
 that debt. New symbols and changed signatures must meet the checked contract;
 the baseline updater only removes resolved items. The worked RuntimeSession
@@ -1060,7 +1069,7 @@ The complete desktop walkthrough remains for user review.
 - [x] Document the **Robot Pack** and **Runtime** tabs in one Studio shell, with
   standalone Inspector commands retained in the CLI reference.
 - [x] Explain backend, demonstration, module-type, and model-view selection,
-  advanced SI-unit settings, and the native MuJoCo companion.
+  advanced quantity-aware settings, and the native MuJoCo companion.
 - [x] Separate F6 authoring validation, F7 structural simulation metadata, and
   F8/Runtime launch preflight, including their limits.
 - [x] Document explicit **Add topology view**, unsaved recipe edits,
@@ -1093,12 +1102,95 @@ dark modes, including rendered Mermaid diagrams, expanded viewing/SVG download,
 theme application, page width, and absence of JavaScript or asset-load failures.
 Historical archives and the technical report remain outside the current manual.
 
+Installation-policy follow-up: Studio and its GUI dependencies are part of the
+default distribution. The installation, source-development, runtime, platform,
+release, architecture, and contributor pages now use the base package for Studio
+and the `mujoco` extra for physics. The legacy `studio` extra remains an empty
+compatibility alias for older commands. This changes installation contents;
+core imports remain independent of Qt, VTK, PyVista, PyQtGraph, and MuJoCo.
+
+Verification: the lockfile checks successfully without dependency-version
+changes. Fresh wheel and source-distribution installations both passed the
+starter, mock docking, and full Studio-import smoke checks; MuJoCo remained
+uninstalled and importing core did not load GUI or simulator modules. Built
+metadata is guarded by 22 new tests. CLI/launcher/loading checks, the Studio
+CI selection with MuJoCo imports blocked, Ruff, core/Studio Pyright, API policy,
+documentation types, and the production documentation build also passed.
+
+## W1 Combined homepage, manual, and GitHub Pages
+
+Status: implemented and verified locally. Publication and
+merging into `main` remain separate from the local review.
+
+- [x] Replace the root docs redirect with the migrated project homepage.
+- [x] Share production branding, fonts, theme preference, navigation, and footer.
+- [x] Port docking, topology, and recorded model-view/planner demos into React.
+- [x] Preserve six existing recordings and record their source/hash provenance.
+- [x] Map legacy quickstart section URLs to current manual pages.
+- [x] Parameterize origin/base path for an isolated preview repository.
+- [x] Add branch build artifacts and guarded, opt-in GitHub Pages publication.
+- [x] Document local review, hosted branch preview, production setup, and rollback.
+- [x] Verify site types, documentation policy, production build, interactions,
+  old links, media, theme persistence, and mobile/desktop layouts.
+- [ ] Review the local website with the user.
+- [ ] Configure and publish an independent hosted branch preview.
+- [ ] Merge reviewed changes into `main` and perform production cutover.
+
+The source homepage was taken from the cached `origin/gh-pages` snapshot. Its
+real recordings and replay data are retained; placeholder teaser footage and
+historical test-count/coverage claims are omitted. The old `gh-pages` branch is
+preserved for migration reference and rollback. No remote setting or deployment
+is changed by this implementation.
+
+Verification: production builds pass with strict link/anchor/duplicate-route
+checks at both `/ModSim/` and `/ModSim-preview/`. Thirteen site-setting,
+publication-policy, and filename-redirect tests pass. Browser checks cover
+1440 px and 390 px in Light/Midnight under both base paths, including shared
+navigation, API and Mermaid pages, direct nested refreshes, legacy links,
+theme persistence, and all six videos with byte-range delivery. Thirty widget
+checks cover docking acceptance/release/reset, pointer and keyboard topology
+operations, all recorded replay tabs, reduced and normal motion, cancellation,
+and cleanup on client navigation. Media copies match their source hashes.
+TypeScript, API documentation policy, and whitespace checks pass. Review
+captures and browser reports are local artifacts under `/tmp/`.
+
 ## Deferred work
 
-Public homepage and docking-widget migration, GitHub Pages deployment, and
-documentation versioning will be planned after the local workflow is understood.
+GitHub Pages production cutover and documentation versioning follow local and
+branch-preview review. Homepage and widget migration are tracked in W1 above.
 Documentation CI checks are now configured as part of the contributor API
 contract; live execution awaits pushing the workflow. Package release preparation
 is active in D2; public package publication still needs maintainer configuration and a
 separate publication step. Profiling, scalability benchmarks, and broader
 testing or quality initiatives remain separate later work.
+
+
+## U1 Shared units and quaternion authoring
+
+- [x] Keep canonical SI state, scalar-first quaternion runtime orientations,
+  and numeric SI Robot Pack 0.1 persistence.
+- [x] Publish shared conversion/parsing/formatting, fifteen quantity kinds,
+  closed field metadata, and joint type/mode resolution.
+- [x] Provide local profiles, explicit atomic persistence, backward-compatible
+  two-field profile reading, and home-scoped Studio/Inspector managers.
+- [x] Map module/joint/connector authoring and built-in cubic-lattice configuration
+  through SI-retaining scalar, optional, vector, and list controls.
+- [x] Map runtime setup, measured poses, times, typed event details, diagnostics,
+  tooltips, and plot axis labels without changing physical or camera state.
+- [x] Add CLI quantity suffixes and aliases with existing bare SI defaults,
+  profile show/set/reset, and temporary human-readable output choices.
+- [x] Normalize planning telemetry to seconds, rad/s, and radians; emit protocol
+  version 4 and migrate declared legacy version-3 telemetry on read.
+- [x] Preserve invalid pending text, exact canonical caches, multi-turn angles,
+  unnamed/dimensionless data, and quaternion persistence when no edit occurs.
+- [x] Update the current architecture, how-to, contributor, and generated API
+  documentation alongside implementation.
+
+The current implementation is described in
+[Units and orientation](../docs/explanation/units-and-orientation.md). Alternate
+unit-bearing YAML, unrestricted unit algebra, automatic conversion of unknown
+metadata, and asset geometry scaling remain separate format or import features;
+they are intentionally outside this mapping layer. Graphical and numerical
+verification is recorded by the implementation checks rather than inferred
+from a successful site build. User review of the completed workflow remains
+pending.

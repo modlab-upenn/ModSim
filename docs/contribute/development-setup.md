@@ -49,20 +49,22 @@ The source package is installed in the development environment so edits to
 from installing a built wheel into a user's environment.
 
 The distribution name is `modsim-robotics`; Python imports use `modsim_robotics`
-from `src/modsim_robotics/`. The optional packages live in
+from `src/modsim_robotics/`. The desktop and simulator-adapter namespaces live in
 `src/modsim_robotics_studio/` and `src/modsim_robotics_backend_mujoco/`. Run the CLI
 with `modsim-robotics` or `python -m modsim_robotics`; the standalone Studio
 command is `modsim-robotics-studio`.
 
-Add optional environments only when the change needs them:
+The default project installation includes Studio and its desktop dependencies.
+Add the optional MuJoCo backend when the change needs physics:
 
 ```bash
-uv sync --locked --extra dev --extra mujoco --extra studio --python 3.12
+uv sync --locked --extra dev --extra mujoco --python 3.12
 ```
 
-The `mujoco` extra supplies physics dependencies. The `studio` extra supplies
-Studio's Robot Pack and Runtime workspaces and the standalone Inspector. GUI
-tests need a display or Xvfb. Documentation editing
+The `mujoco` extra supplies physics dependencies. Studio's Robot Pack and Runtime
+workspaces and the standalone Inspector are available without an extra. The
+legacy `studio` extra remains an empty compatibility alias for old install
+commands. GUI tests need a display or Xvfb. Documentation editing
 has its own Node environment, described in [Local development](local-development.md).
 
 ## Exercise the Studio workflow
@@ -139,7 +141,7 @@ uv run --no-sync pytest
 git diff --check
 ```
 
-For changes to optional packages, also use their dedicated type-check
+For desktop and simulator-adapter changes, also use their dedicated type-check
 configurations and relevant tests:
 
 ```bash

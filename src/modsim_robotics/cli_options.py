@@ -15,16 +15,104 @@ that ``cli.py`` is left with parsing and dispatch. Three things live here:
 
 from __future__ import annotations
 
+import math
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Annotated, NoReturn
+from typing import Annotated, NoReturn, cast
 
 import typer
+from typer.core import TyperCommand
 
 from modsim_robotics.backends.registry import BACKEND_ENV_VAR, DEFAULT_BACKEND
 from modsim_robotics.core.validation import require_finite, require_finite_positive
 from modsim_robotics.runtime import RuntimeDemo
+from modsim_robotics.units import QuantityKind, UnitError, UnitPreferences, parse_quantity
+
+
+def _quantity_parser(
+    kind: QuantityKind, unit: str, option: str, *, positive: bool = False
+) -> Callable[[str], float]:
+    """Create a strict quantity parser while retaining bare-number SI semantics."""
+
+    def parse(value: str) -> float:
+        # Existing command guards provide their established option-specific
+        # diagnostics for unitless nan/inf. Unit-bearing inputs are validated
+        # here before any pack or simulator is opened.
+        try:
+            legacy = float(value)
+        except (ValueError, TypeError):
+            pass
+        else:
+            if not math.isfinite(legacy):
+                return legacy
+        try:
+            return parse_quantity(str(value), kind=kind, default_unit=unit)
+        except UnitError as error:
+            constraint = " greater than 0" if positive else ""
+            raise typer.BadParameter(
+                f"{option} must be a finite number{constraint} or a compatible quantity: {error}"
+            ) from error
+
+    return parse
+
+
+_LENGTH = _quantity_parser(QuantityKind.LENGTH, "m", "Length")
+_SPACING = _quantity_parser(QuantityKind.LENGTH, "m", "--spacing")
+_ANGLE = _quantity_parser(QuantityKind.ANGLE, "rad", "--orientation")
+_VELOCITY = _quantity_parser(QuantityKind.LINEAR_VELOCITY, "m/s", "Speed")
+_DURATION = _quantity_parser(QuantityKind.TIME, "s", "--duration", positive=True)
+_TIMESTEP = _quantity_parser(QuantityKind.TIME, "s", "--dt", positive=True)
+_TIME = _quantity_parser(QuantityKind.TIME, "s", "Time")
+_FREQUENCY = _quantity_parser(QuantityKind.FREQUENCY, "Hz", "--publish-hz", positive=True)
+
+
+class UnitAwareCommand(TyperCommand):
+    """Reject conflicting spellings of one physical input before dispatch."""
+
+    def parse_args(self, ctx: object, args: list[str]) -> list[str]:
+        """Parse command options after checking duplicate quantity aliases.
+
+        Args:
+            ctx: Click context created by Typer for this command.
+            args: Raw command arguments, with quoted quantities kept together.
+
+        Returns:
+            Arguments not consumed by the underlying Typer parser.
+
+        Raises:
+            typer.BadParameter: A physical quantity is supplied more than once.
+        """
+        groups = (
+            ("--spacing", "-s"),
+            ("--connector-gap", "--gap"),
+            ("--orientation",),
+            ("--approach", "--approach-speed"),
+            ("--retract", "--retract-speed"),
+            ("--duration",),
+            ("--dt", "--timestep"),
+            ("--undock-at",),
+            ("--height", "--initial-height"),
+        )
+        aliases = {flag: group[0] for group in groups for flag in group}
+        seen: dict[str, str] = {}
+        for argument in args:
+            if argument == "--":
+                break
+            flag = argument.split("=", 1)[0]
+            if flag.startswith("-s") and not flag.startswith("--"):
+                flag = "-s"
+            canonical = aliases.get(flag)
+            if canonical is None:
+                continue
+            if canonical in seen:
+                raise typer.BadParameter(
+                    f"Supply {seen[canonical]} or {flag} only once for {canonical}.",
+                    ctx=cast(typer.Context, ctx),
+                )
+            seen[canonical] = flag
+        return super().parse_args(cast(typer.Context, ctx), args)
 
 
 class OutputFormat(StrEnum):
@@ -191,8 +279,10 @@ ConnectorGapOpt = Annotated[
     float | None,
     typer.Option(
         "--connector-gap",
+        "--gap",
         min=0.0,
-        help="Initial connector separation. Defaults to 0.03 m headless, or the demo's value.",
+        parser=_LENGTH,
+        help="Initial connector separation, in m or an explicit quantity such as '5 mm'.",
         rich_help_panel=PANEL_MOTION,
     ),
 ]
@@ -200,7 +290,8 @@ OrientationOpt = Annotated[
     float,
     typer.Option(
         "--orientation",
-        help="Requested relative roll about the docking axis in radians.",
+        parser=_ANGLE,
+        help="Relative roll about the docking axis, in rad or an explicit '90 deg'.",
         rich_help_panel=PANEL_MOTION,
     ),
 ]
@@ -208,7 +299,9 @@ ApproachOpt = Annotated[
     float,
     typer.Option(
         "--approach",
-        help="Approach speed toward the docking target.",
+        "--approach-speed",
+        parser=_VELOCITY,
+        help="Approach speed in m/s, or an explicit quantity such as '3 cm/s'.",
         rich_help_panel=PANEL_MOTION,
     ),
 ]
@@ -216,6 +309,8 @@ RetractOpt = Annotated[
     float | None,
     typer.Option(
         "--retract",
+        "--retract-speed",
+        parser=_VELOCITY,
         help="Speed away after release. Defaults to the approach speed; pass 0 to coast together.",
         rich_help_panel=PANEL_MOTION,
     ),
@@ -224,18 +319,26 @@ DurationOpt = Annotated[
     float | None,
     typer.Option(
         "--duration",
-        help="Simulated seconds to run. Defaults to 8s headless, or a per-demo default with --gui.",
+        parser=_DURATION,
+        help="Duration in seconds or an explicit quantity such as '500 ms'.",
         rich_help_panel=PANEL_MOTION,
     ),
 ]
 DtOpt = Annotated[
     float,
-    typer.Option("--dt", help="Physics step size in seconds.", rich_help_panel=PANEL_MOTION),
+    typer.Option(
+        "--dt",
+        "--timestep",
+        parser=_TIMESTEP,
+        help="Physics step in seconds or an explicit quantity such as '1 ms'.",
+        rich_help_panel=PANEL_MOTION,
+    ),
 ]
 UndockAtOpt = Annotated[
     float | None,
     typer.Option(
         "--undock-at",
+        parser=_TIME,
         help="Release every connection at this simulated time; latching stops afterwards.",
         rich_help_panel=PANEL_MOTION,
     ),
@@ -278,12 +381,38 @@ OutputOpt = Annotated[
         rich_help_panel=PANEL_OUTPUT,
     ),
 ]
+LengthUnitOpt = Annotated[
+    str | None,
+    typer.Option(
+        "--length-unit",
+        help="Human-readable output length unit: mm, cm, or m.",
+        rich_help_panel=PANEL_OUTPUT,
+    ),
+]
+AngleUnitOpt = Annotated[
+    str | None,
+    typer.Option(
+        "--angle-unit",
+        help="Human-readable orientation unit: deg or rad.",
+        rich_help_panel=PANEL_OUTPUT,
+    ),
+]
+TimeUnitOpt = Annotated[
+    str | None,
+    typer.Option(
+        "--time-unit",
+        help="Human-readable time unit: s or ms. JSON remains SI.",
+        rich_help_panel=PANEL_OUTPUT,
+    ),
+]
 
 # --- run-specific aliases --------------------------------------------------
 RunDtOpt = Annotated[
     float | None,
     typer.Option(
         "--dt",
+        "--timestep",
+        parser=_TIMESTEP,
         help="Physics step in seconds. Defaults to 0.002 headless, or the demo's safe value.",
         rich_help_panel=PANEL_MOTION,
     ),
@@ -345,7 +474,8 @@ RunSpacingOpt = Annotated[
     typer.Option(
         "--spacing",
         "-s",
-        help="Initial gap between module origins (headless grid).",
+        parser=_SPACING,
+        help="Initial origin spacing in m, or an explicit quantity such as '15 cm'.",
         rich_help_panel=PANEL_SCENARIO,
     ),
 ]
@@ -353,7 +483,9 @@ HeightOpt = Annotated[
     float | None,
     typer.Option(
         "--height",
-        help="Scene height in metres. Defaults to 0 headless, or the demo's safe value.",
+        "--initial-height",
+        parser=_LENGTH,
+        help="Scene height in m or an explicit quantity such as '50 mm'.",
         rich_help_panel=PANEL_PHYSICS,
     ),
 ]
@@ -361,7 +493,8 @@ PublishHzOpt = Annotated[
     float,
     typer.Option(
         "--publish-hz",
-        help="Maximum inspector refresh frequency (--gui).",
+        parser=_FREQUENCY,
+        help="Maximum inspector refresh frequency in Hz or an explicit '0.02 kHz'.",
         rich_help_panel=PANEL_INSPECTOR,
     ),
 ]
@@ -398,7 +531,8 @@ DockSpacingOpt = Annotated[
     typer.Option(
         "--spacing",
         "-s",
-        help="Distance in metres between placed modules along the x axis.",
+        parser=_SPACING,
+        help="Origin spacing in m, or an explicit quantity such as '100 mm'.",
         rich_help_panel=PANEL_SCENARIO,
     ),
 ]
@@ -463,6 +597,7 @@ class ScenarioOptions:
     view: bool
     gui: bool
     output: OutputFormat
+    display_units: UnitPreferences | None = None
 
     @property
     def pair_requested(self) -> bool:
