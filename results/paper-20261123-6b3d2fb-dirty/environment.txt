@@ -1,0 +1,8 @@
+date: 2026-11-23T22:03:17Z
+git: 6b3d2fb5a2fd03b6ca12f160c3e6db4e997f0bb0-dirty
+machine: Darwin 25.3.0 arm64
+cpu: Apple M2
+cores: 8
+python: 3.12.13
+mujoco: 3.11.0
+numpy: 2.5.1
