@@ -498,7 +498,7 @@ def test_cli_runtime_demo_selects_a_reproducible_default_duration(
     ("demo", "expected_duration_s"),
     (
         (RuntimeDemo.SMORES_DIFF_DRIVE_DOCK_UNDOCK, 12.0),
-        (RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE, 210.0),
+        (RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE, 270.0),
         (RuntimeDemo.SMORES_ONLINE_ASSEMBLY, 360.0),
         (RuntimeDemo.SMORES_ONLINE_DRIVER_TO_SNAKE, 360.0),
     ),
@@ -563,7 +563,7 @@ def test_cli_runtime_physical_driver_to_snake_rejects_non_mujoco_backend(
     )
 
     assert result.exit_code == 2
-    assert "--demo smores_physical_driver_to_snake requires --backend mujoco" in result.output
+    assert "--demo smores_physical_driver_to_snake needs a backend with" in result.output
 
 
 @pytest.mark.parametrize("command", (("runtime",), ("run", "--gui")))
@@ -678,7 +678,7 @@ def test_cli_runtime_rejects_native_viewer_for_non_mujoco_backend(
     )
 
     assert result.exit_code == 2
-    assert "--viewer requires --backend mujoco" in result.output
+    assert "--viewer needs a backend with a native viewer" in result.output
     assert "--no-viewer" in result.output
 
 
@@ -848,7 +848,7 @@ def test_cli_run_requires_mujoco_for_the_viewer(example_pack_dir: Path) -> None:
     result = runner.invoke(app, ["run", str(example_pack_dir), "--backend", "mock", "--view"])
 
     assert result.exit_code == 2
-    assert "requires the MuJoCo backend" in result.output
+    assert "needs a backend with a native viewer" in result.output
 
 
 def test_cli_pack_init_creates_draft(tmp_path: Path, example_pack_dir: Path) -> None:

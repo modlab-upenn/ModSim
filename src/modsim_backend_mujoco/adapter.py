@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
+from typing import Any
 
 import mujoco
 import numpy as np
@@ -32,7 +33,7 @@ from modsim.core.ids import (
     split_joint_instance_id,
 )
 from modsim.core.scene import SceneSpec
-from modsim.core.snapshot import BackendStateSnapshot
+from modsim.core.snapshot import BackendStateSnapshot, ConstraintWrench
 from modsim.core.transforms import (
     ZERO_VEC3,
     Quat,
@@ -75,29 +76,54 @@ class MuJoCoBackendAdapter:
         "_constraint_time_constant_s",
         "_contact_exclusions",
         "_data",
+        "_forces",
         "_gravity",
         "_ground",
         "_ground_height_m",
         "_hinge_pool_size",
         "_hinges",
+        "_immediate_connection_changes",
+        "_rows_stale",
         "_sample_layout",
         "_scene",
         "_timestep_s",
         "_weld_pool_size",
         "_welds",
+        "_wrench_references",
     )
 
     def __init__(
         self,
         *,
-        gravity: Vec3 = DEFAULT_GRAVITY,
+        gravity: Vec3 | None = None,
         timestep_s: float | None = None,
         weld_pool_size: int | None = None,
         hinge_pool_size: int | None = None,
-        ground: bool = False,
-        ground_height_m: float = 0.0,
+        ground: bool | None = None,
+        ground_height_m: float | None = None,
         constraint_time_constant_s: float | None = None,
+        immediate_connection_changes: bool = False,
     ) -> None:
+        """Create an unloaded adapter.
+
+        World settings and pool sizes normally come from the scene
+        (``SceneSpec.world`` and ``SceneSpec.connection_budget``). The keyword
+        arguments here are engine-level overrides: any value other than ``None``
+        wins over the scene. ``constraint_time_constant_s`` has no scene
+        equivalent because it is a MuJoCo solver parameter.
+
+        ``immediate_connection_changes`` decides when a dock or undock acts.
+        Split stepping builds the next solve's constraint rows at the end of
+        each ``step``, before ModSim commits connection changes. When False (the
+        default), no rebuild happens and a change acts one internal step later;
+        the capabilities declare that delay, so per-event cost is independent
+        of the world size and controllers wait on
+        ``RuntimeSession.connection_change_pending`` where timing matters. When
+        True, the first internal step after a change rebuilds those rows with
+        ``mj_step1``, so the change acts at once, as with ``mj_step``. That costs
+        one extra ``mj_step1`` per ``step`` call following a change, however many
+        changes there were.
+        """
         if constraint_time_constant_s is not None and (
             not math.isfinite(constraint_time_constant_s) or constraint_time_constant_s <= 0
         ):
@@ -111,6 +137,10 @@ class MuJoCoBackendAdapter:
         self._ground_height_m = ground_height_m
         self._compiled: CompiledScene | None = None
         self._sample_layout: SampleLayout | None = None
+        self._forces: dict[ConstraintHandle, ConstraintWrench] = {}
+        self._wrench_references: dict[ConstraintHandle, tuple[int, np.ndarray]] = {}
+        self._immediate_connection_changes = immediate_connection_changes
+        self._rows_stale = False
         self._data: mujoco.MjData | None = None
         self._scene: SceneSpec | None = None
         self._welds = WeldPool()
@@ -122,21 +152,33 @@ class MuJoCoBackendAdapter:
     # ------------------------------------------------------------------
 
     def capabilities(self) -> BackendCapabilities:
-        """Report what this adapter can currently do.
+        """Report what this adapter can do.
 
-        Equality-row forces are reported for both fixed welds and two-point
-        hinges, which enables the core's backend-independent overload path.
+        Full wrenches are reported for both fixed welds and two-point hinges,
+        which enables the core's backend-independent overload path. Split
+        stepping fixes each internal step's constraint set before the commands
+        between steps are applied, so by default a connection change acts one
+        internal step into the next ``step``. With ``immediate_connection_changes``
+        the adapter rebuilds that set after a change and declares no delay.
         """
         return BackendCapabilities(
             name=MUJOCO_BACKEND_NAME,
             supports_runtime_constraints=True,
             supports_constraint_removal=True,
             supports_constraint_forces=True,
+            supports_constraint_torques=True,
             supports_contact_forces=True,
             supports_module_pose_write=True,
             supports_joint_commands=True,
             supported_joint_control_modes=frozenset({ControlMode.EFFORT}),
             supports_external_viewer=True,
+            supports_gravity=True,
+            supports_ground_plane=True,
+            supports_contact_dynamics=True,
+            supported_constraint_types=frozenset(
+                {PhysicalConstraintType.FIXED, PhysicalConstraintType.HINGE}
+            ),
+            connection_change_delay_substeps=0 if self._immediate_connection_changes else 1,
         )
 
     def load(
@@ -152,16 +194,18 @@ class MuJoCoBackendAdapter:
                 "the MuJoCo backend reads mechanical assets from disk and needs the "
                 "Robot Pack directory; pass a LoadedRobotPack or an explicit root"
             )
+        world = scene.world
+        budget = scene.connection_budget
         compiled = build_scene(
             pack,
             scene,
             Path(root),
-            gravity=self._gravity,
-            timestep_s=self._timestep_s,
-            weld_pool_size=self._weld_pool_size,
-            hinge_pool_size=self._hinge_pool_size,
-            ground=self._ground,
-            ground_height_m=self._ground_height_m,
+            gravity=_first(self._gravity, world.gravity_m_s2, DEFAULT_GRAVITY),
+            timestep_s=_first(self._timestep_s, world.timestep_s),
+            weld_pool_size=_first(self._weld_pool_size, budget.fixed),
+            hinge_pool_size=_first(self._hinge_pool_size, budget.hinge),
+            ground=bool(_first(self._ground, world.ground)),
+            ground_height_m=float(_first(self._ground_height_m, world.ground_height_m)),
         )
         self._compiled = compiled
         self._sample_layout = SampleLayout.build(
@@ -186,7 +230,9 @@ class MuJoCoBackendAdapter:
         self._welds = WeldPool.over(compiled.weld_pool)
         self._hinges = HingePool.over(compiled.hinge_pool)
         self._contact_exclusions = ContactExclusionPool.over(compiled.contact_exclusion_pool)
+        self._wrench_references = {}
         mujoco.mj_forward(compiled.model, self._data)
+        self._after_forward(compiled.model, self._data)
         return compiled.handles
 
     def step(self, dt_s: float) -> None:
@@ -195,32 +241,63 @@ class MuJoCoBackendAdapter:
         MuJoCo's integrator step is a model property, so the requested interval
         is covered by whole solver steps rather than by changing the timestep
         mid-run. ``snapshot().time_s`` reports the time actually reached.
+
+        Each solver step runs phase-shifted, as ``mj_step2`` (actuation,
+        constraint solve, integration) followed by ``mj_step1`` (kinematics,
+        collision, and constraint construction for the *new* state). For the
+        Euler and implicit integrators this is the same sequence of MuJoCo
+        calls as ``mj_step``; it only moves where ModSim observes and acts.
+        Between steps every pose, twist, and site frame therefore describes
+        the state at ``data.time``, so snapshots never lag their timestamp and
+        a topology change needs no kinematics refresh of the whole model. A
+        constraint switched on or off between steps is picked up by the next
+        ``mj_step1``, so it acts one internal step later (the declared delay);
+        with ``immediate_connection_changes`` the first internal step rebuilds
+        the rows first, so the change acts at once. Constraint forces
+        are captured after the final ``mj_step2``, before ``mj_step1``
+        rebuilds the constraint rows.
         """
         if dt_s < 0.0:
             raise BackendError("cannot step backwards")
         model, data = self._require_loaded()
         if dt_s == 0.0:
             mujoco.mj_forward(model, data)
+            self._after_forward(model, data)
             return
         steps = max(1, math.floor(dt_s / model.opt.timestep + 0.5))
-        for _ in range(steps):
-            if self._require_compiled().anisotropic_ground_geoms:
-                # MuJoCo's plane collision frame is world-aligned. Split the
-                # step so tire contacts can rotate tangent one onto the axle
-                # before the solver consumes anisotropic pair friction.
-                mujoco.mj_step1(model, data)
+        anisotropic = bool(self._require_compiled().anisotropic_ground_geoms)
+        if self._rows_stale and self._immediate_connection_changes:
+            # A connection changed after the rows for this step were built:
+            # rebuild them (and the contacts, since exclusions changed too).
+            mujoco.mj_step1(model, data)
+            if anisotropic:
                 self._align_anisotropic_ground_contacts(model, data)
-                mujoco.mj_step2(model, data)
-            else:
-                mujoco.mj_step(model, data)
+        self._rows_stale = False
+        for index in range(steps):
+            mujoco.mj_step2(model, data)
+            if index == steps - 1:
+                self._forces = self._constraint_forces(data)
+            mujoco.mj_step1(model, data)
+            if anisotropic:
+                # MuJoCo's plane collision frame is world-aligned. Rotate tire
+                # contacts' tangent onto the axle before the next mj_step2
+                # consumes anisotropic pair friction.
+                self._align_anisotropic_ground_contacts(model, data)
+
+    def _after_forward(self, model: mujoco.MjModel, data: mujoco.MjData) -> None:
+        """Restore the between-steps invariant after a full ``mj_forward``."""
+        self._rows_stale = False
+        self._forces = self._constraint_forces(data)
+        if self._require_compiled().anisotropic_ground_geoms:
+            self._align_anisotropic_ground_contacts(model, data)
 
     def snapshot(self) -> BackendStateSnapshot:
         """Report link poses, world twists, joint states, and connector site frames.
 
         The snapshot holds one bulk copy of the needed ``MjData`` rows; per-body
         and per-site values are materialised lazily on lookup (see
-        ``modsim_backend_mujoco.sampling``). Constraint forces stay eager because
-        overload evaluation reads every active one each step.
+        ``modsim_backend_mujoco.sampling``). Constraint forces are those of the
+        last solve, captured by ``step`` (see there).
         """
         _, data = self._require_loaded()
         layout = self._sample_layout
@@ -232,8 +309,16 @@ class MuJoCoBackendAdapter:
             link_states=sample.link_states(),
             joint_states=sample.joint_states(),
             connector_frames=sample.connector_frames(),
-            constraint_forces_n=self._constraint_forces(data),
+            constraint_wrenches=self._active_wrenches(),
         )
+
+    def _active_wrenches(self) -> dict[ConstraintHandle, ConstraintWrench]:
+        """Wrenches of the last solve, for connections that still exist."""
+        return {
+            handle: wrench
+            for handle, wrench in self._forces.items()
+            if self._welds.slot_for(handle) is not None or self._hinges.slot_for(handle) is not None
+        }
 
     def set_joint_commands(self, commands: tuple[JointCommand, ...]) -> None:
         """Set a validated batch of persistent effort commands atomically."""
@@ -290,9 +375,14 @@ class MuJoCoBackendAdapter:
         """
         constraint = request.physical_connection.constraint
         if constraint is PhysicalConstraintType.FIXED:
-            return self._create_weld(request)
-        if constraint is PhysicalConstraintType.HINGE:
-            return self._create_hinge(request)
+            outcome = self._create_weld(request)
+        elif constraint is PhysicalConstraintType.HINGE:
+            outcome = self._create_hinge(request)
+        else:
+            outcome = None
+        if outcome is not None:
+            self._rows_stale |= outcome.success
+            return outcome
         return ConnectionOutcome.refused(
             "the MuJoCo backend supports fixed and hinge physical connections; "
             f"received '{constraint.value}'"
@@ -318,7 +408,7 @@ class MuJoCoBackendAdapter:
         except WeldPoolExhaustedError as error:
             return ConnectionOutcome.refused(str(error))
         try:
-            self._contact_exclusions.claim(handle, body_a, body_b)
+            exclusion = self._contact_exclusions.claim(handle, body_a, body_b)
         except (ContactExclusionPoolExhaustedError, ValueError) as error:
             self._welds.release(handle)
             return ConnectionOutcome.refused(str(error))
@@ -341,11 +431,12 @@ class MuJoCoBackendAdapter:
             model.eq_data[equality, RELPOSE_POSITION] = relative.translation
             model.eq_data[equality, RELPOSE_ROTATION] = relative.rotation
             model.eq_data[equality, TORQUE_SCALE] = RIGID_TORQUE_SCALE
-            self._sync_contact_exclusions(model)
+            _insert_exclusion(model, exclusion.signature)
+            self._wrench_references[handle] = _wrench_reference(body_a, request)
             data.eq_active[equality] = 1
-            mujoco.mj_forward(model, data)
         except Exception:
             data.eq_active[equality] = 0
+            self._wrench_references.pop(handle, None)
             self._contact_exclusions.release(handle)
             self._welds.release(handle)
             self._sync_contact_exclusions(model)
@@ -394,12 +485,13 @@ class MuJoCoBackendAdapter:
                 model.eq_data[equality, :] = 0.0
                 model.eq_data[equality, CONNECT_ANCHOR_BODY_A] = anchor.body_a
                 model.eq_data[equality, CONNECT_ANCHOR_BODY_B] = anchor.body_b
+            self._wrench_references[handle] = _wrench_reference(body_a, request)
             for equality in slot.equality_ids:
                 data.eq_active[equality] = 1
-            mujoco.mj_forward(model, data)
         except Exception:
             for equality in slot.equality_ids:
                 data.eq_active[equality] = 0
+            self._wrench_references.pop(handle, None)
             self._hinges.release(handle)
             raise
         return ConnectionOutcome.accepted(handle)
@@ -407,12 +499,15 @@ class MuJoCoBackendAdapter:
     def remove_physical_connection(self, handle: ConstraintHandle) -> bool:
         """Deactivate a weld or hinge and return its slot to its pool."""
         model, data = self._require_loaded()
+        self._wrench_references.pop(handle, None)
+        self._rows_stale = True
         slot = self._welds.release(handle)
         if slot is not None:
             data.eq_active[slot.equality_id] = 0
+            signature = self._contact_exclusions.signature_of(handle)
             self._contact_exclusions.release(handle)
-            self._sync_contact_exclusions(model)
-            mujoco.mj_forward(model, data)
+            if signature is not None:
+                _remove_exclusion(model, signature)
             return True
 
         hinge = self._hinges.release(handle)
@@ -420,7 +515,6 @@ class MuJoCoBackendAdapter:
             return False
         for equality in hinge.equality_ids:
             data.eq_active[equality] = 0
-        mujoco.mj_forward(model, data)
         return True
 
     def shutdown(self) -> None:
@@ -430,6 +524,8 @@ class MuJoCoBackendAdapter:
         self._contact_exclusions.clear()
         self._compiled = None
         self._sample_layout = None
+        self._forces = {}
+        self._wrench_references = {}
         self._data = None
         self._scene = None
 
@@ -474,6 +570,7 @@ class MuJoCoBackendAdapter:
         data.qpos[qpos_address + 3 : qpos_address + 7] = pose.rotation
         self._clear_module_velocities(module_id, model, data)
         mujoco.mj_forward(model, data)
+        self._after_forward(model, data)
 
     def set_module_twist(
         self,
@@ -497,6 +594,7 @@ class MuJoCoBackendAdapter:
             quat_conjugate(rotation), angular_rad_s
         )
         mujoco.mj_forward(model, data)
+        self._after_forward(model, data)
 
     def apply_module_wrench(
         self,
@@ -567,19 +665,29 @@ class MuJoCoBackendAdapter:
     def _constraint_forces(
         self,
         data: mujoco.MjData,
-    ) -> dict[ConstraintHandle, float]:
-        """Return equality-row force magnitudes for every active connection."""
-        forces: dict[ConstraintHandle, float] = {}
+    ) -> dict[ConstraintHandle, ConstraintWrench]:
+        """Return the wrench of every active connection from the last solve.
+
+        Must be called while ``data`` still holds the kinematics the solved
+        constraint rows were built from (directly after ``mj_step2`` or
+        ``mj_forward``), so the rows, anchors and frames agree.
+        """
+        model = self._require_compiled().model
+        wrenches: dict[ConstraintHandle, ConstraintWrench] = {}
         rows = _EqualityForceRows(data)
         for slot in self._welds.slots:
             if slot.handle is not None and data.eq_active[slot.equality_id]:
-                forces[slot.handle] = _weld_force_magnitude(rows, slot.equality_id)
+                wrenches[slot.handle] = _weld_wrench(
+                    model, data, rows, slot.equality_id, self._wrench_references.get(slot.handle)
+                )
         for slot in self._hinges.slots:
             if slot.handle is not None and all(
                 data.eq_active[equality] for equality in slot.equality_ids
             ):
-                forces[slot.handle] = _hinge_force_magnitude(rows, slot.equality_ids)
-        return forces
+                wrenches[slot.handle] = _hinge_wrench(
+                    model, data, rows, slot.equality_ids, self._wrench_references.get(slot.handle)
+                )
+        return wrenches
 
     def _snap_to_nominal(
         self,
@@ -593,7 +701,7 @@ class MuJoCoBackendAdapter:
         without doing so leaves the old velocity attached to a body that has
         just teleported, which injects energy the solver then has to absorb.
         """
-        model, data = self._require_loaded()
+        _, data = self._require_loaded()
         pose_a = Transform(translation=_vec3(data.xpos[body_a]), rotation=_quat(data.xquat[body_a]))
         pose_b = Transform(translation=_vec3(data.xpos[body_b]), rotation=_quat(data.xquat[body_b]))
         root_body_b, _, _ = self._free_joint(request.module_b)
@@ -613,8 +721,8 @@ class MuJoCoBackendAdapter:
         # Preserve that body's measured zero/current-configuration transform
         # relative to the module root when repositioning the whole module.
         target_root_b = target_body_b.compose(root_to_body_b.inverse())
+        # set_module_pose already runs mj_forward on the new pose.
         self.set_module_pose(request.module_b, target_root_b)
-        mujoco.mj_forward(model, data)
 
     def _free_joint(self, module_id: ModuleInstanceId) -> tuple[int, int, int]:
         """Return ``(body id, qpos address, dof address)`` for a module's free joint."""
@@ -760,33 +868,121 @@ class _EqualityForceRows:
         return self._forces[bounds[0] : bounds[1]]
 
 
-def _weld_force_magnitude(rows_of: _EqualityForceRows, equality_id: int) -> float:
-    """Return the weld's translational force magnitude in newtons.
+_ZERO_WRENCH = ConstraintWrench()
 
-    A weld contributes three translational rows followed by three rotational
-    rows.  The latter encode moments through MuJoCo's weld torque scale and
-    cannot be mixed into a value whose public unit is newtons.
+
+def _first(*values: object) -> Any:
+    """Return the first value that is not ``None`` (engine override, scene, default)."""
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
+def _wrench_reference(body_a: int, request: ConnectionRequest) -> tuple[int, np.ndarray]:
+    """Return body A and connector A's origin in body A's frame.
+
+    The wrench is reported about connector A's origin, which is fixed in body
+    A, so storing it once keeps each per-step evaluation O(1).
     """
-    rows = rows_of(equality_id)
-    return float(np.linalg.norm(rows[:3])) if len(rows) >= 3 else 0.0
+    return body_a, np.asarray(request.connector_a_local.translation, dtype=float)
 
 
-def _hinge_force_magnitude(
+def _reference_point(data: mujoco.MjData, reference: tuple[int, np.ndarray]) -> np.ndarray:
+    body, local = reference
+    return data.xpos[body] + data.xmat[body].reshape(3, 3) @ local
+
+
+def _quat_mul(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    aw, ax, ay, az = a
+    bw, bx, by, bz = b
+    return np.array(
+        (
+            aw * bw - ax * bx - ay * by - az * bz,
+            aw * bx + ax * bw + ay * bz - az * by,
+            aw * by - ax * bz + ay * bw + az * bx,
+            aw * bz + ax * by - ay * bx + az * bw,
+        )
+    )
+
+
+def _weld_rotation_map(model: mujoco.MjModel, data: mujoco.MjData, equality: int) -> np.ndarray:
+    """Return ``A`` with rotational rows = ``A @ (omega_a - omega_b)`` (world frame).
+
+    This mirrors ``mj_instantiateEquality`` for a body-semantic weld: the rows
+    are ``0.5 * torquescale * vec(neg(q_b) * (0, omega) * q_a * relpose)``. The
+    moment the rows apply to body A is therefore ``A.T @ rows``.
+    """
+    body_a = int(model.eq_obj1id[equality])
+    body_b = int(model.eq_obj2id[equality])
+    quat = _quat_mul(data.xquat[body_a], model.eq_data[equality, RELPOSE_ROTATION])
+    neg_b = data.xquat[body_b] * np.array((1.0, -1.0, -1.0, -1.0))
+    scale = 0.5 * float(model.eq_data[equality, TORQUE_SCALE])
+    columns = []
+    for axis in np.eye(3):
+        pure = np.array((0.0, axis[0], axis[1], axis[2]))
+        columns.append(_quat_mul(_quat_mul(neg_b, pure), quat)[1:] * scale)
+    return np.column_stack(columns)
+
+
+def _weld_wrench(
+    model: mujoco.MjModel,
+    data: mujoco.MjData,
+    rows_of: _EqualityForceRows,
+    equality: int,
+    reference: tuple[int, np.ndarray] | None,
+) -> ConstraintWrench:
+    """Return the wrench a weld applies to body A, about connector A's origin.
+
+    A weld contributes three translational rows, a world-frame force acting on
+    body A at its anchor, followed by three rotational rows, which encode a
+    couple through MuJoCo's weld torque scale and are mapped back to N m.
+    """
+    rows = rows_of(equality)
+    if len(rows) < 6:
+        return _ZERO_WRENCH
+    force = rows[:3]
+    body_a = int(model.eq_obj1id[equality])
+    rotation_a = data.xmat[body_a].reshape(3, 3)
+    anchor = data.xpos[body_a] + rotation_a @ model.eq_data[equality, RELPOSE_POSITION]
+    torque = _weld_rotation_map(model, data, equality).T @ rows[3:6]
+    if reference is not None:
+        torque = torque + np.cross(anchor - _reference_point(data, reference), force)
+    return ConstraintWrench(force_n=_vec3(force), torque_nm=_vec3(torque))
+
+
+def _hinge_wrench(
+    model: mujoco.MjModel,
+    data: mujoco.MjData,
     rows_of: _EqualityForceRows,
     equality_ids: tuple[int, int],
-) -> float:
-    """Return the net translational force transmitted by a two-point hinge.
+    reference: tuple[int, np.ndarray] | None,
+) -> ConstraintWrench:
+    """Return the net wrench a two-point hinge applies to body A.
 
-    Each connect equality contributes a world-axis point-force vector.  Their
-    vector sum is the net force in newtons; their difference also carries a
-    moment, which belongs in future moment telemetry rather than this scalar
-    force field.
+    Each connect equality contributes a world-frame point force acting on body
+    A at its anchor. Their sum is the net force; their moments about connector
+    A's origin sum to the transmitted moment, whose hinge-axis component is
+    zero up to solver tolerance.
     """
     point_forces = [rows_of(equality) for equality in equality_ids]
     if any(len(rows) < 3 for rows in point_forces):
-        return 0.0
-    resultant = point_forces[0][:3] + point_forces[1][:3]
-    return float(np.linalg.norm(resultant))
+        return _ZERO_WRENCH
+    force = point_forces[0][:3] + point_forces[1][:3]
+    torque = np.zeros(3)
+    origin = (
+        _reference_point(data, reference)
+        if reference is not None
+        else data.xpos[int(model.eq_obj1id[equality_ids[0]])]
+    )
+    for equality, rows in zip(equality_ids, point_forces, strict=True):
+        body_a = int(model.eq_obj1id[equality])
+        anchor = (
+            data.xpos[body_a]
+            + data.xmat[body_a].reshape(3, 3) @ model.eq_data[equality, CONNECT_ANCHOR_BODY_A]
+        )
+        torque += np.cross(anchor - origin, rows[:3])
+    return ConstraintWrench(force_n=_vec3(force), torque_nm=_vec3(torque))
 
 
 def _split(instance: ConnectorInstanceId) -> tuple[ModuleInstanceId, str]:
@@ -798,3 +994,30 @@ def _split_joint(instance: JointInstanceId) -> tuple[ModuleInstanceId, str]:
         return split_joint_instance_id(instance)
     except ValueError as error:
         raise BackendError(str(error)) from error
+
+
+def _insert_exclusion(model: mujoco.MjModel, signature: int) -> None:
+    """Publish one body-pair exclusion into the sorted signature array.
+
+    The array holds the authored exclusions, one 0 per free reserved slot, and
+    the occupied signatures, all in ascending order (MuJoCo binary-searches
+    it). Dropping a leading 0 and inserting ``signature`` in place yields
+    exactly the array a full re-sort would, with an O(log P) search instead of
+    an O(P log P) sort.
+    """
+    signatures = model.exclude_signature
+    if signatures.size == 0 or signatures[0] != 0:
+        raise BackendError("MuJoCo contact-exclusion pool has no free reserved entry")
+    position = int(np.searchsorted(signatures, signature, side="right"))
+    signatures[: position - 1] = signatures[1:position].copy()
+    signatures[position - 1] = signature
+
+
+def _remove_exclusion(model: mujoco.MjModel, signature: int) -> None:
+    """Withdraw one occurrence of ``signature`` and return its entry to the free 0s."""
+    signatures = model.exclude_signature
+    position = int(np.searchsorted(signatures, signature, side="left"))
+    if position >= signatures.size or signatures[position] != signature:
+        raise BackendError("MuJoCo contact-exclusion pool is inconsistent with the model")
+    signatures[1 : position + 1] = signatures[:position].copy()
+    signatures[0] = 0

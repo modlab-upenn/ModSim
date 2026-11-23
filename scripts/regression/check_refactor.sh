@@ -16,9 +16,9 @@
 #   full       static checks + every case, incl. long physics     (~45-90 min)
 #   static     ruff, ruff format, pyright (3 configs), pytest only
 #   self-test  proves the suite catches a 1e-15 relative change in one qpos value
-#   BASE_REF   git ref holding the pre-change code (default: HEAD, i.e. your
-#              uncommitted working tree is the candidate). If you committed the
-#              change, pass the commit before it, e.g. main or HEAD~1.
+#   BASE_REF   git ref holding the pre-change code. Default: where the current
+#              branch left main (git merge-base HEAD main); on main itself, HEAD,
+#              i.e. your uncommitted working tree is the candidate.
 #
 # Environment:
 #   PYTHON=path    interpreter (default: .venv/bin/python, venv/bin/python, python3)
@@ -28,9 +28,15 @@
 set -uo pipefail
 
 MODE="${1:-quick}"
-BASE_REF="${2:-HEAD}"
 REPO="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "Run inside the ModSim repository." >&2; exit 2; }
 cd "$REPO"
+if [[ -n ${2:-} ]]; then
+  BASE_REF="$2"
+elif git rev-parse --verify -q main >/dev/null && [[ "$(git rev-parse main)" != "$(git rev-parse HEAD)" ]]; then
+  BASE_REF="$(git merge-base HEAD main)"   # the commit this branch started from
+else
+  BASE_REF=HEAD
+fi
 HERE="$REPO/scripts/regression"
 
 if [[ -z "${PYTHON:-}" ]]; then
@@ -38,7 +44,8 @@ if [[ -z "${PYTHON:-}" ]]; then
     if [[ -x "$candidate" ]]; then PYTHON="$candidate"; break; fi
   done
 fi
-OUT="${OUT:-${TMPDIR:-/tmp}/modsim-regression-$(date +%Y%m%d-%H%M%S)}"
+TMP_ROOT="${TMPDIR:-/tmp}"
+OUT="${OUT:-${TMP_ROOT%/}/modsim-regression-$(date +%Y%m%d-%H%M%S)}"
 OUT="${OUT%/}"
 BASE_SRC="$OUT/baseline-src"
 mkdir -p "$OUT/base" "$OUT/new" "$OUT/logs"
@@ -109,11 +116,13 @@ prepare_baseline() {
   git archive "$BASE_REF" src examples | tar -x -C "$BASE_SRC" \
     || { echo "Cannot read src/ and examples/ at $BASE_REF" >&2; exit 2; }
   local changed untracked
-  changed="$(git diff --stat "$BASE_REF" -- src | sed '$d')"
-  untracked="$(git ls-files --others --exclude-standard -- src | grep -v __pycache__)"
+  changed="$(git diff --stat "$BASE_REF" -- src ':(exclude)*.DS_Store' | sed '$d')"
+  untracked="$(git ls-files --others --exclude-standard -- src | grep -v -e __pycache__ -e '\.DS_Store$' || true)"
   if [[ -z $changed && -z $untracked ]]; then
-    echo "WARNING: src/ at $BASE_REF is identical to your working tree, so this compares"
-    echo "         the code with itself. Pass the pre-change ref, e.g. main or HEAD~1." >&2
+    echo "ERROR: src/ at $BASE_REF ($(git rev-parse --short "$BASE_REF")) is identical to your working tree," >&2
+    echo "       so every case would compare the code with itself. Pass the commit from" >&2
+    echo "       before the change, e.g.:  $0 $MODE main" >&2
+    exit 2
   else
     echo "Library changes being tested ($BASE_REF -> working tree):"
     [[ -n $changed ]] && printf '%s\n' "$changed" | sed 's/^/  /'
@@ -163,10 +172,19 @@ run_cases() {
     tb="$(cat "$OUT/base/$name/wall_seconds.txt" 2>/dev/null || echo '?')"
     tn="$(cat "$OUT/new/$name/wall_seconds.txt" 2>/dev/null || echo '?')"
     if [[ $ok == 0 ]]; then
-      verdict="ERROR (see $OUT/logs/*-$name.log)"
+      verdict="ERROR"
       FAILURES+=("$name: harness error")
+      for side in base new; do
+        if [[ -f "$OUT/logs/$side-$name.log" ]]; then
+          echo "      --- last lines of logs/$side-$name.log"
+          tail -n 12 "$OUT/logs/$side-$name.log" | sed 's/^/      /'
+        fi
+      done
     elif report="$("$PYTHON" "$HERE/compare_runs.py" "$OUT/base" "$OUT/new" "$name" 2>&1)"; then
       verdict="identical"
+      if grep -q '"raised": "' "$OUT/base/$name/summary.json" 2>/dev/null; then
+        verdict="identical (both raise: $(sed -n 's/.*"raised": "\([^:]*\.\)\{0,1\}\([A-Za-z]*Error\).*/\2/p' "$OUT/base/$name/summary.json"))"
+      fi
     else
       verdict="DIFFERENT"
       FAILURES+=("$name")
@@ -182,7 +200,13 @@ run_static() {
   local tool
   run_step() {  # label command...
     local label=$1; shift
-    if "$@" >"$OUT/logs/static-${label// /_}.log" 2>&1; then pass "$label"; else fail "$label (log: $OUT/logs/static-${label// /_}.log)"; fi
+    local log="$OUT/logs/static-${label// /_}.log"
+    if "$@" >"$log" 2>&1; then
+      pass "$label"
+    else
+      fail "$label (log: $log)"
+      grep -E "^(FAILED|ERROR) |[0-9]+ (failed|passed|error)|^E  " "$log" | head -n 25 | sed 's/^/        /'
+    fi
   }
   if "$PYTHON" -m ruff --version >/dev/null 2>&1; then
     run_step "ruff check" "$PYTHON" -m ruff check .
@@ -194,7 +218,9 @@ run_static() {
     [[ -f pyright-mujoco.json ]] && run_step "pyright (mujoco)" "${pyright[@]}" --project pyright-mujoco.json
     [[ -f pyright-studio.json ]] && run_step "pyright (studio)" "${pyright[@]}" --project pyright-studio.json
   else echo "  skip  pyright (not installed)"; fi
-  run_step "pytest (full suite)" "$PYTHON" -m pytest -q -p no:cacheprovider
+  # Keep going past import errors in optional-dependency test modules so one
+  # broken extra (e.g. Studio's pyvista/pyvistaqt) does not hide every other result.
+  run_step "pytest (full suite)" "$PYTHON" -m pytest -q -p no:cacheprovider --continue-on-collection-errors
   run_step "lazy-sampling exactness tests" "$PYTHON" -m pytest -q -p no:cacheprovider tests/test_mujoco_lazy_sampling.py
 }
 
@@ -207,7 +233,8 @@ self_test() {
   # The comparator exits 1 when it finds a difference, which is the goal here.
   "$PYTHON" "$HERE/compare_runs.py" "$OUT/base" "$OUT/new" "$name" >"$OUT/logs/selftest.txt" 2>&1
   if grep -q "^FAIL" "$OUT/logs/selftest.txt"; then
-    sed 's/^/    /' "$OUT/logs/selftest.txt" | head -8
+    echo "  Expected: the perturbed run must differ. The comparator reported:"
+    sed '1s/^FAIL /DIFF /; s/^/    /' "$OUT/logs/selftest.txt" | head -8
     pass "perturbation detected - the comparison is sensitive at the last-bit level"
   else
     fail "perturbation NOT detected - do not trust identical results from this suite"

@@ -17,11 +17,12 @@ from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from typing import Protocol, cast, runtime_checkable
 
-from modsim.backends.registry import create_backend
+from modsim.backends.base import BackendError
+from modsim.backends.registry import backend_capabilities, create_backend
 from modsim.connectors.compatibility import evaluate_compatibility
 from modsim.core.events import Event
 from modsim.core.ids import ModuleInstanceId, connector_instance_id
-from modsim.core.scene import ModulePlacement, SceneSpec
+from modsim.core.scene import ModulePlacement, SceneSpec, WorldSettings
 from modsim.core.transforms import Transform, quat_from_rpy
 from modsim.core.validation import (
     require_finite,
@@ -75,6 +76,12 @@ from modsim.runtime.reconfiguration import (
     ScriptedReconfigurationConfig,
     ScriptedReconfigurationScenario,
     connector_pair_plan,
+)
+from modsim.runtime.requirements import (
+    DEMO_CONNECTION_BUDGETS,
+    demo_backend_problems,
+    describe_backend_problems,
+    engine_tuning,
 )
 from modsim.runtime.session import RuntimeSession
 
@@ -621,6 +628,7 @@ def validate_runtime_inspector_config(config: RuntimeInspectorConfig) -> None:
             "fixed_connector and moving_connector must be supplied together"
         )
     demo = _resolve_demo(config.demo)
+    _require_demo_capabilities(demo, config.backend)
     if demo is RuntimeDemo.SMORES_DRIVER_TO_SNAKE:
         if config.fixed_connector is not None or config.moving_connector is not None:
             raise RuntimeInspectorSetupError(
@@ -673,11 +681,6 @@ def validate_runtime_inspector_config(config: RuntimeInspectorConfig) -> None:
                 f"{demo_name} is explicitly kinematic and requires gravity and ground disabled"
             )
     elif demo is RuntimeDemo.MBLOCKS_MOMENTUM_PIVOT:
-        if config.backend != "mujoco":
-            raise RuntimeInspectorSetupError(
-                "mblocks_momentum_pivot requires the MuJoCo backend's joint, hinge, "
-                "contact, and gravity dynamics"
-            )
         if config.fixed_connector is not None or config.moving_connector is not None:
             raise RuntimeInspectorSetupError(
                 "mblocks_momentum_pivot defines its face and edge connector transitions; "
@@ -722,11 +725,6 @@ def validate_runtime_inspector_config(config: RuntimeInspectorConfig) -> None:
         RuntimeDemo.MBLOCKS_ONLINE_LATTICE_ELBOW,
     }:
         demo_name = demo.value
-        if config.backend != "mujoco":
-            raise RuntimeInspectorSetupError(
-                f"{demo_name} requires the MuJoCo backend's "
-                "joint, hinge, contact, and gravity dynamics"
-            )
         if config.fixed_connector is not None or config.moving_connector is not None:
             raise RuntimeInspectorSetupError(
                 f"{demo_name} defines its connector transitions; "
@@ -763,11 +761,6 @@ def validate_runtime_inspector_config(config: RuntimeInspectorConfig) -> None:
                 f"{MAX_MOMENTUM_TIMESTEP_S:g} for its flywheel brake impulses"
             )
     elif demo is RuntimeDemo.SMORES_DIFF_DRIVE_DOCK_UNDOCK:
-        if config.backend != "mujoco":
-            raise RuntimeInspectorSetupError(
-                "smores_diff_drive_dock_undock requires the MuJoCo backend's "
-                "joint and contact dynamics"
-            )
         if config.fixed_connector is not None or config.moving_connector is not None:
             raise RuntimeInspectorSetupError(
                 "smores_diff_drive_dock_undock uses fixed bottom and moving pan; "
@@ -807,10 +800,6 @@ def validate_runtime_inspector_config(config: RuntimeInspectorConfig) -> None:
         RuntimeDemo.SMORES_ONLINE_ASSEMBLY,
         RuntimeDemo.SMORES_ONLINE_DRIVER_TO_SNAKE,
     }:
-        if config.backend != "mujoco":
-            raise RuntimeInspectorSetupError(
-                f"{demo.value} requires the MuJoCo backend's joint and contact dynamics"
-            )
         if config.fixed_connector is not None or config.moving_connector is not None:
             raise RuntimeInspectorSetupError(
                 f"{demo.value} defines its connector actions; do not "
@@ -969,52 +958,43 @@ def runtime_frame_signature(frame: RuntimeInspectorFrame) -> object:
     )
 
 
+def _require_demo_capabilities(demo: RuntimeDemo | None, backend: str) -> None:
+    """Refuse a demo whose backend lacks a capability it needs."""
+    try:
+        problems = demo_backend_problems(demo, backend)
+    except BackendError as error:
+        raise RuntimeInspectorSetupError(str(error)) from error
+    if problems and demo is not None:
+        raise RuntimeInspectorSetupError(describe_backend_problems(demo, backend, problems))
+
+
+def runtime_world_settings(config: RuntimeInspectorConfig) -> WorldSettings:
+    """Return the world settings a Runtime Inspector configuration asks for."""
+    return WorldSettings(
+        gravity_m_s2=(0.0, 0.0, -9.81) if config.gravity else (0.0, 0.0, 0.0),
+        ground=config.ground,
+        timestep_s=config.dt_s,
+    )
+
+
 def _create_session(
     loaded: LoadedRobotPack,
     scene: SceneSpec,
     config: RuntimeInspectorConfig,
 ) -> RuntimeSession:
-    if config.backend != "mujoco":
-        if config.gravity or config.ground:
-            raise RuntimeInspectorSetupError(
-                "gravity and ground options are currently supported only by the MuJoCo backend"
-            )
-        adapter = create_backend(config.backend)
-    else:
-        backend_options: dict[str, object] = {
-            "gravity": (0.0, 0.0, -9.81) if config.gravity else (0.0, 0.0, 0.0),
-            "ground": config.ground,
-            "timestep_s": config.dt_s,
-        }
-        demo = _resolve_demo(config.demo)
-        if demo is RuntimeDemo.MBLOCKS_MOMENTUM_PIVOT:
-            backend_options.update(weld_pool_size=2, hinge_pool_size=2)
-        elif demo is RuntimeDemo.MBLOCKS_PHYSICAL_TWELVE_MODULE_LINE:
-            # The route has eleven simultaneous face bonds and one transient
-            # hinge. Avoid deriving 84 inactive slots from all 168 directed
-            # connector instances in this known demonstration scene.
-            backend_options.update(weld_pool_size=12, hinge_pool_size=2)
-        elif demo in {
-            RuntimeDemo.MBLOCKS_ONLINE_LATTICE,
-            RuntimeDemo.MBLOCKS_ONLINE_LATTICE_LARGE,
-            RuntimeDemo.MBLOCKS_ONLINE_LATTICE_ELBOW,
-        }:
-            backend_options.update(
-                weld_pool_size=12,
-                hinge_pool_size=2,
-                constraint_time_constant_s=0.002,
-            )
-        elif demo in {
-            RuntimeDemo.MBLOCKS_PHYSICAL_TWELVE_MODULE_STAIRCASE,
-            RuntimeDemo.MBLOCKS_TWELVE_MODULE_STAIRCASE,
-        }:
-            # The mat begins with 16 cyclic face bonds and finishes with 18;
-            # only one edge hinge is active during a coordinated slab pivot.
-            backend_options.update(weld_pool_size=24, hinge_pool_size=2)
-        adapter = create_backend(
-            config.backend,
-            **backend_options,
-        )
+    demo = _resolve_demo(config.demo)
+    scene = scene.with_world(runtime_world_settings(config))
+    budget = DEMO_CONNECTION_BUDGETS.get(demo) if demo is not None else None
+    if budget is not None:
+        scene = scene.with_connection_budget(budget)
+    try:
+        capabilities = backend_capabilities(config.backend)
+    except BackendError as error:
+        raise RuntimeInspectorSetupError(str(error)) from error
+    problems = capabilities.world_support_problems(scene.world)
+    if problems:
+        raise RuntimeInspectorSetupError("; ".join(problems))
+    adapter = create_backend(config.backend, **engine_tuning(demo, config.backend))
     try:
         return RuntimeSession.create(loaded, scene, adapter)
     except Exception:

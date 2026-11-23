@@ -310,18 +310,18 @@ local hinge axis. Constraining two separated corresponding points removes
 translation and all rotation except rotation about their common line. Unlike a
 weld, a hinge does **not** claim a contact exclusion: collision remains active
 so a pivoting M-Block can interact with its support and the ground. The
-`hinge_pool_size` adapter option controls the number of simultaneously active
-hinges; each slot reserves two equality rows. Pool exhaustion refuses the
+scene's `ConnectionBudget.hinge` (or the MuJoCo `hinge_pool_size` override)
+controls the number of simultaneously active hinges; each slot reserves two equality rows. Pool exhaustion refuses the
 connection instead of faking a latch.
 
-**Constraint forces.** Snapshots now report scalar force magnitudes for every
-active weld and hinge through `constraint_forces_n`. For a weld this is the
-Euclidean norm of its three translational equality rows; rotational rows are
-not mixed into a value whose unit is newtons. For a two-point hinge it is the
-norm of the vector sum of the two three-axis point-force vectors. Their
-difference also represents a moment, which is deliberately not folded into
-this scalar field. These conventions feed the backend-neutral overload path;
-they are constraint-solver reactions, not yet a complete connector wrench.
+**Constraint wrenches.** Snapshots report a `ConstraintWrench` for every
+active weld and hinge through `constraint_wrenches`. The wrench is in the world
+frame: the force and moment the connection applies to module A, with the
+moment taken about connector A's origin (see `docs/backends.md`). The overload
+path compares the force magnitude (`constraint_forces_n`, derived from the
+wrenches) against `break_force_n`, exactly as before. The moment and the
+connector-frame components (`wrench.resolved_in(...)`) are available for
+normal, shear and bending limits.
 
 **Still deferred.** `constraint: compliant` needs an explicit conversion from
 physical stiffness units into MuJoCo `solref`/`solimp`. Long weld chains also

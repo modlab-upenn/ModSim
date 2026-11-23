@@ -20,6 +20,9 @@ Examples::
     python examples/scenarios/mblocks_parallel_scaling.py \
         --sweep 1,2,4,8,16,32 --isolated --csv scaling.csv
 
+    # watch one run in the MuJoCo viewer (macOS: use mjpython instead of python)
+    mjpython examples/scenarios/mblocks_parallel_scaling.py --copies 8 --view --speed 1
+
     # quick throughput-only sweep: fixed 5 s of simulated time per point
     python examples/scenarios/mblocks_parallel_scaling.py \
         --sweep 1,2,4,8,16,32,64 --duration 5 --csv throughput.csv
@@ -33,6 +36,7 @@ own actuators so one copy failing cannot zero another copy's flywheels.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import csv
 import json
 import math
@@ -153,12 +157,23 @@ class ScopedSession:
         self._docking.request_undock(connection)
 
     def process_docking(self) -> tuple[Event, ...]:
-        return self._docking.run(self.world, self._shared.adapter)  # type: ignore[arg-type]
+        # Record the changes on the shared session, whose step counter decides
+        # connection_change_pending (reached through __getattr__ below).
+        return self._shared.record_connection_changes(
+            self._docking.run(self.world, self._shared.adapter)  # type: ignore[arg-type]
+        )
+
+    def proposals(self) -> tuple[Any, ...]:
+        # Detect only among this copy's connectors. Falling through to the shared
+        # session scanned every copy's connectors on each capture check, which
+        # made landing capture cost O(X^2) per tick.
+        return self._docking.detect(self.world)  # type: ignore[arg-type]
 
     def clear_joint_commands(self, joints: Iterable[JointInstanceId] | None = None) -> None:
         self._shared.clear_joint_commands(self._joints if joints is None else joints)
 
     def __getattr__(self, name: str) -> Any:  # set_joint_commands, metrics, ...
+        # Anything that inspects the world must be overridden above, or it sees all copies.
         return getattr(self._shared, name)
 
 
@@ -238,6 +253,7 @@ class RunResult:
     completed: int = 0
     failed: int = 0
     pivots_verified_total: int = 0
+    viewer_wall_s: float = 0.0
     unfinished: int = 0
     completion_s_mean: float | None = None
     completion_s_max: float | None = None
@@ -277,15 +293,29 @@ def run(
     spacing_y_m: float,
     progress_every_s: float,
     isolated: bool = False,
+    use_viewer: bool = False,
+    speed: float = 0.0,
+    view_fps: float = 30.0,
+    hold: bool = True,
 ) -> RunResult:
-    """Run X copies. ``isolated`` is the control: X separate sessions, same placements."""
+    """Run X copies. ``isolated`` is the control: X separate sessions, same placements.
+
+    ``use_viewer`` opens the MuJoCo passive viewer on the shared model (shared mode
+    only). The viewer only reads ``MjData``; it is synced at ``view_fps`` of
+    wall-clock time and, when ``speed`` > 0, the loop sleeps so simulated time
+    advances at ``speed`` times real time. Rendering and pacing make the timing
+    fields meaningless as a benchmark, so such runs are labelled ``shared-viewer``.
+    """
     import mujoco
+
+    if use_viewer and isolated:
+        raise ValueError("--view needs the shared session; it cannot show isolated sessions")
 
     result = RunResult(
         copies=copies,
         modules=copies * MODULES_PER_COPY,
         mujoco_version=mujoco.__version__,
-        mode="isolated" if isolated else "shared",
+        mode="isolated" if isolated else ("shared-viewer" if use_viewer else "shared"),
     )
     t_setup = time.perf_counter()
     states = [copy_state(k) for k in range(copies)]
@@ -299,6 +329,7 @@ def run(
     else:
         sessions = [_make_session(loaded, states, origins, dt_s)]
         owner = [0] * copies
+    viewer_stack = contextlib.ExitStack()
     try:
         for session in sessions:
             m = getattr(session.adapter, "_compiled", None)
@@ -322,6 +353,11 @@ def run(
             )
             scoped.append(view)
         result.setup_wall_s = time.perf_counter() - t_setup
+        viewer = None
+        if use_viewer:
+            viewer = viewer_stack.enter_context(_open_viewer(sessions[0].adapter))
+        next_frame = 0.0
+        stop_reason = ""
 
         copy_results = [CopyResult(index=k, origin_m=origins[k]) for k in range(copies)]
         tick_ms: list[float] = []
@@ -373,11 +409,28 @@ def run(
                     flush=True,
                 )
                 next_progress += progress_every_s
+            if viewer is not None:
+                tv = time.perf_counter()
+                if not viewer.is_running():
+                    stop_reason = "viewer closed"
+                    break
+                if speed > 0:  # hold simulated time to `speed` x real time
+                    ahead = (t_run + clock.time_s / speed) - time.perf_counter()
+                    if ahead > 0:
+                        time.sleep(ahead)
+                now = time.perf_counter()
+                if now >= next_frame:
+                    viewer.sync()
+                    _overlay(viewer, result.mode, copies, clock.time_s, copy_results, t_run)
+                    next_frame = now + 1.0 / view_fps
+                result.viewer_wall_s += time.perf_counter() - tv
             if active == 0:
                 break
         result.wall_s = time.perf_counter() - t_run
         result.sim_time_s = clock.time_s
-        result.stop_reason = "all copies finished" if active == 0 else "duration reached"
+        result.stop_reason = stop_reason or (
+            "all copies finished" if active == 0 else "duration reached"
+        )
 
         for k, scenario in enumerate(scenarios):
             snap = scenario.planning_snapshot
@@ -400,10 +453,56 @@ def run(
         result.tick_ms_mean = statistics.fmean(tick_ms) if tick_ms else 0.0
         result.tick_ms_p95 = statistics.quantiles(tick_ms, n=20)[-1] if len(tick_ms) >= 20 else 0.0
         result.peak_rss_mb = _peak_rss_mb()
+        if viewer is not None and hold and viewer.is_running():
+            viewer.sync()
+            _overlay(viewer, result.mode, copies, clock.time_s, copy_results, t_run, done=True)
+            print("Viewer: final state shown; close the window to exit.", file=sys.stderr)
+            while viewer.is_running():
+                time.sleep(0.05)
         return result
     finally:
+        viewer_stack.close()  # join the viewer before the backend is torn down
         for session in sessions:
             session.shutdown()
+
+
+def _open_viewer(adapter: Any) -> contextlib.AbstractContextManager[Any]:
+    # Reuse the backend's managed passive viewer: it joins the render thread on
+    # exit and explains the mjpython requirement on macOS.
+    from modsim_backend_mujoco.viewer import (
+        _managed_passive_viewer,  # pyright: ignore[reportPrivateUsage]
+    )
+
+    return _managed_passive_viewer(adapter, None)
+
+
+def _overlay(
+    viewer: Any,
+    mode: str,
+    copies: int,
+    sim_time_s: float,
+    records: list[CopyResult],
+    t_run: float,
+    *,
+    done: bool = False,
+) -> None:
+    set_texts = getattr(viewer, "set_texts", None)  # absent in older MuJoCo releases
+    if not callable(set_texts):
+        return
+    import mujoco
+
+    complete = sum(r.phase == "complete" for r in records)
+    failed = sum(r.phase == "failed" for r in records)
+    rtf = sim_time_s / max(time.perf_counter() - t_run, 1e-9)
+    status = "FINISHED - close the window to exit" if done else f"RTF {rtf:.3f}"
+    set_texts(
+        (
+            mujoco.mjtFontScale.mjFONTSCALE_150,
+            mujoco.mjtGridPos.mjGRID_TOPLEFT,
+            f"M-Blocks x{copies} ({copies * MODULES_PER_COPY} modules)",
+            f"sim {sim_time_s:6.2f} s   complete {complete}/{copies}   failed {failed}\n{status}",
+        )
+    )
 
 
 # ----------------------------------------------------------------------
@@ -451,10 +550,31 @@ def main() -> int:
         action="store_true",
         help="Control condition: one separate session per copy (same placements, same process)",
     )
+    parser.add_argument(
+        "--view",
+        action="store_true",
+        help="Watch the shared session in the MuJoCo viewer (macOS: run with mjpython)",
+    )
+    parser.add_argument(
+        "--speed",
+        type=float,
+        default=0.0,
+        help="With --view: simulated seconds per real second (0 = as fast as possible)",
+    )
+    parser.add_argument("--fps", type=float, default=30.0, help="With --view: frame rate")
+    parser.add_argument(
+        "--no-hold",
+        action="store_true",
+        help="With --view: exit at the end instead of keeping the final state on screen",
+    )
     parser.add_argument("--csv", type=Path, help="Append one summary row per run")
     parser.add_argument("--json", type=Path, help="Write the full result (with per-copy outcomes)")
     args = parser.parse_args()
 
+    if args.view and (args.sweep or args.isolated):
+        parser.error("--view works with a single shared run: use --copies X without --isolated")
+    if args.speed < 0 or args.fps <= 0:
+        parser.error("--speed must be >= 0 and --fps > 0")
     if args.sweep:
         values = [int(v) for v in args.sweep.split(",") if v.strip()]
         status = 0
@@ -486,7 +606,17 @@ def main() -> int:
         spacing_y_m=args.spacing_y,
         progress_every_s=args.progress,
         isolated=args.isolated,
+        use_viewer=args.view,
+        speed=args.speed,
+        view_fps=args.fps,
+        hold=not args.no_hold,
     )
+    if args.view:
+        print(
+            f"Viewer run: timings include {result.viewer_wall_s:.1f} s of rendering/pacing "
+            "and are not benchmark numbers (mode = shared-viewer).",
+            file=sys.stderr,
+        )
     row = {k: getattr(result, k) for k in CSV_FIELDS}
     print(json.dumps(row, indent=2))
     if args.csv:

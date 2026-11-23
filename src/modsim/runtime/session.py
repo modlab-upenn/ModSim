@@ -18,7 +18,7 @@ from modsim.backends.base import (
 from modsim.backends.registry import create_backend
 from modsim.connectors.docking import DockingManager, DockProposal
 from modsim.core.entities import JointCommand
-from modsim.core.events import ConnectorOverloaded, Event
+from modsim.core.events import ConnectorOverloaded, DockCommitted, Event, UndockCommitted
 from modsim.core.ids import (
     ConnectionId,
     ConnectorInstanceId,
@@ -48,6 +48,10 @@ class RuntimeSession:
     adapter: BackendAdapter
     docking: DockingManager = field(default_factory=DockingManager)
     handles: BackendHandleRegistry = field(default_factory=BackendHandleRegistry)
+    _changed_at_step: dict[ConnectionId, int] = field(
+        default_factory=dict[ConnectionId, int], init=False, repr=False
+    )
+    _change_delay_steps: int | None = field(default=None, init=False, repr=False)
 
     @classmethod
     def create(
@@ -75,6 +79,9 @@ class RuntimeSession:
             if isinstance(adapter, BackendAdapter) and not isinstance(adapter, str)
             else create_backend(adapter, **backend_options)
         )
+        problems = resolved.capabilities().world_support_problems(scene.world)
+        if problems:
+            raise BackendError("; ".join(problems))
         handles = resolved.load(pack, scene, root=pack_root)
         world = WorldState.from_scene(pack, scene)
         session = cls(
@@ -165,7 +172,58 @@ class RuntimeSession:
         backend two-phase commit, canonical events, and assembly updates still
         go through the ordinary :class:`DockingManager` pipeline.
         """
-        return self.docking.run(self.world, self.adapter)
+        return self.record_connection_changes(self.docking.run(self.world, self.adapter))
+
+    # ------------------------------------------------------------------
+    # physical effect of connection changes
+    # ------------------------------------------------------------------
+
+    def connection_change_pending(self, connection_id: ConnectionId) -> bool:
+        """Return whether the next ``step`` may still be solved without the latest change.
+
+        A dock or undock changes ModSim's logical topology at once, but a
+        backend may enforce it only after a declared delay (rule 5 of the
+        timing contract in ``modsim.backends.base``). While this returns True,
+        a controller must not apply a load that relies on the change: braking
+        against a released face that the engine still holds, for example.
+        Steps are counted as time-advancing snapshots ingested by the world
+        (``WorldState.advancing_samples``), so this holds however the backend
+        is driven. Counting whole steps is conservative, because each covers at
+        least one internal step.
+        """
+        changed = self._changed_at_step.get(connection_id)
+        if changed is None:
+            return False
+        return self.world.advancing_samples < changed + self._connection_change_delay()
+
+    def connection_changes_pending(self) -> bool:
+        """Return whether any recent dock or undock may not act in the next ``step``."""
+        return any(self.connection_change_pending(c) for c in tuple(self._changed_at_step))
+
+    def _connection_change_delay(self) -> int:
+        if self._change_delay_steps is None:
+            self._change_delay_steps = self.adapter.capabilities().connection_change_delay_substeps
+        return self._change_delay_steps
+
+    def record_connection_changes(self, events: tuple[Event, ...]) -> tuple[Event, ...]:
+        """Note the step at which each committed dock or undock happened.
+
+        The session calls this for every docking pass it runs. A facade that
+        runs docking through its own :class:`DockingManager` against this
+        session's backend must pass the resulting events here too, or
+        :meth:`connection_change_pending` will not know about them. Returns
+        ``events`` unchanged.
+        """
+        delay = self._connection_change_delay()
+        for event in events:
+            if isinstance(event, DockCommitted | UndockCommitted):
+                self._changed_at_step[event.connection_id] = self.world.advancing_samples
+        if self._changed_at_step and delay >= 0:
+            # Forget changes that can no longer be pending (keeps this O(active)).
+            horizon = self.world.advancing_samples - delay
+            for connection_id in [c for c, at in self._changed_at_step.items() if at < horizon]:
+                del self._changed_at_step[connection_id]
+        return events
 
     def _resolve_joint_spec(self, joint: JointInstanceId) -> JointSpec:
         """Resolve one instance ID and translate lookup failures for callers."""
@@ -330,7 +388,7 @@ class RuntimeSession:
                 )
             )
             events.extend(self.docking.undock(self.world, self.adapter, connection.id))
-        return tuple(events)
+        return self.record_connection_changes(tuple(events))
 
     def _break_force_n(
         self,

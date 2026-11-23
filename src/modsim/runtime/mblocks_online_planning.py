@@ -43,12 +43,42 @@ from modsim.runtime.mblocks_lattice import (
     observe_lattice,
     starter_state,
 )
+from modsim.runtime.momentum_pivot import (
+    PUBLISHED_BRAKE_EFFORT_CAP_NM,
+    PUBLISHED_FLYWHEEL_AXIAL_INERTIA_KG_M2,
+    PUBLISHED_SPINUP_EFFORT_CAP_NM,
+)
 from modsim.runtime.reconfiguration import (
     ReconfigurationPhase,
     ReconfigurationScenarioError,
     ReconfigurationStatus,
 )
 from modsim.runtime.session import RuntimeSession
+
+# Stalled-landing recovery. A pivot can rebound off its target face and come to
+# rest short of it, held by ground friction. The landing feedback (at most
+# 0.03 N m) cannot break that friction, so without recovery its integral winds
+# the flywheel up to the 20,000 RPM ceiling and the run fails. A stall is
+# declared when the cube has been still for STALL_HOLD_S while more than
+# STALL_ERROR_RAD from its target yaw. Most landings settle inside the capture
+# gate below and never trip either threshold.
+STALL_ERROR_RAD = math.radians(2.5)
+# Capture waits until the cube is within CAPTURE_YAW_GATE_RAD of its target yaw.
+# A cube can also come to rest just outside that gate (0.75-1 degree): the
+# landing law's torque there is far below breakaway friction, and the coarse
+# stall threshold above never trips, so the pivot would time out at the gate
+# edge. A cube resting in that band gets a fine impulse of FINE_RECOVERY_RPM.
+CAPTURE_YAW_GATE_RAD = math.radians(0.75)
+FINE_RECOVERY_RPM = 1000.0
+STALL_RATE_RAD_S = 0.05
+STALL_HOLD_S = 0.1
+MAX_RECOVERY_IMPULSES = 2
+# Impulse size: the 90-degree pivot spins to quarter_rpm; friction work grows
+# with the remaining angle, kinetic energy with speed squared, so scale the
+# spin speed with the square root of the remaining fraction of a quarter turn.
+RECOVERY_MIN_RPM = 3000.0
+RECOVERY_SETTLED_RAD_S = 1.0
+RECOVERY_SPINUP_TOLERANCE_RAD_S = 5.0
 
 
 @dataclass(slots=True)
@@ -78,6 +108,11 @@ class OnlineLatticeScenario:
     _last_controller_phase: ReconfigurationPhase | None = None
     _landing_integral: float = 0.0
     _landing_effort_nm: float = 0.0
+    _stall_since: float | None = None
+    _recovery: tuple[str, float, int] | None = None
+    """Active recovery impulse: (stage, target flywheel speed rad/s, direction)."""
+    _recoveries_this_pivot: int = 0
+    _recoveries_total: int = 0
 
     def __post_init__(self) -> None:
         if not math.isfinite(self.dt_s) or not 0 < self.dt_s <= 0.0005:
@@ -147,6 +182,11 @@ class OnlineLatticeScenario:
         )
 
     @property
+    def recovery_impulses(self) -> int:
+        """Stalled-landing recovery impulses fired so far in this run."""
+        return self._recoveries_total
+
+    @property
     def status(self) -> ReconfigurationStatus:
         return ReconfigurationStatus(
             phase=self._phase,
@@ -206,6 +246,8 @@ class OnlineLatticeScenario:
                 else:
                     self.session.clear_joint_commands()
                     self._landing_effort_nm = 0.0
+                    self._recovery = None
+                    self._stall_since = None
             if (
                 self._phase != self._last_controller_phase
                 and self._phase is not ReconfigurationPhase.FAILED
@@ -286,6 +328,9 @@ class OnlineLatticeScenario:
                 self.session, compiled, capture_ready=self._capture_ready
             )
             self._landing_integral = 0.0
+            self._stall_since = None
+            self._recovery = None
+            self._recoveries_this_pivot = 0
             self._active = self._remaining.pop(0)
             self._phase = self._controller.status.phase
             self._last_controller_phase = None
@@ -311,7 +356,7 @@ class OnlineLatticeScenario:
     def _capture_ready(self) -> bool:
         # A relative pivot-angle gate alone can accumulate alignment error along
         # a line. Also check the moving cube against the anchor's measured frame.
-        return abs(self._landing_yaw_error()) <= math.radians(0.75)
+        return abs(self._landing_yaw_error()) <= CAPTURE_YAW_GATE_RAD
 
     def _apply_landing_feedback(self) -> None:
         """Simulation control extension: bounded motor reaction after the brake.
@@ -328,6 +373,11 @@ class OnlineLatticeScenario:
         anchor = self.session.world.modules[ModuleInstanceId(self.plan.anchor)]
         error = self._landing_yaw_error()
         rate = moving.angular_velocity_rad_s[2] - anchor.angular_velocity_rad_s[2]
+        if self._recovery is not None:
+            self._advance_recovery(telemetry.flywheel_speeds_rad_s[0][1])
+            return
+        if self._detect_stall(error, rate):
+            return
         self._landing_integral = max(-0.5, min(0.5, self._landing_integral + error * self.dt_s))
         effort = max(
             -0.03, min(0.03, -(0.12 * error + 0.04 * self._landing_integral - 0.008 * rate))
@@ -343,6 +393,81 @@ class OnlineLatticeScenario:
             )
         )
         self._detail += f"; landing feedback {effort:.4f} N m"
+
+    def _detect_stall(self, error: float, rate: float) -> bool:
+        """Start a recovery impulse once the cube rests short of its target."""
+        assert self._active is not None
+        now = self.session.world.time_s
+        if abs(error) <= CAPTURE_YAW_GATE_RAD or abs(rate) >= STALL_RATE_RAD_S:
+            self._stall_since = None
+            return False
+        if self._stall_since is None:
+            self._stall_since = now
+            return False
+        if now - self._stall_since < STALL_HOLD_S:
+            return False
+        if self._recoveries_this_pivot >= MAX_RECOVERY_IMPULSES:
+            self._fail(
+                f"{self._active.moving} stalled {math.degrees(abs(error)):.1f} degrees short "
+                f"of its landing after {self._recoveries_this_pivot} recovery impulses"
+            )
+            return True
+        # Braking transfers the flywheel's momentum to the cube in the
+        # flywheel's spin direction; the landing law's sign convention gives
+        # the correcting direction as the sign of the yaw error.
+        direction = 1 if error > 0 else -1
+        fraction = min(1.0, abs(error) / (math.pi / 2))
+        rpm = (
+            FINE_RECOVERY_RPM
+            if abs(error) <= STALL_ERROR_RAD
+            else max(RECOVERY_MIN_RPM, self.quarter_rpm * math.sqrt(fraction))
+        )
+        self._recovery = ("spinup", rpm * math.tau / 60, direction)
+        self._recoveries_this_pivot += 1
+        self._recoveries_total += 1
+        self._stall_since = None
+        self._decision(
+            "recovery",
+            f"{self._active.moving} stalled {math.degrees(error):+.1f} degrees from its landing; "
+            f"impulse {self._recoveries_this_pivot}/{MAX_RECOVERY_IMPULSES} at {rpm:.0f} RPM",
+        )
+        self._advance_recovery(None)
+        return True
+
+    def _advance_recovery(self, flywheel_rad_s: float | None) -> None:
+        """Spin the flywheel gently (below breakaway), then brake it hard."""
+        assert self._active is not None and self._recovery is not None
+        stage, target, direction = self._recovery
+        speed = 0.0 if flywheel_rad_s is None else flywheel_rad_s
+        inertia, dt = PUBLISHED_FLYWHEEL_AXIAL_INERTIA_KG_M2, self.dt_s
+        effort = 0.0
+        if stage == "spinup":
+            remaining = target - direction * speed
+            # Joint damping makes the last fraction asymptotic: accept being close.
+            if remaining <= RECOVERY_SPINUP_TOLERANCE_RAD_S:
+                self._recovery = ("brake", target, direction)
+                stage = "brake"
+            else:
+                effort = direction * min(PUBLISHED_SPINUP_EFFORT_CAP_NM, inertia * remaining / dt)
+        if stage == "brake":
+            if abs(speed) <= RECOVERY_SETTLED_RAD_S:
+                self._recovery = None
+                self._landing_integral = 0.0
+                effort = 0.0
+            else:
+                magnitude = min(PUBLISHED_BRAKE_EFFORT_CAP_NM, inertia * abs(speed) / dt)
+                effort = -math.copysign(magnitude, speed)
+        self._landing_effort_nm = effort
+        self.session.set_joint_commands(
+            (
+                JointCommand(
+                    JointInstanceId(f"{self._active.moving}/flywheel_spin"),
+                    ControlMode.EFFORT,
+                    effort,
+                ),
+            )
+        )
+        self._detail += f"; recovery {stage} {effort:.4f} N m"
 
     def _is_settled(self) -> bool:
         return all(
@@ -426,6 +551,7 @@ class OnlineLatticeScenario:
         self._phase = ReconfigurationPhase.FAILED
         self._detail = detail
         self._search = None
+        self._recovery = None
         self._record_phase("failed")
         self.session.clear_joint_commands()
         self._landing_effort_nm = 0.0

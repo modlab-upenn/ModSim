@@ -12,9 +12,10 @@ from rich.console import Console
 from rich.table import Table
 
 from modsim import __version__
-from modsim.backends.base import BackendError, SupportsModuleKinematics
+from modsim.backends.base import BackendCapabilities, BackendError, SupportsModuleKinematics
 from modsim.backends.registry import (
-    DEFAULT_BACKEND,
+    backend_capabilities,
+    backend_entry,
     describe_backends,
     resolve_backend_name,
 )
@@ -67,7 +68,7 @@ from modsim.cli_render import render_model_view_catalog as _render_model_view_ca
 from modsim.cli_render import render_report as _render_report
 from modsim.core.events import Event
 from modsim.core.ids import ModuleInstanceId, connector_instance_id
-from modsim.core.scene import SceneError, SceneSpec
+from modsim.core.scene import SceneError, SceneSpec, WorldSettings
 from modsim.core.state import WorldState
 from modsim.core.transforms import Vec3, vec_scale
 from modsim.importers import DraftPackBuilder
@@ -96,6 +97,7 @@ from modsim.runtime.reconfiguration import (
     ScriptedReconfigurationScenario,
     connector_pair_plan,
 )
+from modsim.runtime.requirements import DEMO_REQUIREMENTS, describe_backend_problems
 from modsim.runtime.session import RuntimeSession
 
 app = typer.Typer(
@@ -301,6 +303,7 @@ def runtime_command(
     ] = None,
 ) -> None:
     """Open live semantic and optional native 3D views of a runtime demo."""
+    capabilities = _demo_backend_capabilities(demo, backend)
     physical_pair = demo is RuntimeDemo.SMORES_DIFF_DRIVE_DOCK_UNDOCK
     physical_reconfiguration = demo in {
         RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE,
@@ -339,7 +342,7 @@ def runtime_command(
             RuntimeDemo.DOCK_UNDOCK: 6.0,
             RuntimeDemo.SMORES_DIFF_DRIVE_DOCK_UNDOCK: 12.0,
             RuntimeDemo.SMORES_DRIVER_TO_SNAKE: 14.0,
-            RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE: 210.0,
+            RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE: 270.0,
             RuntimeDemo.SMORES_ONLINE_ASSEMBLY: 360.0,
             RuntimeDemo.SMORES_ONLINE_DRIVER_TO_SNAKE: 360.0,
             RuntimeDemo.MBLOCKS_FIVE_MODULE_PIVOT: 8.0,
@@ -504,12 +507,6 @@ def runtime_command(
                 err=True,
             )
             raise typer.Exit(code=2)
-        if backend != "mujoco":
-            typer.echo(
-                "--demo mblocks_momentum_pivot requires --backend mujoco.",
-                err=True,
-            )
-            raise typer.Exit(code=2)
         if not resolved_gravity or not resolved_ground:
             typer.echo(
                 "--demo mblocks_momentum_pivot requires gravity and ground; "
@@ -563,12 +560,6 @@ def runtime_command(
                 err=True,
             )
             raise typer.Exit(code=2)
-        if backend != "mujoco":
-            typer.echo(
-                f"--demo {demo_name} requires --backend mujoco.",
-                err=True,
-            )
-            raise typer.Exit(code=2)
         if not resolved_gravity or not resolved_ground:
             typer.echo(
                 f"--demo {demo_name} requires gravity and ground; "
@@ -608,12 +599,6 @@ def runtime_command(
             typer.echo(
                 "--demo smores_diff_drive_dock_undock keeps both modules upright; "
                 "do not supply --orientation.",
-                err=True,
-            )
-            raise typer.Exit(code=2)
-        if backend != "mujoco":
-            typer.echo(
-                "--demo smores_diff_drive_dock_undock requires --backend mujoco.",
                 err=True,
             )
             raise typer.Exit(code=2)
@@ -677,12 +662,6 @@ def runtime_command(
                 err=True,
             )
             raise typer.Exit(code=2)
-        if backend != "mujoco":
-            typer.echo(
-                f"--demo {demo.value} requires --backend mujoco.",
-                err=True,
-            )
-            raise typer.Exit(code=2)
         if not resolved_gravity or not resolved_ground:
             typer.echo(
                 f"--demo {demo.value} requires gravity and ground; "
@@ -704,11 +683,12 @@ def runtime_command(
             )
             raise typer.Exit(code=2)
 
-    viewer_enabled = backend == "mujoco" if viewer is None else viewer
-    if viewer_enabled and backend != "mujoco":
+    has_viewer = capabilities.supports_external_viewer
+    viewer_enabled = has_viewer if viewer is None else viewer
+    if viewer_enabled and not has_viewer:
         typer.echo(
-            "--viewer requires --backend mujoco; use --no-viewer for the semantic "
-            "Runtime Inspector only.",
+            f"--viewer needs a backend with a native viewer; backend '{backend}' has none. "
+            "Use --no-viewer for the semantic Runtime Inspector only.",
             err=True,
         )
         raise typer.Exit(code=2)
@@ -1063,23 +1043,24 @@ def dock_command(
         module_type = available[0]
 
     backend_name = resolve_backend_name(backend)
-    # Gravity is engine-specific, so it travels as a backend option rather than
-    # through the shared interface. The mock has no gravity at all.
-    disable_gravity = not gravity and backend_name != DEFAULT_BACKEND
-    if not gravity and backend_name == DEFAULT_BACKEND:
+    # Gravity is a world setting in the scene. Without --gravity the scene
+    # asks for none; a backend that never simulates gravity needs no request.
+    try:
+        has_gravity = backend_capabilities(backend_name).supports_gravity
+    except BackendError as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=2) from error
+    if not gravity and not has_gravity:
         typer.echo(
-            "Note: the mock backend is kinematic and has no gravity, "
-            "so --no-gravity changes nothing.",
+            f"Note: the {backend_name} backend has no gravity, so --no-gravity changes nothing.",
             err=True,
         )
 
     try:
         scene = SceneSpec.grid(module_type, count, spacing_m=spacing_m)
-        session = (
-            RuntimeSession.create(loaded, scene, backend_name, gravity=(0.0, 0.0, 0.0))
-            if disable_gravity
-            else RuntimeSession.create(loaded, scene, backend_name)
-        )
+        if not gravity and has_gravity:
+            scene = scene.with_world(WorldSettings(gravity_m_s2=(0.0, 0.0, 0.0)))
+        session = RuntimeSession.create(loaded, scene, backend_name)
     except SceneError as error:
         typer.echo(f"Could not build a scene: {error}", err=True)
         raise typer.Exit(code=2) from error
@@ -1206,6 +1187,21 @@ def run_command(
     _run_headless_scenario(options, resolved_duration_s)
 
 
+def _demo_backend_capabilities(demo: RuntimeDemo, backend: str) -> BackendCapabilities:
+    """Return ``backend``'s capabilities, exiting if it cannot run ``demo``."""
+    try:
+        capabilities = backend_capabilities(backend)
+    except BackendError as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=2) from error
+    requirements = DEMO_REQUIREMENTS.get(demo)
+    problems = () if requirements is None else requirements.problems(capabilities)
+    if problems:
+        typer.echo(f"--demo {describe_backend_problems(demo, backend, problems)}.", err=True)
+        raise typer.Exit(code=2)
+    return capabilities
+
+
 def _resolve_module_type(pack: RobotPack, requested: str | None) -> str:
     if requested is not None:
         return requested
@@ -1228,16 +1224,14 @@ def _create_session(
     gravity: bool,
     ground: bool,
 ) -> RuntimeSession:
-    """Build a session, passing engine options only to backends that accept them."""
-    if backend_name == DEFAULT_BACKEND:
-        return RuntimeSession.create(loaded, scene, backend_name)
-    return RuntimeSession.create(
-        loaded,
-        scene,
-        backend_name,
-        gravity=(0.0, 0.0, -9.81) if gravity else (0.0, 0.0, 0.0),
-        ground=ground,
+    """Build a session; gravity and ground travel in the scene's world settings.
+
+    A backend that cannot honour them refuses the scene with a BackendError.
+    """
+    world = WorldSettings(
+        gravity_m_s2=(0.0, 0.0, -9.81) if gravity else (0.0, 0.0, 0.0), ground=ground
     )
+    return RuntimeSession.create(loaded, scene.with_world(world), backend_name)
 
 
 def _make_stepper(
@@ -1362,8 +1356,13 @@ def _run_headless_scenario(options: ScenarioOptions, resolved_duration_s: float)
     backend_name = resolve_backend_name(options.backend)
     if options.pair_requested and options.count != 2:
         option_error("connector-pair scenarios currently require --count 2")
-    if options.view and backend_name != "mujoco":
-        option_error("--view requires the MuJoCo backend")
+    if options.view:
+        try:
+            has_viewer = backend_capabilities(backend_name).supports_external_viewer
+        except BackendError as error:
+            option_error(str(error))
+        if not has_viewer:
+            option_error(f"--view needs a backend with a native viewer; '{backend_name}' has none")
 
     scene = SceneSpec.grid(
         resolved_type,
@@ -1432,12 +1431,12 @@ def _run_headless_scenario(options: ScenarioOptions, resolved_duration_s: float)
 
     if options.view:
         try:
-            from modsim_backend_mujoco.viewer import run_with_viewer
-        except ImportError as error:  # pragma: no cover - requires a broken install
+            run_with_viewer = backend_entry(backend_name).viewer()
+        except BackendError as error:  # pragma: no cover - requires a broken install
             typer.echo(f"Could not open the viewer: {error}", err=True)
             raise typer.Exit(code=2) from error
         typer.echo(
-            "Running in the MuJoCo viewer. The window stays open when the scenario "
+            f"Running in the {backend_name} viewer. The window stays open when the scenario "
             "ends; close it to see the report.",
             err=True,
         )

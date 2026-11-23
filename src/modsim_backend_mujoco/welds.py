@@ -10,6 +10,7 @@ pure geometry and worth testing without a simulation running.
 
 from __future__ import annotations
 
+import heapq
 from dataclasses import dataclass, field
 
 from modsim.core.ids import ConstraintHandle
@@ -65,6 +66,28 @@ def body_relative_transform(
     return connector_a_local.compose(connector_relative).compose(connector_b_local.inverse())
 
 
+class LowestFreeIndex:
+    """Free slot positions in a min-heap: the lowest free slot in O(log P).
+
+    Every pool hands out its lowest free slot, so which constraint a connection
+    occupies is the same as with a linear scan; only the search cost changes.
+    """
+
+    __slots__ = ("_heap",)
+
+    def __init__(self, count: int = 0) -> None:
+        self._heap = list(range(count))  # an ascending list is already a heap
+
+    def pop(self) -> int | None:
+        return heapq.heappop(self._heap) if self._heap else None
+
+    def push(self, index: int) -> None:
+        heapq.heappush(self._heap, index)
+
+    def reset(self, count: int) -> None:
+        self._heap = list(range(count))
+
+
 @dataclass(slots=True)
 class WeldSlot:
     """One reserved equality constraint and what currently occupies it."""
@@ -86,6 +109,12 @@ class WeldPool:
     _by_handle: dict[ConstraintHandle, WeldSlot] = field(
         default_factory=dict[ConstraintHandle, WeldSlot]
     )
+    _free: LowestFreeIndex = field(init=False)
+    _position: dict[int, int] = field(init=False)
+
+    def __post_init__(self) -> None:
+        self._position = {id(slot): index for index, slot in enumerate(self.slots)}
+        self._free = LowestFreeIndex(len(self.slots))
 
     @classmethod
     def over(cls, equality_ids: tuple[int, ...]) -> WeldPool:
@@ -111,11 +140,12 @@ class WeldPool:
         """Reserve the lowest free slot for ``handle``."""
         if handle in self._by_handle:
             raise WeldPoolExhaustedError(f"constraint '{handle}' already holds a weld slot")
-        for slot in self.slots:
-            if slot.free:
-                slot.handle = handle
-                self._by_handle[handle] = slot
-                return slot
+        index = self._free.pop()
+        if index is not None:
+            slot = self.slots[index]
+            slot.handle = handle
+            self._by_handle[handle] = slot
+            return slot
         raise WeldPoolExhaustedError(
             f"all {self.capacity} reserved weld slots are in use; "
             "raise weld_pool_size when constructing the backend"
@@ -127,6 +157,7 @@ class WeldPool:
         if slot is None:
             return None
         slot.handle = None
+        self._free.push(self._position[id(slot)])
         return slot
 
     def slot_for(self, handle: ConstraintHandle) -> WeldSlot | None:
@@ -138,6 +169,7 @@ class WeldPool:
         for slot in self.slots:
             slot.handle = None
         self._by_handle.clear()
+        self._free.reset(len(self.slots))
 
 
 @dataclass(slots=True)
@@ -167,6 +199,12 @@ class ContactExclusionPool:
     _by_handle: dict[ConstraintHandle, ContactExclusionSlot] = field(
         default_factory=dict[ConstraintHandle, ContactExclusionSlot]
     )
+    _free: LowestFreeIndex = field(init=False)
+    _position: dict[int, int] = field(init=False)
+
+    def __post_init__(self) -> None:
+        self._position = {id(slot): index for index, slot in enumerate(self.slots)}
+        self._free = LowestFreeIndex(len(self.slots))
 
     @classmethod
     def over(cls, reservation_ids: tuple[int, ...]) -> ContactExclusionPool:
@@ -204,12 +242,13 @@ class ContactExclusionPool:
                 f"constraint '{handle}' already holds a contact-exclusion slot"
             )
         signature = collision_signature(body_a, body_b)
-        for slot in self.slots:
-            if slot.free:
-                slot.handle = handle
-                slot.signature = signature
-                self._by_handle[handle] = slot
-                return slot
+        index = self._free.pop()
+        if index is not None:
+            slot = self.slots[index]
+            slot.handle = handle
+            slot.signature = signature
+            self._by_handle[handle] = slot
+            return slot
         raise ContactExclusionPoolExhaustedError(
             f"all {self.capacity} reserved contact-exclusion slots are in use; "
             "raise weld_pool_size when constructing the backend"
@@ -222,7 +261,13 @@ class ContactExclusionPool:
             return None
         slot.handle = None
         slot.signature = 0
+        self._free.push(self._position[id(slot)])
         return slot
+
+    def signature_of(self, handle: ConstraintHandle) -> int | None:
+        """Return the body-pair signature ``handle`` currently suppresses, if any."""
+        slot = self._by_handle.get(handle)
+        return None if slot is None else slot.signature
 
     def clear(self) -> None:
         """Release every entry."""
@@ -230,3 +275,4 @@ class ContactExclusionPool:
             slot.handle = None
             slot.signature = 0
         self._by_handle.clear()
+        self._free.reset(len(self.slots))

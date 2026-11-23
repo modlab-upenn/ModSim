@@ -7,7 +7,7 @@ event log is a complete and replayable description of everything that happened.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
 
 from modsim.core.assemblies import AssemblyIndex
@@ -64,6 +64,7 @@ class WorldState:
     """All modules, connectors, connections, and derived assemblies in one world."""
 
     __slots__ = (
+        "_advancing_samples",
         "_assemblies",
         "_connections",
         "_connectors",
@@ -72,6 +73,7 @@ class WorldState:
         "_frame_clock",
         "_module_clock",
         "_modules",
+        "_neighbours",
         "_pack",
         "_parent_links_by_type",
         "_revision",
@@ -82,10 +84,14 @@ class WorldState:
     def __init__(self, pack: RobotPack) -> None:
         self._pack = pack
         self._time_s = 0.0
+        self._advancing_samples = 0
         self._modules: dict[ModuleInstanceId, ModuleInstance] = {}
         self._connectors: dict[ConnectorInstanceId, ConnectorInstance] = {}
         self._connectors_by_module: dict[ModuleInstanceId, tuple[ConnectorInstanceId, ...]] = {}
         self._connections: dict[ConnectionId, ConnectionRuntime] = {}
+        # Module adjacency maintained per dock/undock: neighbour -> number of
+        # active connections between the pair (two modules may share several).
+        self._neighbours: dict[ModuleInstanceId, dict[ModuleInstanceId, int]] = {}
         self._assemblies = AssemblyIndex()
         self._event_log = EventLog()
         self._revision = WorldStateRevision()
@@ -160,6 +166,16 @@ class WorldState:
     def time_s(self) -> float:
         """Return the most recently ingested backend time."""
         return self._time_s
+
+    @property
+    def advancing_samples(self) -> int:
+        """Return how many ingested samples advanced time, i.e. physics steps observed.
+
+        Counted at ingest, so it is the same however a caller drives the
+        backend. Several backend steps between two ingests count once, which
+        errs on the side of treating a recent connection change as pending.
+        """
+        return self._advancing_samples
 
     @property
     def modules(self) -> Mapping[ModuleInstanceId, ModuleInstance]:
@@ -237,15 +253,29 @@ class WorldState:
         self, *, exclude: ConnectionId | None = None
     ) -> dict[ModuleInstanceId, frozenset[ModuleInstanceId]]:
         """Return module-level adjacency implied by the active connections."""
-        neighbours: dict[ModuleInstanceId, set[ModuleInstanceId]] = {
-            module_id: set() for module_id in self._modules
+        result = {
+            module_id: frozenset(self._neighbours.get(module_id, ())) for module_id in self._modules
         }
-        for connection in self._connections.values():
-            if connection.id == exclude or connection.module_a == connection.module_b:
-                continue
-            neighbours[connection.module_a].add(connection.module_b)
-            neighbours[connection.module_b].add(connection.module_a)
-        return {module_id: frozenset(values) for module_id, values in neighbours.items()}
+        removed = self._connections.get(exclude) if exclude is not None else None
+        if removed is not None and removed.module_a != removed.module_b:
+            a, b = removed.module_a, removed.module_b
+            if self._neighbours[a][b] == 1:
+                result[a] = result[a] - {b}
+                result[b] = result[b] - {a}
+        return result
+
+    def _link(self, module_a: ModuleInstanceId, module_b: ModuleInstanceId) -> None:
+        for one, other in ((module_a, module_b), (module_b, module_a)):
+            counts = self._neighbours.setdefault(one, {})
+            counts[other] = counts.get(other, 0) + 1
+
+    def _unlink(self, module_a: ModuleInstanceId, module_b: ModuleInstanceId) -> None:
+        for one, other in ((module_a, module_b), (module_b, module_a)):
+            counts = self._neighbours[one]
+            if counts[other] == 1:
+                del counts[other]
+            else:
+                counts[other] -= 1
 
     # ------------------------------------------------------------------
     # snapshot ingestion
@@ -260,6 +290,8 @@ class WorldState:
         from this sample the first time they are read, and the values are the
         same as an eager copy would produce.
         """
+        if snapshot.time_s > self._time_s:
+            self._advancing_samples += 1
         self._time_s = snapshot.time_s
         module_types = self._pack.hardware_catalog.module_types
         for module_id, module in self._modules.items():
@@ -447,6 +479,8 @@ class WorldState:
         for connector in (first, second):
             connector.lifecycle_state = ConnectorLifecycleState.DOCKED
             connector.connection_id = connection.id
+        if first.module_id != second.module_id:
+            self._link(first.module_id, second.module_id)
         self._assemblies.merge_on_connection(first.module_id, second.module_id)
 
     def _apply_undock_committed(self, event: UndockCommitted) -> None:
@@ -459,10 +493,13 @@ class WorldState:
             connector.connection_id = None
             connector.available_at_s = event.time_s + self._cooldown_s(connector_id)
         if connection.module_a != connection.module_b:
+            self._unlink(connection.module_a, connection.module_b)
+            # Only the affected assembly is walked, through the maintained
+            # adjacency, so an undock costs O(assembly) rather than O(world).
             self._assemblies.split_on_disconnection(
                 connection.module_a,
                 connection.module_b,
-                self.adjacency(),
+                _NeighbourView(self._neighbours),
             )
 
     def _apply_dock_failed(self, event: DockFailed) -> bool:
@@ -540,3 +577,21 @@ class WorldState:
             docking_revision=current.docking_revision + int(docking),
             event_revision=current.event_revision + int(event),
         )
+
+
+class _NeighbourView(Mapping[ModuleInstanceId, frozenset[ModuleInstanceId]]):
+    """Read-only adjacency over the maintained neighbour counts, built per lookup."""
+
+    __slots__ = ("_neighbours",)
+
+    def __init__(self, neighbours: dict[ModuleInstanceId, dict[ModuleInstanceId, int]]) -> None:
+        self._neighbours = neighbours
+
+    def __getitem__(self, module_id: ModuleInstanceId) -> frozenset[ModuleInstanceId]:
+        return frozenset(self._neighbours[module_id])
+
+    def __iter__(self) -> Iterator[ModuleInstanceId]:
+        return iter(self._neighbours)
+
+    def __len__(self) -> int:
+        return len(self._neighbours)

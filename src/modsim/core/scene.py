@@ -8,12 +8,13 @@ rather than something a backend improvises.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from modsim.core.ids import ModuleInstanceId
 from modsim.core.transforms import ZERO_VEC3, Transform, Vec3
-from modsim.robot_packs.schema import RobotPack
+from modsim.robot_packs.schema import PhysicalConstraintType, RobotPack
 
 
 class SceneError(ValueError):
@@ -30,10 +31,93 @@ class ModulePlacement:
 
 
 @dataclass(frozen=True, slots=True)
+class WorldSettings:
+    """Physical properties of the world itself, shared by every backend.
+
+    These describe the world, not an engine, so every adapter reads them from
+    the scene instead of from engine-specific constructor options. ``None``
+    means "use the backend's own default". A backend that cannot honour a
+    requested setting refuses the scene (see ``BackendCapabilities``) rather
+    than silently ignoring it.
+    """
+
+    gravity_m_s2: Vec3 | None = None
+    """World gravity vector. ``(0, 0, 0)`` asks for no gravity."""
+
+    ground: bool = False
+    """Add a static ground plane at ``ground_height_m``."""
+
+    ground_height_m: float = 0.0
+
+    timestep_s: float | None = None
+    """Requested physics integration timestep.
+
+    A hint: backends with a fixed internal rate may substep. ``step(dt_s)`` is
+    always honoured to the nearest whole internal step.
+    """
+
+    def __post_init__(self) -> None:
+        if self.gravity_m_s2 is not None and not all(
+            math.isfinite(component) for component in self.gravity_m_s2
+        ):
+            raise SceneError("gravity_m_s2 must be finite")
+        if not math.isfinite(self.ground_height_m):
+            raise SceneError("ground_height_m must be finite")
+        if self.timestep_s is not None and (
+            not math.isfinite(self.timestep_s) or self.timestep_s <= 0.0
+        ):
+            raise SceneError("timestep_s must be finite and positive")
+
+    @property
+    def requests_gravity(self) -> bool:
+        """Return whether a non-zero gravity vector was explicitly requested."""
+        return self.gravity_m_s2 is not None and any(self.gravity_m_s2)
+
+
+@dataclass(frozen=True, slots=True)
+class ConnectionBudget:
+    """Upper bound on simultaneously active connections, by constraint type.
+
+    A sizing hint, not a semantic limit. Engines that must reserve constraint
+    storage in advance (MuJoCo's equality pools, for example) size it from
+    these values; engines that allocate on demand ignore them. ``None`` lets the
+    backend derive a safe bound from the scene. Exceeding a stated bound makes
+    the backend refuse the extra connection, exactly as if the engine were full.
+    """
+
+    fixed: int | None = None
+    compliant: int | None = None
+    hinge: int | None = None
+    ball: int | None = None
+    custom: int | None = None
+
+    def __post_init__(self) -> None:
+        for name in ("fixed", "compliant", "hinge", "ball", "custom"):
+            value = getattr(self, name)
+            if value is not None and (isinstance(value, bool) or value < 0):
+                raise SceneError(f"connection budget '{name}' must be a non-negative integer")
+
+    def limit(self, constraint: PhysicalConstraintType) -> int | None:
+        """Return the bound for one constraint type, or ``None`` if unstated."""
+        value: int | None = getattr(self, PhysicalConstraintType(constraint).value)
+        return value
+
+
+@dataclass(frozen=True, slots=True)
 class SceneSpec:
-    """An ordered collection of module placements."""
+    """An ordered collection of module placements, plus world-level settings."""
 
     placements: tuple[ModulePlacement, ...] = ()
+    world: WorldSettings = field(default_factory=WorldSettings)
+    connection_budget: ConnectionBudget = field(default_factory=ConnectionBudget)
+
+    def with_world(self, world: WorldSettings) -> SceneSpec:
+        """Return this scene with different world settings."""
+        return replace(self, world=world)
+
+    def with_connection_budget(self, budget: ConnectionBudget) -> SceneSpec:
+        """Return this scene with a different connection budget."""
+        return replace(self, connection_budget=budget)
 
     @classmethod
     def of(cls, placements: Iterable[ModulePlacement]) -> SceneSpec:

@@ -158,7 +158,7 @@ class _MomentumPhysicsSpy(MockBackendAdapter):
                 for module_id, joint_ids in self._joint_ids.items()
             },
             connector_frames=snapshot.connector_frames,
-            constraint_forces_n=snapshot.constraint_forces_n,
+            constraint_wrenches=snapshot.constraint_wrenches,
         )
 
     def create_physical_connection(self, request: ConnectionRequest) -> ConnectionOutcome:

@@ -18,14 +18,33 @@ MODSIM_BACKEND=mujoco modsim dock path/to/pack    # applies to the whole run
 from modsim import RuntimeSession, SceneSpec
 from modsim.backends import create_backend
 
-session = RuntimeSession.create(loaded_pack, scene, "mujoco", gravity=(0.0, 0.0, 0.0))
+scene = SceneSpec.grid("generic_cube", 2, spacing_m=0.1).with_world(
+    WorldSettings(gravity_m_s2=(0.0, 0.0, -9.81), ground=True, timestep_s=0.002)
+)
+session = RuntimeSession.create(loaded_pack, scene, "mujoco")
 adapter = create_backend()  # honours MODSIM_BACKEND
 ```
 
 `RuntimeSession.create` accepts an adapter instance, a registered backend name,
-or `None`. Extra keyword arguments are forwarded to the adapter's constructor,
-which is how engine-specific settings such as gravity and timestep stay out of
-the shared interface.
+or `None`.
+
+**World settings and connection budgets live in the scene.** Gravity, the
+ground plane and the physics timestep describe the world, not an engine, so
+they travel in `SceneSpec.world` (`WorldSettings`) and every adapter reads them
+from there. `None` means "use the backend's default". A backend that cannot
+honour a setting (gravity on the kinematic mock, say) refuses the scene with
+`BackendError` instead of ignoring it; `RuntimeSession.create` checks this
+against the backend's capabilities before loading.
+`SceneSpec.connection_budget` (`ConnectionBudget`) states how many connections
+of each constraint type can be active at once. It is a sizing hint for engines
+that reserve constraint storage in advance; engines that allocate on demand
+ignore it.
+
+Extra keyword arguments to `RuntimeSession.create` are still forwarded to the
+adapter's constructor. They are for genuinely engine-specific settings, such as
+MuJoCo's `constraint_time_constant_s`, and as overrides: the MuJoCo adapter's
+`gravity`, `timestep_s`, `ground`, `weld_pool_size` and `hinge_pool_size`
+options win over the scene when given.
 
 Registration is open, so a new engine does not require changing ModSim:
 
@@ -38,9 +57,18 @@ register_backend(
         summary="Experimental backend.",
         loader=lambda: MyAdapter,
         install_hint="Install with: pip install my-engine",
+        viewer_loader=lambda: run_my_engine_viewer,  # optional native viewer
     )
 )
 ```
+
+Callers check `backend_capabilities(name)` (from `modsim.backends.registry`)
+rather than a backend's name. The Runtime Inspector demos declare what they need
+in `modsim.runtime.requirements.DEMO_REQUIREMENTS`, for example gravity, a ground
+plane, contact dynamics, hinge connections and effort joint control. Any adapter
+whose capabilities cover a demo's requirements can run it. A native viewer is
+found through the registry entry's `viewer_loader`, gated on
+`supports_external_viewer`.
 
 Entries load lazily. Importing `modsim` never imports `mujoco`, which is what
 keeps the core dependency-light and what lets a core-only environment run the
@@ -56,7 +84,7 @@ observations and constraints, and the backend answers.
 | `capabilities()` | Declare what the backend can actually do |
 | `load(pack, scene, *, root)` | Instantiate every placement, return the handle registry |
 | `step(dt_s)` | Advance simulation |
-| `snapshot()` | Report link poses, twists, optional connector frames and constraint forces |
+| `snapshot()` | Report link poses, twists, optional connector frames and constraint wrenches |
 | `create_physical_connection(request)` | Attempt the constraint, accept or refuse |
 | `remove_physical_connection(handle)` | Release it |
 | `shutdown()` | Free resources |
@@ -67,6 +95,81 @@ it; the mock ignores it, which is why the mock can run from an in-memory pack.
 **Capabilities are load-bearing, not documentation.** The docking engine checks
 `supports_runtime_constraints` before attempting a commit. A backend that
 reports `False` causes `DockFailed` rather than a silently faked connection.
+Capabilities must not depend on a loaded scene, because callers query them
+before loading (`backend_capabilities` constructs an unloaded adapter).
+
+| Capability | Meaning |
+|---|---|
+| `supports_runtime_constraints`, `supports_constraint_removal` | Connections can be created and released while running |
+| `supported_constraint_types` | Which `PhysicalConstraintType`s `create_physical_connection` realises |
+| `supports_constraint_forces`, `supports_constraint_torques` | Snapshots carry the force, and the moment, of each connection's wrench |
+| `supports_gravity`, `supports_ground_plane` | `WorldSettings.gravity_m_s2` and `ground` are honoured |
+| `supports_contact_dynamics` | Bodies collide and respond with friction |
+| `supported_joint_control_modes` | Joint command modes accepted |
+| `supports_module_pose_write`, `supports_external_viewer` | Pose/twist writes; a native viewer exists |
+| `connection_change_delay_substeps` | Internal steps before a connection change acts (see the timing contract) |
+
+### Timing contract
+
+Every adapter must honour these rules, so that controllers and docking behave
+the same on every engine. They are also stated in `modsim.backends.base`.
+
+1. **One instant per snapshot.** After `load`, `step` or a pose/twist write
+   returns, `snapshot()` describes the single instant `time_s`: every link pose,
+   twist, joint state and connector frame is the state at that time. A backend
+   must not mix state from before and after its last internal step.
+2. **Wrenches cover the last step.** `constraint_wrenches` are what the solver
+   applied during the step that ended at `time_s`. Before the first step they
+   may be empty or come from a static solve. Only connections that still exist
+   are reported.
+3. **Commands act over the whole next step.** Joint commands set between steps
+   are held for the entire next `step` call.
+4. **Pose and twist writes are immediate.** They appear in the next
+   `snapshot()` without stepping.
+5. **Connection changes have a declared delay.** A connection created or
+   removed between steps is enforced, or released, no later than
+   `connection_change_delay_substeps` internal steps into the next `step`.
+   Zero means from the first internal step. ModSim's logical connection
+   changes immediately either way.
+
+The MuJoCo adapter meets rules 1–4 by splitting each internal step into
+`mj_step2` (solve and integrate) followed by `mj_step1` (kinematics, collision
+and constraint rows for the new state), so the state after `step` is current
+and no extra forward pass is needed. Physics integration is identical to
+`mj_step`. The constraint rows for the next solve are therefore built before
+ModSim's between-step commands run. For rule 5 the adapter offers two modes:
+
+| `immediate_connection_changes` | Delay | Cost of a dock or undock |
+|---|---|---|
+| `False` (default) | 1 internal step | O(log P) pool work only, independent of world size |
+| `True` | 0 | one extra `mj_step1` on the next `step`, shared by every change made before it |
+
+Real latches do not engage instantly either, and other engines have their own
+delays, so ModSim's controllers are written to tolerate one: where timing
+matters they wait on `RuntimeSession.connection_change_pending(connection_id)`,
+which is True while the next `step` may still be solved without a recent dock
+or undock. For example, the M-Blocks pivots release the face weld and brake
+the flywheel only once the release is in effect. Otherwise the brake reacts
+against a weld the engine still holds, which pushes the support cube by
+millimetres. A backend with a different stepping model declares its own delay
+(PhysX, for example, applies joint changes at its next simulate call).
+
+### Constraint wrenches
+
+`snapshot().constraint_wrenches` maps each active connection's handle to a
+`ConstraintWrench`:
+
+- `force_n` is the world-frame force the connection applies to module A's
+  connected link;
+- `torque_nm` is the world-frame moment it applies to that link, taken about
+  connector A's origin, or `None` if the backend measures force only;
+- module B receives the equal and opposite wrench about the same point.
+
+"Module A" is the `module_a` of the `ConnectionRequest` that created the
+connection. `wrench.resolved_in(connector_a_world_frame)` gives the components a
+connector datasheet uses: normal and shear force, twist and bending moment.
+`snapshot().constraint_forces_n` remains as a derived, read-only view of the
+force magnitudes, which is what break-force overload checks use today.
 
 **Measured connector frames are optional but preferred.** A backend that
 materialises connector frames natively should report them in
@@ -106,7 +209,8 @@ rather than rescanned per connection.
 | Joint commands | no | declared scalar effort modes |
 | Connector frames | composed from local pose | measured from sites |
 | Runtime docking | fixed-style constraints; hinge explicitly refused | fixed welds and two-point hinges |
-| Constraint forces | injectable, for tests | equality-force magnitudes for active welds and hinges |
+| Constraint wrenches | injectable force, for tests | full force and moment for active welds and hinges |
+| Connection change delay | 0 | 1 internal step by default; 0 with `immediate_connection_changes=True` |
 | Contact exclusion on dock | not applicable | one reserved body-pair exclusion per active weld; none for hinges |
 
 ### mock
@@ -142,8 +246,10 @@ mechanical asset:
 - optionally a ground plane, off by default so it cannot intersect a module
   placed at the origin.
 
-Options: `gravity`, `timestep_s`, `weld_pool_size`, `hinge_pool_size`, `ground`,
-`ground_height_m`.
+World settings come from `SceneSpec.world` and pool sizes from
+`SceneSpec.connection_budget` (`fixed` sizes the weld pool, `hinge` the hinge
+pool). Constructor options `gravity`, `timestep_s`, `weld_pool_size`,
+`hinge_pool_size`, `ground` and `ground_height_m` override the scene when given.
 MuJoCo's integrator step is a model property, so `step(dt_s)` covers the
 requested interval with whole solver steps and `snapshot().time_s` reports the
 time actually reached.
@@ -199,13 +305,18 @@ running, which is where a frame-convention error is cheapest to read.
 `eq_data` layout is `[0:3]` anchor, `[3:6]` relpose position, `[6:10]` relpose
 quaternion, `[10]` torque scale.
 
-Snapshots expose a scalar force for every active runtime constraint. A weld's
-value is the norm of its three translational equality rows. A hinge's value is
-the norm of the vector sum of its two three-axis point-force rows. Rotational
-rows and the hinge point-force difference represent moments and are not mixed
-into a field expressed in newtons. These solver-reaction conventions enable
-core break-force handling but do not yet constitute a complete connector
-wrench.
+Snapshots report a full wrench for every active runtime constraint. A weld's
+three translational equality rows are the world-frame force on body A at its
+anchor. Its three rotational rows are mapped back to a moment in N m by
+inverting MuJoCo's weld rotation Jacobian,
+`0.5 * torquescale * vec(neg(q_b) * omega * q_a * relpose)`, so the moment is
+`A.T @ rows`. The anchor's lever arm about connector A is then added. A
+hinge's two point forces sum to the net force, and their moments about
+connector A sum to the transmitted moment. Each wrench costs O(1) per active
+connection. `tests/test_mujoco_wrenches.py` checks that the reported wrench,
+applied at connector A, reproduces the solver's own generalized force `J.T @ f`
+on module A's degrees of freedom to 1e-9 relative. The force magnitudes equal
+the previous scalar values, up to the last floating-point bit.
 
 Nominal snapping can target a connector on an articulated child body. The
 adapter measures that body's transform relative to the module root, computes

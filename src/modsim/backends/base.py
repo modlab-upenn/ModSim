@@ -5,6 +5,35 @@ step, report state, and create or remove a physical connection. The backend
 never decides what a modular connector *means*: it does not evaluate
 compatibility, acceptance, or lifecycle, and it does not create logical
 connections. It only reports whether the constraint it was asked for exists.
+
+Everything engine-specific stays in the adapter. World properties (gravity,
+ground, timestep) and the connection budget arrive in the :class:`SceneSpec`;
+what an engine can do is declared in :class:`BackendCapabilities`, and callers
+check those flags rather than a backend's name.
+
+Timing contract
+---------------
+ModSim drives a backend as a sequence of ``step`` calls with commands issued
+between them. Every adapter must honour these rules, so that controllers and
+docking logic behave the same on every engine:
+
+1. **One instant per snapshot.** After ``load``, ``step`` or a pose/twist
+   write returns, ``snapshot()`` describes the single instant ``time_s``:
+   every link pose, twist, joint state and connector frame is the state at
+   that time. A backend must not mix the state before and after its last
+   internal step.
+2. **Wrenches cover the last step.** ``constraint_wrenches`` are what the
+   solver applied during the step that ended at ``time_s``. Before the first
+   step they may be empty or come from a static solve.
+3. **Commands act over the whole next step.** Joint commands set between
+   steps are held for the entire next ``step`` call.
+4. **Pose and twist writes are immediate.** They are visible in the next
+   ``snapshot()`` without stepping.
+5. **Connection changes have a declared delay.** A connection created or
+   removed between steps is enforced, or released, no later than
+   ``BackendCapabilities.connection_change_delay_substeps`` internal steps
+   into the next ``step`` call. Zero means "from the first internal step".
+   The logical connection in ModSim changes immediately either way.
 """
 
 from __future__ import annotations
@@ -22,10 +51,15 @@ from modsim.core.ids import (
     JointInstanceId,
     ModuleInstanceId,
 )
-from modsim.core.scene import SceneSpec
+from modsim.core.scene import SceneSpec, WorldSettings
 from modsim.core.snapshot import BackendStateSnapshot
 from modsim.core.transforms import ZERO_VEC3, Transform, Vec3
-from modsim.robot_packs.schema import ControlMode, PhysicalConnectionSpec, RobotPack
+from modsim.robot_packs.schema import (
+    ControlMode,
+    PhysicalConnectionSpec,
+    PhysicalConstraintType,
+    RobotPack,
+)
 
 
 class BackendError(RuntimeError):
@@ -46,20 +80,62 @@ class BackendCapabilities:
     supports_runtime_constraints: bool = False
     supports_constraint_removal: bool = False
     supports_constraint_forces: bool = False
+    """Snapshots carry the force part of each connection's wrench."""
+    supports_constraint_torques: bool = False
+    """Snapshots also carry the moment part of each connection's wrench."""
     supports_contact_forces: bool = False
     supports_module_pose_write: bool = False
     supports_joint_commands: bool = False
     supports_external_viewer: bool = False
+    supports_gravity: bool = False
+    """The backend honours a non-zero ``WorldSettings.gravity_m_s2``."""
+    supports_ground_plane: bool = False
+    """The backend honours ``WorldSettings.ground``."""
+    supports_contact_dynamics: bool = False
+    """Bodies collide with each other and the ground and respond with friction.
+
+    Physically driven demonstrations (rolling, pivoting, pushing) need this. A
+    kinematic backend that only moves bodies where it is told reports False.
+    """
     supported_joint_control_modes: frozenset[ControlMode] = field(
         default_factory=frozenset[ControlMode]
     )
+    supported_constraint_types: frozenset[PhysicalConstraintType] = field(
+        default_factory=frozenset[PhysicalConstraintType]
+    )
+    """Physical connection kinds ``create_physical_connection`` can realise.
+
+    Empty with ``supports_runtime_constraints`` means fixed connections only.
+    """
+    connection_change_delay_substeps: int = 0
+    """Internal steps before a connection change takes physical effect.
+
+    See rule 5 of the timing contract in this module's docstring.
+    """
 
     def __post_init__(self) -> None:
-        """Normalize the mode set and keep the legacy boolean meaningful."""
+        """Normalize the sets and keep the legacy booleans meaningful."""
         modes = frozenset(ControlMode(mode) for mode in self.supported_joint_control_modes)
         object.__setattr__(self, "supported_joint_control_modes", modes)
         if modes and not self.supports_joint_commands:
             object.__setattr__(self, "supports_joint_commands", True)
+        kinds = frozenset(PhysicalConstraintType(kind) for kind in self.supported_constraint_types)
+        if not kinds and self.supports_runtime_constraints:
+            kinds = frozenset({PhysicalConstraintType.FIXED})
+        object.__setattr__(self, "supported_constraint_types", kinds)
+        if self.supports_constraint_torques and not self.supports_constraint_forces:
+            raise ValueError("supports_constraint_torques requires supports_constraint_forces")
+        if self.connection_change_delay_substeps < 0:
+            raise ValueError("connection_change_delay_substeps must be non-negative")
+
+    def world_support_problems(self, world: WorldSettings) -> tuple[str, ...]:
+        """Return why this backend cannot honour ``world``, or nothing if it can."""
+        problems: list[str] = []
+        if world.requests_gravity and not self.supports_gravity:
+            problems.append(f"backend '{self.name}' does not simulate gravity")
+        if world.ground and not self.supports_ground_plane:
+            problems.append(f"backend '{self.name}' does not provide a ground plane")
+        return tuple(problems)
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,6 +262,11 @@ class BackendAdapter(Protocol):
     ) -> BackendHandleRegistry:
         """Instantiate every module placement and return the handle registry.
 
+        ``scene.world`` carries gravity, ground and timestep, and
+        ``scene.connection_budget`` sizes any storage reserved for runtime
+        connections. A backend that cannot honour ``scene.world`` raises
+        :class:`BackendError` (the runtime checks capabilities first).
+
         ``root`` is the Robot Pack directory. A backend that must read
         mechanical assets from disk requires it; one that works purely from the
         semantic model, such as the mock, ignores it.
@@ -193,15 +274,24 @@ class BackendAdapter(Protocol):
         ...
 
     def step(self, dt_s: float) -> None:
-        """Advance the simulation by ``dt_s`` seconds."""
+        """Advance the simulation by ``dt_s`` seconds.
+
+        On return, ``snapshot()`` must describe the state at the new time; see
+        the timing contract in this module's docstring.
+        """
         ...
 
     def snapshot(self) -> BackendStateSnapshot:
-        """Return the current backend state."""
+        """Return the current backend state, all at one instant (``time_s``)."""
         ...
 
     def create_physical_connection(self, request: ConnectionRequest) -> ConnectionOutcome:
-        """Attempt to create the requested constraint."""
+        """Attempt to create the requested constraint.
+
+        The constraint takes physical effect within the declared
+        ``connection_change_delay_substeps`` of the next ``step``. Its wrench is
+        reported from module A's side, about connector A's origin.
+        """
         ...
 
     def remove_physical_connection(self, handle: ConstraintHandle) -> bool:

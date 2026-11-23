@@ -77,12 +77,16 @@ def _drive(config: Any, out: Path, tracer: state_trace.Tracer) -> int:
     completed = 0
     try:
         frames.write(json.dumps(_normalise(runner.frame().model_dump(mode="json"))) + "\n")
-        while completed < runner.step_count and not runner.execution_finished:
-            runner.step()
-            completed += 1
-            if completed % publish_every == 0:
-                frame = runner.frame()
-                frames.write(json.dumps(_normalise(frame.model_dump(mode="json"))) + "\n")
+        raised = None
+        try:
+            while completed < runner.step_count and not runner.execution_finished:
+                runner.step()
+                completed += 1
+                if completed % publish_every == 0:
+                    frame = runner.frame()
+                    frames.write(json.dumps(_normalise(frame.model_dump(mode="json"))) + "\n")
+        except Exception as error:  # a scenario failure is an outcome to compare, not a crash
+            raised = f"{type(error).__module__}.{type(error).__name__}: {error}"
         final = runner.frame()
         frames.write(json.dumps(_normalise(final.model_dump(mode="json"))) + "\n")
         status = runner.scenario.status
@@ -102,6 +106,7 @@ def _drive(config: Any, out: Path, tracer: state_trace.Tracer) -> int:
             "action_count": status.action_count,
             "connections": sorted(runner.session.world.connections),
             "events": len(runner.session.world.event_log.events),
+            "raised": raised,
             "metrics": _normalise(dataclasses.asdict(final.metrics)),
             "setup_status_messages": statuses,
         }
@@ -111,6 +116,8 @@ def _drive(config: Any, out: Path, tracer: state_trace.Tracer) -> int:
     wall = time.perf_counter() - started
     (out / "summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
     (out / "wall_seconds.txt").write_text(f"{wall:.3f}\n")
+    if summary["raised"]:
+        print(f"scenario raised at step {completed}: {summary['raised']}")
     print(
         f"{summary['demo']} [{config.backend}] {summary['phase']}: steps={completed}/"
         f"{runner.step_count} t={summary['sim_time_s']:.4f}s events={summary['events']} "

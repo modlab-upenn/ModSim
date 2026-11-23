@@ -470,12 +470,11 @@ class MomentumPivotScenario:
             transition_events = self._release_initial_face_to_hinge()
             if self._phase is ReconfigurationPhase.FAILED:
                 return transition_events
-            self._brake_started_at_s = self.session.world.time_s
             self._enter_phase(
                 ReconfigurationPhase.PIVOTING,
                 "Initial face released onto the +Y edge hinge; applying bounded brake impulse",
             )
-            self._set_brake_effort()
+            self._start_brake_once_released()
             return transition_events
         if self._held_for(self.config.spinup_timeout_s):
             self._fail(
@@ -497,6 +496,11 @@ class MomentumPivotScenario:
             f"{math.degrees(self.config.target_pivot_angle_rad):.1f} deg; "
             f"brake impulse {self._brake_impulse_nms:.5g} N m s"
         )
+        if self._brake_started_at_s is None:
+            # The face release has not reached the physics yet; the brake would
+            # react against the still-enforced weld instead of pivoting the cube.
+            self._start_brake_once_released()
+            return ()
         if self._brake_ended_at_s is None:
             if projected_speed <= self.config.flywheel_stop_speed_rad_s + _EPSILON:
                 self._finish_brake()
@@ -532,6 +536,21 @@ class MomentumPivotScenario:
                 f"(pivot angle {self._pivot_angle_rad:.6g} rad)"
             )
         return tuple(events)
+
+    def _start_brake_once_released(self) -> None:
+        """Begin the brake impulse as soon as the next step solves without the face weld.
+
+        With a backend that enforces connection changes at once this happens in
+        the same tick as the release. With a declared delay the flywheel coasts,
+        unbraked, until the release acts, so the impulse goes into the edge
+        pivot rather than into the support through a weld that still holds.
+        """
+        if self.session.connection_change_pending(self.config.initial_face.connection_id):
+            self._set_effort(0.0)
+            self._detail = "Waiting for the face release to take physical effect"
+            return
+        self._brake_started_at_s = self.session.world.time_s
+        self._set_brake_effort()
 
     def _engage_edge_hinge(self) -> tuple[Event, ...]:
         """Commit the coincident edge while the initial face holds staging geometry."""
