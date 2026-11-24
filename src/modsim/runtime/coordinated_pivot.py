@@ -798,8 +798,7 @@ class CoordinatedMomentumPivotScenario:
             if all(speed <= config.flywheel_stop_speed_rad_s + _EPSILON for speed in projected):
                 self._finish_brake()
             elif (
-                self._brake_started_at_s is not None
-                and self.session.world.time_s - self._brake_started_at_s + _EPSILON
+                self.session.world.time_s - self._brake_started_at_s + _EPSILON
                 >= config.brake_timeout_s
             ):
                 self._fail("mechanical brake did not stop every coordinated flywheel in time")

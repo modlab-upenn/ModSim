@@ -21,7 +21,7 @@ mujoco = pytest.importorskip("mujoco", reason="the MuJoCo backend extra is not i
 import numpy as np
 
 from modsim.core.events import DockCommitted
-from modsim.core.ids import ConnectorInstanceId, ModuleInstanceId
+from modsim.core.ids import ConnectorInstanceId, ConstraintHandle, ModuleInstanceId
 from modsim.core.scene import SceneSpec, WorldSettings
 from modsim.core.snapshot import ConstraintWrench
 from modsim.core.transforms import Transform, quat_conjugate, quat_from_axis_angle
@@ -80,13 +80,19 @@ def _load_both(adapter: MuJoCoBackendAdapter) -> None:
     adapter.apply_module_wrench(CUBE_0, force_n=(-0.2, 0.5, 0.4), torque_nm=(-0.02, 0.01, 0.0))
 
 
-def _solver_generalized_force(adapter: MuJoCoBackendAdapter, handle: str) -> np.ndarray:
+def _solver_generalized_force(
+    adapter: MuJoCoBackendAdapter, handle: ConstraintHandle
+) -> np.ndarray:
     """Return ``J.T @ f`` over the equality rows that realise ``handle``."""
     model = adapter._require_compiled().model
     _, data = adapter._require_loaded()
     welds = adapter._welds.slot_for(handle)
     hinges = adapter._hinges.slot_for(handle)
-    equalities = {welds.equality_id} if welds is not None else set(hinges.equality_ids)
+    if welds is not None:
+        equalities = {welds.equality_id}
+    else:
+        assert hinges is not None, f"no weld or hinge slot realises {handle}"
+        equalities = set(hinges.equality_ids)
     nefc, nv = data.nefc, model.nv
     jacobian = np.asarray(data.efc_J[: nefc * nv]).reshape(nefc, nv)
     rows = [

@@ -984,7 +984,7 @@ def _create_session(
 ) -> RuntimeSession:
     demo = _resolve_demo(config.demo)
     scene = scene.with_world(runtime_world_settings(config))
-    budget = DEMO_CONNECTION_BUDGETS.get(demo) if demo is not None else None
+    budget = DEMO_CONNECTION_BUDGETS.get(demo)
     if budget is not None:
         scene = scene.with_connection_budget(budget)
     try:

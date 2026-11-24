@@ -139,7 +139,12 @@ def test_any_backend_with_the_capabilities_may_run_a_physical_demo(
     monkeypatch.setitem(
         registry._REGISTRY,  # pyright: ignore[reportPrivateUsage]
         "capable_test_engine",
-        BackendEntry(name="capable_test_engine", summary="test", loader=lambda: _Capable),
+        BackendEntry(
+            name="capable_test_engine",
+            summary="test",
+            # A capabilities-only stand-in: never instantiated as a real adapter here.
+            loader=lambda: _Capable,  # pyright: ignore[reportArgumentType]
+        ),
     )
     for demo in DEMO_REQUIREMENTS:
         assert demo_backend_problems(demo, "capable_test_engine") == ()

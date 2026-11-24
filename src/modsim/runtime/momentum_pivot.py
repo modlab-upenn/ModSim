@@ -505,8 +505,7 @@ class MomentumPivotScenario:
             if projected_speed <= self.config.flywheel_stop_speed_rad_s + _EPSILON:
                 self._finish_brake()
             elif (
-                self._brake_started_at_s is not None
-                and self.session.world.time_s - self._brake_started_at_s + _EPSILON
+                self.session.world.time_s - self._brake_started_at_s + _EPSILON
                 >= self.config.brake_timeout_s
             ):
                 self._fail("mechanical brake did not bring the flywheel to zero in time")
