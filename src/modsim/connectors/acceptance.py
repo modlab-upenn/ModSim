@@ -38,7 +38,7 @@ from modsim.robot_packs.schema import (
     OrientationMode,
 )
 
-_DEGENERATE_REFERENCE = 1e-6
+_DEGENERATE_REFERENCE = 0.5
 
 POSITION = "position"
 AXIS_ALIGNMENT = "axis_alignment"
