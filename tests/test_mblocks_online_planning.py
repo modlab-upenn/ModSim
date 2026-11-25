@@ -7,7 +7,6 @@ import math
 import re
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 from modsim.backends.base import BackendError
@@ -187,7 +186,20 @@ def test_recovery_search_yields_physics_without_committing_planned_topology() ->
         runner.shutdown()
 
 
-def _run_shifted_six_cube(jitter_seed: int | None) -> tuple[OnlineLatticeScenario, list[str]]:
+# The placement jitter numpy.random.default_rng(2).normal(0.0, 2e-6, 2) draws for the six
+# cubes, in placement order. Frozen here so the core CI job, which has no numpy, can import
+# this module; the values reproduce the seeded rebound exactly.
+_SEED_2_JITTER_M = (
+    (3.781067635870661e-07, -1.0454968829614947e-06),
+    (-8.261270867837868e-07, -4.882934765279711e-06),
+    (3.599414765441804e-06, 2.2883317440744573e-06),
+    (-6.508456737356487e-07, 1.5476131734553228e-06),
+    (5.624213395952985e-07, -1.1076456728481047e-06),
+    (1.9551349022520714e-06, -6.211130933183051e-07),
+)
+
+
+def _run_shifted_six_cube(jitter: bool) -> tuple[OnlineLatticeScenario, list[str]]:
     """Run the six-cube line moved by (0.123, 0.456) m; return the scenario and decisions."""
     pytest.importorskip("mujoco")
     from modsim.core.scene import ModulePlacement, SceneSpec
@@ -197,12 +209,13 @@ def _run_shifted_six_cube(jitter_seed: int | None) -> tuple[OnlineLatticeScenari
     initial = larger_state()
     goal = line_goal(initial)
     shift = Transform.from_translation((0.123, 0.456, 0.0))
-    jitter = None if jitter_seed is None else np.random.default_rng(jitter_seed)
+    offsets = iter(_SEED_2_JITTER_M)
 
     def offset() -> Transform:
-        if jitter is None:
+        if not jitter:
             return Transform()
-        return Transform.from_translation((*jitter.normal(0.0, 2e-6, 2), 0.0))
+        dx, dy = next(offsets)
+        return Transform.from_translation((dx, dy, 0.0))
 
     scene = SceneSpec.of(
         ModulePlacement(
@@ -246,7 +259,7 @@ def test_stalled_landing_recovers_instead_of_winding_up_the_flywheel() -> None:
     longer stalls this way; a 2 micrometre jitter of each placement (seed 2)
     reproduces a rebound that a recovery impulse resolves.
     """
-    scenario, recoveries = _run_shifted_six_cube(jitter_seed=2)
+    scenario, recoveries = _run_shifted_six_cube(jitter=True)
     assert scenario.status.phase is ReconfigurationPhase.COMPLETE, scenario.status.detail
     assert scenario.planning_snapshot.completed_actions == 21
     # The stall itself depends on floating-point details of the platform; when it
@@ -261,7 +274,7 @@ def test_cube_resting_just_outside_the_capture_gate_is_nudged_in() -> None:
     coarse 2.5 degree stall threshold never tripped, so the pivot timed out. A
     fine impulse must bring such a cube into the gate.
     """
-    scenario, recoveries = _run_shifted_six_cube(jitter_seed=None)
+    scenario, recoveries = _run_shifted_six_cube(jitter=False)
     assert scenario.status.phase is ReconfigurationPhase.COMPLETE, scenario.status.detail
     assert scenario.planning_snapshot.completed_actions == 21
     assert len(recoveries) == scenario.recovery_impulses

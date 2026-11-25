@@ -150,6 +150,16 @@ def test_any_backend_with_the_capabilities_may_run_a_physical_demo(
         assert demo_backend_problems(demo, "capable_test_engine") == ()
 
 
+def test_declared_mujoco_capabilities_match_the_adapter() -> None:
+    # The registry answers for MuJoCo without importing it; the answer must stay
+    # exactly what a default adapter reports.
+    pytest.importorskip("mujoco")
+    from modsim.backends.registry import backend_entry
+
+    adapter = backend_entry("mujoco").factory()()
+    assert backend_capabilities("mujoco") == adapter.capabilities()
+
+
 def test_unknown_backend_capabilities_raise_a_backend_error() -> None:
     with pytest.raises(BackendError):
         backend_capabilities("not_a_backend")
