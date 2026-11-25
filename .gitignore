@@ -227,3 +227,4 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 .DS_Store
+Claude outputs/
