@@ -140,6 +140,57 @@ def test_driver_goal_preserves_correct_bonds_and_derives_changes() -> None:
     assert {a.moving for a in plan.actions if a.dependencies} == {"module_1", "module_7"}
     assert initial[1] not in plan.releases and initial[4] not in plan.releases
 
+    # Modules 2 and 5 must still move, so their kept 2-3 and 5-6 bonds would drag
+    # modules 3 and 6 along as rigid trains. Single-module moves re-make them instead.
+    driver = {  # the demo's staged driver layout
+        "module_1": Pose2(x=0.211, y=0.0),
+        "module_2": Pose2(x=0.12, y=0.0),
+        "module_3": Pose2(x=0.029, y=0.0),
+        "module_4": Pose2(x=0.12, y=-0.088),
+        "module_5": Pose2(x=0.12, y=-0.176),
+        "module_6": Pose2(x=0.211, y=-0.176),
+        "module_7": Pose2(x=0.029, y=-0.176),
+    }
+    single = plan_assembly(
+        goal,
+        driver,
+        existing=initial,
+        fixed_mapping={n: n for n in goal.nodes},
+        move_single_modules=True,
+    )
+    assert set(single.releases) == set(initial)
+    assert len(single.actions) == 6
+    assert len({a.moving for a in single.actions}) == 6
+    # Every bond is re-made, so the snake ends are filled from their own side: the
+    # identity mapping would send modules 1 and 7 across each other.
+    placed = {a.goal_node: a.module_id for a in single.assignments}
+    assert placed["module_4"] == "module_4"
+    assert placed["module_1"] == "module_7" and placed["module_7"] == "module_1"
+    assert (
+        single.assignment_cost_m
+        < plan_assembly(
+            goal,
+            driver,
+            existing=initial,
+            fixed_mapping={n: n for n in goal.nodes},
+        ).assignment_cost_m
+    )
+
+
+def test_single_module_moves_keep_bonds_held_by_the_root() -> None:
+    # A bond hanging from a module that never moves is still preserved.
+    edge = GoalEdge(a="a", face_a="pan", b="b", face_b="bottom")
+    goal = AssemblyGoal(id="anchored", nodes=("a", "b"), edges=(edge,))
+    poses = {"a": Pose2(x=0.0, y=0.0), "b": Pose2(x=0.08, y=0.0)}
+    plan = plan_assembly(
+        goal,
+        poses,
+        existing=(edge,),
+        fixed_mapping={"a": "a", "b": "b"},
+        move_single_modules=True,
+    )
+    assert plan.releases == plan.actions == ()
+
 
 def test_sweep_checks_interior_and_whole_subassembly() -> None:
     footprint = Footprint(half_x=0.02, half_y=0.02, center_x=0.0, margin=0.0)

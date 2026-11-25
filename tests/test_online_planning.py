@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -143,7 +144,17 @@ def test_online_routes_commit_real_docks_without_root_control(
 
 
 @pytest.mark.mujoco
-def test_online_reconfiguration_stops_when_a_preserved_bond_is_lost() -> None:
+def test_online_reconfiguration_stops_when_a_preserved_bond_is_lost(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The demo now re-makes every driver bond (single-module moves), so nothing is
+    # preserved there. Build it with the bond-preserving plan to exercise the guard.
+    create = OnlineAssemblyScenario.create
+
+    def keep_trains(*args: Any, **kwargs: Any) -> OnlineAssemblyScenario:
+        return create(*args, **{**kwargs, "move_single_modules": False})
+
+    monkeypatch.setattr(OnlineAssemblyScenario, "create", keep_trains)
     runner = RuntimeInspectorRunner.create(
         RuntimeInspectorConfig(
             pack_path=PACK,

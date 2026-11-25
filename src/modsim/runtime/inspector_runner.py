@@ -468,6 +468,9 @@ class RuntimeInspectorRunner:
                     else driver_to_snake_goal(),
                     reconfiguration_config,
                     initial=plan,
+                    # The driver's preserved 2-3 and 5-6 bonds would otherwise move as
+                    # rigid two-module trains, which cannot turn along planned routes.
+                    move_single_modules=demo is RuntimeDemo.SMORES_ONLINE_DRIVER_TO_SNAKE,
                 )
             elif demo is RuntimeDemo.SMORES_PHYSICAL_DRIVER_TO_SNAKE:
                 if plan is None:  # pragma: no cover - branch invariant

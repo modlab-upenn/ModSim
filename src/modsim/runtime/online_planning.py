@@ -64,6 +64,13 @@ ActionPhase = Literal[
     "failed",
 ]
 
+# Connector approach dead end: the axial run-in is spent but a sideways offset remains.
+_APPROACH_AXIAL_EXHAUSTED_M = 0.005
+_APPROACH_LATERAL_DEADLOCK_M = 0.012
+_APPROACH_DEADLOCK_S = 4.0
+# How long the live swept guard may hold a module before parked blockers are moved aside.
+_GUARD_HOLD_CLEARANCE_S = 2.0
+
 
 def module_pose(session: RuntimeSession, module: str) -> Pose2:
     pose = session.world.modules[ModuleInstanceId(module)].pose
@@ -103,6 +110,10 @@ class _Execution:
     path: tuple[TimedPose, ...] = ()
     index: int = 1
     started_s: float | None = None
+    # When the first route search failed; the action timeout starts only once a route exists.
+    blocked_since_s: float | None = None
+    # When the swept guard started holding this module still, if it is holding now.
+    guard_held_since_s: float | None = None
     finished_s: float | None = None
     held_since: float = 0.0
     last_progress_s: float = 0.0
@@ -146,6 +157,8 @@ class OnlineAssemblyScenario:
         goal: AssemblyGoal,
         config: DifferentialDriveReconfigurationConfig,
         initial: ReconfigurationPlan | None = None,
+        *,
+        move_single_modules: bool = False,
     ) -> OnlineAssemblyScenario:
         if session.world.time_s != 0:
             raise ValueError("online scenarios must be initialized at time zero")
@@ -171,6 +184,7 @@ class OnlineAssemblyScenario:
             faces=measured_faces(session),
             existing=existing,
             fixed_mapping=None if initial is None else {n: n for n in goal.nodes},
+            move_single_modules=move_single_modules,
         )
         executions = [
             _Execution(
@@ -452,9 +466,16 @@ class OnlineAssemblyScenario:
                 execution.phase, execution.reason = "waiting", reason
                 execution.next_route_s = now + 2.0
                 self._clear_corridor(execution, staging, target)
-                if execution.started_s is None:
-                    execution.started_s = now
-                if now - execution.started_s > self.config.action_timeout_s:
+                # Waiting for another module to clear the way is bounded separately, so it
+                # does not use up the time this dock needs once it can drive.
+                waiting_since = (
+                    execution.started_s
+                    if execution.started_s is not None
+                    else execution.blocked_since_s
+                )
+                if waiting_since is None:
+                    execution.blocked_since_s = waiting_since = now
+                if now - waiting_since > self.config.action_timeout_s:
                     self._fail(f"{execution.action.id}: route remained blocked: {reason}")
                 continue
             execution.path, execution.index, execution.target = path, 1, target
@@ -484,64 +505,90 @@ class OnlineAssemblyScenario:
                 obstacles=(obstacle,),
             ):
                 continue
-            blocker = next(
-                (
-                    e
-                    for e in self.executions
-                    if e.action.moving == obstacle.id
-                    and e.phase in {"pending", "waiting"}
-                    and e is not requester
-                ),
-                None,
-            )
-            if blocker is None:
-                continue
-            if any(
-                e.action.parent == obstacle.id
-                and e.phase in {"navigating", "aligning", "approaching", "holding", "retreating"}
-                for e in self.executions
-            ):
-                continue
-            assembly = self.session.world.assemblies.assembly_of(ModuleInstanceId(obstacle.id))
-            members = tuple(sorted(self.session.world.assemblies.members(assembly)))
-            if len(members) != 1:
-                continue
-            root = module_pose(self.session, self.plan.root_module)
-            pose = module_pose(self.session, obstacle.id)
-            headings = sorted(
-                (0.0, math.pi / 2, math.pi, -math.pi / 2),
-                key=lambda h: -((pose.x - root.x) * math.cos(h) + (pose.y - root.y) * math.sin(h)),
-            )
-            blocker.members, blocker.relatives = members, (Pose2(x=0.0, y=0.0),)
-            blocker.controller.axle_offset_m = self.footprint.center_x
-            for heading in headings:
-                parking = Pose2(
-                    x=pose.x + 0.35 * math.cos(heading),
-                    y=pose.y + 0.35 * math.sin(heading),
-                    yaw=pose.yaw,
-                )
-                try:
-                    path = plan_route(
-                        pose,
-                        parking,
-                        footprint=self.footprint,
-                        obstacles=self._obstacles(blocker),
-                        start_s=self.session.world.time_s,
-                        config=replace(self.route_config, max_expansions=1200),
-                    )
-                except RouteUnavailable:
-                    continue
-                blocker.path, blocker.index, blocker.target = path, 1, None
-                blocker.phase, blocker.reason, blocker.clearing = (
-                    "navigating",
-                    "Moving aside for approach clearance",
-                    True,
-                )
-                blocker.started_s = blocker.last_progress_s = self.session.world.time_s
-                blocker.best_error = math.inf
-                self._revision += 1
-                self._record("clearance", f"{obstacle.id} moves aside for {requester.action.id}")
+            if self._move_aside(requester, obstacle):
                 return
+
+    def _guard_clear(
+        self,
+        execution: _Execution,
+        pose: Pose2,
+        end: Pose2,
+        footprint: Footprint,
+        obstacles: tuple[Obstacle, ...],
+    ) -> bool:
+        """The live swept guard: may ``execution`` move from ``pose`` to ``end`` now?"""
+        return swept_clear(
+            pose,
+            end,
+            members=execution.relatives,
+            footprint=footprint,
+            obstacles=obstacles,
+            allow_escape=execution.phase == "retreating",
+            departure=pose,
+            pivot_offset_m=execution.controller.axle_offset_m,
+        )
+
+    def _move_aside(self, requester: _Execution, obstacle: Obstacle) -> bool:
+        """Send ``obstacle`` to a parking spot if it is a free module that has not started."""
+        blocker = next(
+            (
+                e
+                for e in self.executions
+                if e.action.moving == obstacle.id
+                and e.phase in {"pending", "waiting"}
+                and e is not requester
+            ),
+            None,
+        )
+        if blocker is None:
+            return False
+        if any(
+            e.action.parent == obstacle.id
+            and e.phase in {"navigating", "aligning", "approaching", "holding", "retreating"}
+            for e in self.executions
+        ):
+            return False
+        assembly = self.session.world.assemblies.assembly_of(ModuleInstanceId(obstacle.id))
+        members = tuple(sorted(self.session.world.assemblies.members(assembly)))
+        if len(members) != 1:
+            return False
+        root = module_pose(self.session, self.plan.root_module)
+        pose = module_pose(self.session, obstacle.id)
+        headings = sorted(
+            (0.0, math.pi / 2, math.pi, -math.pi / 2),
+            key=lambda h: -((pose.x - root.x) * math.cos(h) + (pose.y - root.y) * math.sin(h)),
+        )
+        blocker.members, blocker.relatives = members, (Pose2(x=0.0, y=0.0),)
+        blocker.controller.axle_offset_m = self.footprint.center_x
+        for heading in headings:
+            parking = Pose2(
+                x=pose.x + 0.35 * math.cos(heading),
+                y=pose.y + 0.35 * math.sin(heading),
+                yaw=pose.yaw,
+            )
+            try:
+                path = plan_route(
+                    pose,
+                    parking,
+                    footprint=self.footprint,
+                    obstacles=self._obstacles(blocker),
+                    start_s=self.session.world.time_s,
+                    config=replace(self.route_config, max_expansions=1200),
+                )
+            except RouteUnavailable:
+                continue
+            blocker.path, blocker.index, blocker.target = path, 1, None
+            blocker.phase, blocker.reason, blocker.clearing = (
+                "navigating",
+                "Moving aside for approach clearance",
+                True,
+            )
+            blocker.started_s = blocker.last_progress_s = self.session.world.time_s
+            blocker.best_error = math.inf
+            self._revision += 1
+            self._record("clearance", f"{obstacle.id} moves aside for {requester.action.id}")
+            return True
+        return False
 
     def _retry(self, execution: _Execution, reason: str) -> None:
         execution.attempts += 1
@@ -685,10 +732,26 @@ class OnlineAssemblyScenario:
                 else:
                     self._retry(execution, "backend or docking guard refused capture")
             error = pose.distance(target)
+            # A differential drive cannot close sideways error without axial travel:
+            # once the docking axis is used up, an offset module only stands still.
+            dx, dy = pose.x - target.x, pose.y - target.y
+            axial = dx * math.cos(target.yaw) + dy * math.sin(target.yaw)
+            lateral = -dx * math.sin(target.yaw) + dy * math.cos(target.yaw)
+            out_of_axial_room = abs(axial) < _APPROACH_AXIAL_EXHAUSTED_M and abs(lateral) > max(
+                _APPROACH_LATERAL_DEADLOCK_M, 2 * self.config.latch_distance_m
+            )
             if error < execution.best_error - 0.001:
                 execution.best_error, execution.last_progress_s = error, now
-            elif now - execution.last_progress_s > 25.0 and execution.phase == "approaching":
-                self._retry(execution, "connector alignment stalled")
+            elif execution.phase == "approaching" and (
+                now - execution.last_progress_s > 25.0
+                or (out_of_axial_room and now - execution.last_progress_s > _APPROACH_DEADLOCK_S)
+            ):
+                self._retry(
+                    execution,
+                    "connector approach ran out of axial room"
+                    if out_of_axial_room
+                    else "connector alignment stalled",
+                )
         if all(e.phase == "complete" for e in self.executions):
             mapping = {a.goal_node: a.module_id for a in self.plan.assignments}
             expected = {
@@ -729,18 +792,28 @@ class OnlineAssemblyScenario:
             lookahead = min(1.0, 0.025 / max(0.025, pose.distance(target)))
             from modsim.planning.routing import interpolate
 
-            safe = swept_clear(
-                pose,
-                interpolate(pose, target, lookahead),
-                members=execution.relatives,
-                footprint=(replace(self.footprint, margin=0.0) if approach else self.footprint),
-                obstacles=self._obstacles(
-                    execution, approach=approach or execution.phase == "retreating"
-                ),
-                allow_escape=execution.phase == "retreating",
-                departure=pose,
-                pivot_offset_m=execution.controller.axle_offset_m,
+            guard_end = interpolate(pose, target, lookahead)
+            guard_footprint = replace(self.footprint, margin=0.0) if approach else self.footprint
+            guard_obstacles = self._obstacles(
+                execution, approach=approach or execution.phase == "retreating"
             )
+
+            safe = self._guard_clear(execution, pose, guard_end, guard_footprint, guard_obstacles)
+            now = self.session.world.time_s
+            if safe:
+                execution.guard_held_since_s = None
+            elif execution.guard_held_since_s is None:
+                execution.guard_held_since_s = now
+            elif now - execution.guard_held_since_s > _GUARD_HOLD_CLEARANCE_S:
+                # The route planner accepted this motion but the stricter live guard does
+                # not, so replanning repeats it. A parked module that has not started its
+                # own dock (and may be waiting on this one) is moved out of the way instead.
+                execution.guard_held_since_s = now
+                for obstacle in guard_obstacles:
+                    if not self._guard_clear(
+                        execution, pose, guard_end, guard_footprint, (obstacle,)
+                    ) and self._move_aside(execution, obstacle):
+                        break
             execution.reason = (
                 "Measured clearance blocked; holding"
                 if not safe
