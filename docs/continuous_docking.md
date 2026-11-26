@@ -727,7 +727,14 @@ The core holds a `SurfaceSlideDriver` beside the `DockingManager` in
 - Only `driven_fixed` connections accept commands. `static_fixed` and `ball`
   raise `SurfaceSlideError` (A3), as does a backend without
   `supports_connection_retarget`. Commands persist until
-  `clear_surface_slide` or until the connection is released.
+  `clear_surface_slide` or until the connection is released. A command
+  belongs to the connection it was set for, not to the connector pair: a
+  release followed by a re-dock of the same pair ends it, even within one
+  docking pass. Connection ids and backend handles are both derived from the
+  pair, so the driver drops a command when an `UndockCommitted` for its id is
+  among the step's events, or when the connection now present has a different
+  `created_at_s` (a release outside `step`, such as a direct
+  `process_docking`).
 - A drive model on the point `ConnectorSpec` turns wheel joint rates into that
   command: `surface_drive: {model: differential, left_joint, right_joint,
   wheel_radius_m, track_m}`. Phase 1 provides it as the pure function

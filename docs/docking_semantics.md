@@ -48,7 +48,9 @@ semantics identical across the mock backend, MuJoCo, and anything later.
 ```
 
 Step 6 runs whether or not connectors are processed, and only when slide
-commands are set (see `continuous_docking.md` §11). It writes no events.
+commands are set (see `continuous_docking.md` §11). It writes no events. It
+reads the step's events: a connection released in step 4 or 5 loses its slide
+command, even if the same pair re-docked in step 5.
 
 Docking decisions are always made against the state the backend just reported,
 never against a stale snapshot. Requested releases are processed before new

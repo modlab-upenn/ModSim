@@ -25,6 +25,7 @@ from modsim.backends.base import (
     ConnectionRetarget,
     SupportsConnectionRetarget,
 )
+from modsim.core.events import Event, UndockCommitted
 from modsim.core.ids import ConnectionId
 from modsim.core.state import WorldState
 from modsim.core.surface import central_angle
@@ -125,6 +126,8 @@ def _rotate_about_center(frame: Transform, center: Vec3, axis: Vec3, angle: floa
 class _Target:
     frame: Transform
     """Commanded attachment frame A_q in the surface connector frame."""
+    created_at_s: float
+    """When the connection the command was set for was committed."""
 
 
 @dataclass(slots=True)
@@ -173,13 +176,16 @@ class SurfaceSlideDriver:
                 f"backend '{capabilities.name}' cannot retarget connections, so "
                 f"'{connection}' cannot slide"
             )
+        self._forget_stale(world)
         if connection not in self._targets:
             attachment = world.surface_attachment(connection)
             if attachment is None:
                 raise SurfaceSlideError(
                     f"connection '{connection}' has no measured attachment in this sample"
                 )
-            self._targets[connection] = _Target(frame=attachment.frame_local)
+            self._targets[connection] = _Target(
+                frame=attachment.frame_local, created_at_s=runtime.created_at_s
+            )
         self.commands[connection] = command
 
     def clear(self, connections: Iterable[ConnectionId] | None = None) -> None:
@@ -193,17 +199,48 @@ class SurfaceSlideDriver:
     # per-step update
     # ------------------------------------------------------------------
 
-    def update(self, world: WorldState, adapter: BackendAdapter, dt_s: float) -> SlideReport:
+    def _forget_stale(self, world: WorldState, events: Iterable[Event] = ()) -> None:
+        """Drop commands whose connection was released, even if it has re-formed.
+
+        Connection ids are derived from the connector pair, and so are backend
+        handles, so a release followed by a re-dock of the same pair leaves both
+        unchanged. A command belongs to the connection it was set for: it is
+        dropped when an ``UndockCommitted`` for its id is among ``events``, when
+        the id is no longer connected, or when the connection now present was
+        committed at a different time.
+        """
+        released = {event.connection_id for event in events if isinstance(event, UndockCommitted)}
+        for connection in tuple(self.commands):
+            runtime = world.connections.get(connection)
+            target = self._targets.get(connection)
+            if (
+                connection in released
+                or runtime is None
+                or target is None
+                or target.created_at_s != runtime.created_at_s
+            ):
+                self.clear((connection,))
+        for connection in tuple(self._targets):
+            if connection not in self.commands:
+                self._targets.pop(connection)
+
+    def update(
+        self,
+        world: WorldState,
+        adapter: BackendAdapter,
+        dt_s: float,
+        events: Iterable[Event] = (),
+    ) -> SlideReport:
         """Integrate every command over ``dt_s`` and send one retarget batch.
 
         Commands are processed in sorted connection-id order. A target that
         would come inside a surface's minimum separation is clamped to the
         boundary along its commanded direction; an attachment already inside
-        the boundary may only move away. Connections that no longer exist are
-        forgotten.
+        the boundary may only move away. ``events`` are the events of the
+        current step: a command whose connection was released among them is
+        dropped, even if the same pair re-docked in the same pass.
         """
-        for connection in [c for c in self.commands if c not in world.connections]:
-            self.clear((connection,))
+        self._forget_stale(world, events)
         if not self.commands or dt_s <= 0.0:
             self.last_report = SlideReport()
             return self.last_report

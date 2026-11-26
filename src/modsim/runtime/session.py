@@ -447,8 +447,9 @@ class RuntimeSession:
         if process_connectors:
             events.extend(self.process_docking())
         # Sliding runs after the docking pass, so connections released this
-        # step are skipped and new ones start sliding at the next step.
-        self.surface_slides.update(self.world, self.adapter, dt_s)
+        # step are skipped (even if the same pair re-docked in this pass) and
+        # new ones start sliding at the next step.
+        self.surface_slides.update(self.world, self.adapter, dt_s, events)
         return tuple(events)
 
     def _evaluate_overloads(self, snapshot: BackendStateSnapshot) -> tuple[Event, ...]:

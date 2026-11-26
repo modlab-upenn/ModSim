@@ -9,7 +9,7 @@ import pytest
 
 from modsim.backends.base import BackendCapabilities, ConnectionOutcome, ConnectionRequest
 from modsim.backends.mock import MockBackendAdapter
-from modsim.core.events import DockCommitted
+from modsim.core.events import DockCommitted, UndockCommitted
 from modsim.core.ids import ConnectionId, ConnectorInstanceId, connection_id
 from modsim.core.surface import central_angle
 from modsim.core.transforms import (
@@ -207,6 +207,64 @@ def test_clearing_and_undocking_stop_the_slide(example_pack: RobotPack) -> None:
     session.set_surface_slide(link(0), SurfaceSlideCommand((0.01, 0.0)))
     session.request_undock(link(0))
     session.step(0.1)
+    assert link(0) not in session.surface_slides.commands
+
+
+def _redocking_pack(example_pack: RobotPack) -> RobotPack:
+    """No cooldown, so the same pair can release and re-dock in one docking pass."""
+    return surface_pack(
+        example_pack,
+        magnet={
+            "docking_policy": {
+                "auto_latch": False,
+                "alignment": "measured",
+                "redock_cooldown_s": None,
+                "break_force_n": None,
+            }
+        },
+    )
+
+
+def test_a_release_and_redock_in_one_step_drops_the_slide(example_pack: RobotPack) -> None:
+    # Regression for review finding K1: the connection id and the backend
+    # handle are both pair-derived, so the re-formed connection looks the same.
+    session = docked(_redocking_pack(example_pack), DOWN)
+    session.set_surface_slide(link(0), SurfaceSlideCommand((0.01, 0.0)))
+    for _ in range(5):
+        session.step(0.1)
+
+    session.request_undock(link(0))
+    session.request_dock(upper(0), SHELL)
+    events = session.step(0.1)
+    kinds = [type(event) for event in events]
+    assert UndockCommitted in kinds
+    assert DockCommitted in kinds
+    assert link(0) in session.world.connections
+    assert link(0) not in session.surface_slides.commands
+
+    session.step(0.0)
+    start = normal_of(session, 0)
+    for _ in range(5):
+        session.step(0.1)
+    session.step(0.0)
+    # Compare vectors: acos in central_angle turns ulp differences into ~1e-8.
+    assert normal_of(session, 0) == pytest.approx(start, abs=1e-12)
+
+
+def test_a_release_outside_the_step_is_caught_by_the_commit_time(
+    example_pack: RobotPack,
+) -> None:
+    session = docked(_redocking_pack(example_pack), DOWN)
+    session.set_surface_slide(link(0), SurfaceSlideCommand((0.01, 0.0)))
+    session.step(0.1)
+
+    # A docking pass run directly is not part of any step's events.
+    session.request_undock(link(0))
+    released = session.process_docking()
+    assert any(isinstance(event, UndockCommitted) for event in released)
+    session.request_dock(upper(0), SHELL)
+    session.step(0.1)
+    assert link(0) in session.world.connections
     assert link(0) not in session.surface_slides.commands
 
 
