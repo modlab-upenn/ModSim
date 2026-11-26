@@ -966,6 +966,17 @@ one-line note here.
   alignment is unaffected. Phase 3 must move the strut's root free joint so
   the requested pose holds, as `_snap_to_nominal` already does for side B.
 - The `spherical_attachment` builder (Phase 2, see above).
+- **Phase 4 note: reconfiguration retraction from a surface.** The scripted
+  reconfiguration planner retracts along the fixed connector's
+  `world_docking_axis` (`runtime/reconfiguration.py`, where the retraction
+  `direction` is set). A surface connector's authored axis is not the
+  attachment normal (for the fixture shell it is the node's z axis), so a plan
+  that names a surface connector as `fixed_connector` would retract a strut on
+  the side of a node along the wrong direction. No current plan does this. It
+  is the same assumption as §5.1 row 14 (a surface has no docking axis of its
+  own). When Phase 4 adds the FreeSN pack and its plans, retract along the
+  live attachment normal (`world.surface_attachment(...)`) for a surface
+  connector.
 
 Phase 1 = schema, validator, core semantics and the mock backend. It runs
 without MuJoCo. Implement, in this order, and stop for review at the end:
