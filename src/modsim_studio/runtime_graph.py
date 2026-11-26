@@ -149,7 +149,7 @@ class TopologyGraphWidget(QWidget):
             )
             curve.setClickable(True, width=12)
             curve.setZValue(5 if edge.selected else 1)
-            curve.setToolTip(f"{edge.connector_a} ↔ {edge.connector_b}\n{edge.state.capitalize()}")
+            curve.setToolTip(edge.tooltip)
             curve.sigClicked.connect(partial(self._edge_clicked, edge.id))
             self._plot_item.addItem(curve)
             self._edge_items[edge.id] = curve

@@ -134,7 +134,10 @@ one batch of `ConnectionRetarget(handle, connector_a_local, connector_b_local,
 relative_transform)` per step and returns one flag per update. The batch is
 atomic: if any flag is `False` (handle not held, or the update refused),
 nothing in it was applied. A retarget is a connection change under rule 5 of
-the timing contract. The mock implements it; MuJoCo does not yet.
+the timing contract. The mock implements it; MuJoCo does not yet. An adapter
+may also implement `ExplainsRetargetRefusals.refusal_reason(update)`, which
+returns why an update would be refused or `None`. The slide driver puts that
+reason in `SlideRefusal.detail`. The mock implements it.
 
 ### Timing contract
 

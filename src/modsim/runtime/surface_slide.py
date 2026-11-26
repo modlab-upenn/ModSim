@@ -23,6 +23,7 @@ from modsim.backends.base import (
     BackendAdapter,
     BackendError,
     ConnectionRetarget,
+    ExplainsRetargetRefusals,
     SupportsConnectionRetarget,
 )
 from modsim.core.events import Event, UndockCommitted
@@ -401,11 +402,20 @@ class SurfaceSlideDriver:
                 if accepted:
                     kept.append((connection, update))
                     continue
-                refusals.append(SlideRefusal(connection, "backend refused the retarget"))
+                refusals.append(SlideRefusal(connection, _refusal_detail(adapter, update)))
                 self.clear((connection,))
                 planned.pop(connection, None)
             updates = kept
         return tuple(refusals)
+
+
+def _refusal_detail(adapter: SupportsConnectionRetarget, update: ConnectionRetarget) -> str:
+    """Return the backend's reason for a refused retarget, if it gives one."""
+    if isinstance(adapter, ExplainsRetargetRefusals):
+        reason = adapter.refusal_reason(update)
+        if reason:
+            return reason
+    return "backend refused the retarget"
 
 
 def _normal(frame: Transform, center: Vec3) -> Vec3:

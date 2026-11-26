@@ -278,7 +278,7 @@ class ConnectorInstance:
     def __repr__(self) -> str:
         return (
             f"ConnectorInstance(id={self.id!r}, lifecycle_state={self.lifecycle_state!r}, "
-            f"connection_id={self.connection_id!r}, resolved={self.resolved!r})"
+            f"connection_ids={self.connection_ids!r}, resolved={self.resolved!r})"
         )
 
     # -- lazy world frame ---------------------------------------------------

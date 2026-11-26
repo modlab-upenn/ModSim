@@ -183,8 +183,12 @@ change. Disconnected modules remain visible, parallel connections use separate
 curved paths, and clicking a node or edge selects it by stable runtime ID.
 The target graph shares live node positions and assembly colors. Its dashed edges
 show required connections; green edges show goal connections already committed.
-Target intent does not add edges to canonical live topology. Each graphical view
-has a **Legend** toggle that can also be hovered for an explanation of its colors,
+Target intent does not add edges to canonical live topology. Hovering a
+connection edge shows its connectors and state; for a point-to-surface
+connection it also shows the realisation and the live attachment (normal in
+the surface frame, θ, φ, ψ, seat gap and, when declared, magnet height). In
+the lattice view a surface endpoint has no face label and shows "—". Each
+graphical view has a **Legend** toggle that can also be hovered for an explanation of its colors,
 line styles, and controls.
 
 Assembly colors come from distinct categorical hues, shared between live and

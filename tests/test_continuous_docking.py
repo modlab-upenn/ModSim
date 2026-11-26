@@ -418,6 +418,16 @@ def test_three_struts_competing_for_one_surface_resolve_by_sorted_id_not_scene_o
     assert run() == outcome
 
 
+def test_a_surface_connector_repr_lists_every_connection(example_pack: RobotPack) -> None:
+    session = make_session(pack_with(example_pack), *(strut_pose(n) for n in _SPREAD[:3]))
+    dock(session, 0, 1, 2)
+
+    text = repr(session.world.connector(SHELL))
+
+    assert f"connection_ids={(link(0), link(1), link(2))!r}" in text
+    assert "connection_id=None" not in text
+
+
 def test_undocking_one_strut_leaves_the_others_and_cools_only_the_strut(
     example_pack: RobotPack,
 ) -> None:

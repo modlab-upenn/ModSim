@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 
 from modsim_studio.appearance import theme_manager
 from modsim_studio.chrome import LegendWidget
+from modsim_studio.connection_details import face_label
 from modsim_studio.runtime_lattice_presenter import LatticeProjection, PresentedLatticeModule
 from modsim_studio.runtime_presenter import CubicLatticePresentation
 from modsim_studio.visual_colors import CategoryColors, visual_colors
@@ -447,10 +448,7 @@ class CubicLatticeWidget(QWidget):
             curve.setPen(pg.mkPen(color, width=4.0 if edge.selected else 2.2))
             curve.setClickable(True, width=12)
             curve.setZValue(45)
-            curve.setToolTip(
-                f"{edge.id}\n{edge.connector_a} ({edge.source_face}) ↔ "
-                f"{edge.connector_b} ({edge.target_face})"
-            )
+            curve.setToolTip(edge.tooltip)
             marker_spots.append(
                 {
                     "pos": edge.marker,
@@ -711,8 +709,8 @@ def _selection_text(presentation: CubicLatticePresentation) -> str:
         edge = next((item for item in geometry.edges if item.id == selection.entity_id), None)
         if edge is not None:
             return (
-                f"Connection {edge.id} · {edge.connector_a} [{edge.source_face}] ↔ "
-                f"{edge.connector_b} [{edge.target_face}]"
+                f"Connection {edge.id} · {edge.connector_a} [{face_label(edge.source_face)}] ↔ "
+                f"{edge.connector_b} [{face_label(edge.target_face)}]"
             )
     else:
         cell = next((item for item in geometry.cells if item.id == selection.entity_id), None)

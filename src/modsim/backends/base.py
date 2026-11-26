@@ -275,6 +275,20 @@ class SupportsConnectionRetarget(Protocol):
 
 
 @runtime_checkable
+class ExplainsRetargetRefusals(Protocol):
+    """Optional ability to say why a retarget would be refused.
+
+    A backend implementing :class:`SupportsConnectionRetarget` may also offer
+    this. The slide driver calls it for each refused update, before resending
+    the rest of the batch, and records the reason in ``SlideRefusal.detail``.
+    """
+
+    def refusal_reason(self, update: ConnectionRetarget) -> str | None:
+        """Explain why ``update`` would be refused, or return ``None``."""
+        ...
+
+
+@runtime_checkable
 class SupportsModuleKinematics(Protocol):
     """Optional backend ability to place and drive whole modules directly.
 

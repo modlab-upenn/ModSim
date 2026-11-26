@@ -24,6 +24,9 @@ from modsim.core.transforms import (
     vec_normalize,
 )
 from modsim.model_views import CubicLatticeNode, CubicLatticeView, LatticeFace
+from modsim.model_views.models import SurfaceAttachmentDTO
+from modsim.robot_packs.schema import SurfaceRealization
+from modsim_studio.connection_details import face_label, surface_detail_lines
 
 Point2D = tuple[float, float]
 Point3D = tuple[float, float, float]
@@ -171,6 +174,23 @@ class PresentedLatticeConnection:
     path: tuple[Point2D, ...]
     marker: Point2D
     selected: bool = False
+    realization: SurfaceRealization | None = None
+    attachment: SurfaceAttachmentDTO | None = None
+
+    @property
+    def tooltip(self) -> str:
+        """Id, endpoints with their faces and, for a surface connection, its attachment.
+
+        A surface endpoint has no face label and shows a dash.
+        """
+        return "\n".join(
+            (
+                self.id,
+                f"{self.connector_a} ({face_label(self.source_face)}) ↔ "
+                f"{self.connector_b} ({face_label(self.target_face)})",
+                *surface_detail_lines(self.realization, self.attachment),
+            )
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -487,6 +507,8 @@ def _present_connections(
                 path=(source, control, target),
                 marker=marker,
                 selected=selection == ("edge", edge.id),
+                realization=edge.realization,
+                attachment=edge.attachment,
             )
         )
     return tuple(result)

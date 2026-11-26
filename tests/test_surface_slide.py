@@ -374,14 +374,24 @@ def test_the_differential_drive_model_maps_wheel_rates_to_a_slide() -> None:
 
 
 class _RefusingMock(MockBackendAdapter):
-    """Refuses every retarget of one handle; the rest of a batch goes through."""
+    """Refuses every retarget of one handle; the rest of a batch goes through.
 
-    __slots__ = ("calls", "refuse")
+    ``reason`` is what ``refusal_reason`` gives for the refused handle. With
+    ``None`` it says nothing, and the driver falls back to a fixed detail.
+    """
+
+    __slots__ = ("calls", "reason", "refuse")
 
     def __init__(self) -> None:
         super().__init__()
         self.refuse: ConstraintHandle | None = None
+        self.reason: str | None = None
         self.calls: list[tuple[ConstraintHandle, ...]] = []
+
+    def refusal_reason(self, update: ConnectionRetarget) -> str | None:
+        if update.handle == self.refuse:
+            return self.reason
+        return super().refusal_reason(update)
 
     def retarget_physical_connections(
         self, updates: tuple[ConnectionRetarget, ...]
@@ -393,10 +403,18 @@ class _RefusingMock(MockBackendAdapter):
         return super().retarget_physical_connections(updates)
 
 
+@pytest.mark.parametrize(
+    ("reason", "detail"),
+    [
+        ("test double refuses this handle", "test double refuses this handle"),
+        (None, "backend refused the retarget"),
+    ],
+)
 def test_a_refused_retarget_is_dropped_reported_and_the_rest_resent(
-    example_pack: RobotPack,
+    example_pack: RobotPack, reason: str | None, detail: str
 ) -> None:
     adapter = _RefusingMock()
+    adapter.reason = reason
     session = docked(surface_pack(example_pack), DOWN, direction(2.0), adapter=adapter)
     refused = session.world.connections[link(0)].constraint_handle
     kept = session.world.connections[link(1)].constraint_handle
@@ -411,7 +429,8 @@ def test_a_refused_retarget_is_dropped_reported_and_the_rest_resent(
 
     assert adapter.calls == [(refused, kept), (kept,)]
     assert [refusal.connection_id for refusal in report.refusals] == [link(0)]
-    assert report.refusals[0].detail
+    # The backend's own reason is passed through when it gives one.
+    assert report.refusals[0].detail == detail
     assert link(0) not in session.surface_slides.commands
     assert link(1) in session.surface_slides.commands
     assert normal_of(session, 0) == pytest.approx(start[0], abs=1e-12)

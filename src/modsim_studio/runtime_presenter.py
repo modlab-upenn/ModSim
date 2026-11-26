@@ -12,7 +12,10 @@ from dataclasses import dataclass, replace
 from typing import Literal, TypeAlias
 
 from modsim.model_views import CubicLatticeView, ModuleTopologyGraphView
+from modsim.model_views.models import SurfaceAttachmentDTO
+from modsim.robot_packs.schema import SurfaceRealization
 from modsim.runtime.inspection import RuntimeEventRow, RuntimeInspectorFrame, RuntimeModelView
+from modsim_studio.connection_details import surface_detail_lines
 from modsim_studio.runtime_lattice_presenter import (
     DEFAULT_LATTICE_CAMERA,
     CubicLatticeGeometry,
@@ -64,6 +67,19 @@ class PresentedConnectionEdge:
     path: tuple[Point2D, ...]
     selected: bool = False
     state: Literal["committed", "pending", "matched"] = "committed"
+    realization: SurfaceRealization | None = None
+    attachment: SurfaceAttachmentDTO | None = None
+
+    @property
+    def tooltip(self) -> str:
+        """Endpoints, state and, for a surface connection, its attachment."""
+        return "\n".join(
+            (
+                f"{self.connector_a} ↔ {self.connector_b}",
+                self.state.capitalize(),
+                *surface_detail_lines(self.realization, self.attachment),
+            )
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -411,6 +427,8 @@ class RuntimeInspectorPresenter:
                 connector_b=edge.connector_b,
                 path=edge_paths[edge.id],
                 selected=selection == GraphSelection("edge", edge.id),
+                realization=edge.realization,
+                attachment=edge.attachment,
             )
             for edge in view.edges
         )

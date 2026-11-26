@@ -523,7 +523,11 @@ class SupportsConnectionRetarget(Protocol):
   batch was applied.
 - **Refusal handling.** The slide driver drops the refused updates, resends the
   rest, stops sliding the refused connections and reports them in
-  `RuntimeSession.surface_slide_report.refusals`. It does not raise: a refused
+  `RuntimeSession.surface_slide_report.refusals`. A backend may also implement
+  the optional `ExplainsRetargetRefusals` protocol
+  (`refusal_reason(update) -> str | None`). The driver calls it for each
+  refused update before resending and uses the reason as
+  `SlideRefusal.detail`, falling back to a fixed string. It does not raise: a refused
   loop retarget on the mock is a legitimate limitation, not an adapter bug. A
   batch whose result count does not match raises `BackendError`.
 
@@ -724,7 +728,11 @@ about 79 N normal strength when seated on the wheels, and under 30 N by about
   The builder reports each attachment's triangle index and residual and derives
   its result without writing to `WorldState`, as the cubic lattice does.
 - Rendering the attachment in the inspector (a sphere glyph with markers) is
-  outside Phases 1 to 3. Until then the edge tooltip shows the DTO fields.
+  outside Phases 1 to 3. Until then the edge tooltip shows the DTO fields:
+  the topology and lattice tooltips list the realisation, the normal, θ, φ,
+  ψ, the seat gap and the magnet height, and the lattice tooltip shows "—" for
+  a surface endpoint's face. The text is built by the Studio presenters
+  (`modsim_studio/connection_details.py`), so it is tested without Qt.
 
 ## 10. `physical` mode (Phase 5, needs its own review)
 
