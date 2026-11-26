@@ -107,7 +107,34 @@ before loading (`backend_capabilities` constructs an unloaded adapter).
 | `supports_contact_dynamics` | Bodies collide and respond with friction |
 | `supported_joint_control_modes` | Joint command modes accepted |
 | `supports_module_pose_write`, `supports_external_viewer` | Pose/twist writes; a native viewer exists |
+| `supports_connection_retarget` | The adapter implements `SupportsConnectionRetarget` for fixed connections |
+| `supports_contact_forces` | Reserved: no snapshot field carries contact forces yet |
 | `connection_change_delay_substeps` | Internal steps before a connection change acts (see the timing contract) |
+
+### Point-to-surface requests and retargeting
+
+A point-to-surface connection (see `continuous_docking.md`) reaches the backend
+as an ordinary `fixed` or `ball` request: side A is the point connector, and
+`connector_b_local` is a virtual attachment frame on the surface, in link B's
+frame. A backend needs no surface knowledge. `ConnectionRequest` adds three
+defaulted fields:
+
+- `snap_side` (`"b"` by default) says which side a nominal snap moves. Surface
+  pairs set `"a"`, so the strut moves rather than the node. A backend that
+  cannot snap side A must refuse the request. The MuJoCo adapter refuses it for
+  now.
+- `surface_realization` and `surface_center_link_b` are informational.
+
+`ball` requests carry `physical_connection.ball.anchor_m`, the pivot in
+connector A's frame.
+
+Sliding uses the optional `SupportsConnectionRetarget` protocol, advertised by
+`supports_connection_retarget`. `retarget_physical_connections(updates)` takes
+one batch of `ConnectionRetarget(handle, connector_a_local, connector_b_local,
+relative_transform)` per step and returns one flag per update. The batch is
+atomic: if any flag is `False` (handle not held, or the update refused),
+nothing in it was applied. A retarget is a connection change under rule 5 of
+the timing contract. The mock implements it; MuJoCo does not yet.
 
 ### Timing contract
 
@@ -169,7 +196,11 @@ millimetres. A backend with a different stepping model declares its own delay
 connection. `wrench.resolved_in(connector_a_world_frame)` gives the components a
 connector datasheet uses: normal and shear force, twist and bending moment.
 `snapshot().constraint_forces_n` remains as a derived, read-only view of the
-force magnitudes, which is what break-force overload checks use today.
+force magnitudes, which is what break-force overload checks use. Opt-in
+per-axis `break_limits` read the wrench itself, decomposed about connector A's
+docking axis, and only when such limits are declared, so a backend can keep
+computing moments lazily. A session whose pack declares moment limits on a
+backend without `supports_constraint_torques` is refused at creation.
 
 **Measured connector frames are optional but preferred.** A backend that
 materialises connector frames natively should report them in
@@ -209,7 +240,8 @@ rather than rescanned per connection.
 | Joint commands | no | declared scalar effort modes |
 | Connector frames | composed from local pose | measured from sites |
 | Runtime docking | fixed only; every other type explicitly refused | fixed welds and two-point hinges |
-| Constraint wrenches | injectable force, for tests | full force and moment for active welds and hinges |
+| Connection retarget | yes; moves side A's welded component | not yet |
+| Constraint wrenches | injectable force (scalar or vector), moment unmeasured | full force and moment for active welds and hinges |
 | Connection change delay | 0 | 1 internal step by default; 0 with `immediate_connection_changes=True` |
 | Contact exclusion on dock | not applicable | one reserved body-pair exclusion per active weld; none for hinges |
 
@@ -232,6 +264,15 @@ The mock advertises and realises `fixed` connections only. It refuses
 as one of its rigid welds would erase the compliance or rotational freedom the
 Robot Pack asked for, and could make a dynamics scenario appear to pass
 without the physics it names.
+
+The mock's retarget moves the connected component that contains side A (the
+sliding strut), once the retargeted weld is ignored, so the node and every
+other strut on it stay put. A retarget whose two sides stay connected without
+that weld would have to move a closed loop, which a kinematic backend cannot
+resolve, so it is refused; `refusal_reason` explains why. A side-A nominal
+snap that would have to move such a loop is refused for the same reason. The
+core asks for a side-A snap only when the strut is alone in its assembly, so
+this refusal is a defence rather than a path the docking pass takes.
 
 ### mujoco
 

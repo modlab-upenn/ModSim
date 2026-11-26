@@ -17,14 +17,15 @@ Implemented now are the strict split-document loader and schema, authoring and
 simulation validation profiles, deterministic new-directory export,
 transactional in-place save, URDF-to-draft-pack import, Studio editor surfaces,
 backend-neutral fixed/compliant/hinge connection semantics, fixed dock/undock
-execution under the mock backend, and fixed plus hinge constraints under the
-optional MuJoCo backend.
+execution under the mock backend, fixed plus hinge constraints under the
+optional MuJoCo backend, and point-to-surface connectors (schema, validation,
+and runtime semantics on the mock backend; see `docs/continuous_docking.md`).
 
 Still deferred are the Isaac Sim adapter, capability execution, actuator and
 transmission catalogs, position/velocity command implementations,
 validator-level cross-checking of authored source names against referenced
 URDF files, complete backend-mapping resolution in MuJoCo, and simulation
-support for compliant, `ball`, and `custom` connections. The runtime now
+support for compliant, `ball`, and `custom` connections in any backend. The runtime now
 accepts backend-neutral bounded joint commands, and MuJoCo implements the
 `effort` mode used by the physical SMORES-EP and one-plane M-Blocks
 demonstrations.
@@ -330,6 +331,11 @@ description, so omitting it is identical to the defaults shown above:
   or a failed dock.
 - `break_force_n` releases the connection when the measured constraint force
   exceeds it. Null means the connection never breaks under load.
+- `break_limits` (optional) releases the connection when one axis of the
+  measured wrench exceeds its limit. It uses the `limits` field names plus
+  `max_torsion_moment_nm`. Unlike `limits`, which is descriptive datasheet
+  data and never breaks a connection, `break_limits` is consumed by the
+  runtime. Moment limits require a backend that reports constraint moments.
 
 `docs/docking_semantics.md` describes how the runtime evaluates these fields.
 The optional `metadata` and `docking_policy` mappings are independent: custom
@@ -375,9 +381,107 @@ non-compliant constraint.
 
 The backend-neutral runtime and simulation-validation profile support hinge
 intent. Backend support remains adapter-specific: MuJoCo executes it, while
-the mock backend explicitly refuses it. `ball` and `custom` values may still be
-recorded during authoring, but the simulation profile reports them as
-unsupported because their required parameters are not yet modeled.
+the mock backend explicitly refuses it.
+
+A ball connection names its pivot in connector A's frame:
+
+```yaml
+physical_connection:
+  constraint: ball
+  ball:
+    anchor_m: [0.0, 0.0, 0.0]
+```
+
+`ball:` may be omitted while authoring, but the simulation profile then reports
+the ball as unsupported. No backend executes `ball` yet: the mock refuses it.
+`custom` may be recorded during authoring, and the simulation profile reports it
+as unsupported because its parameters are not modelled.
+
+`limits` also accepts `max_torsion_moment_nm`. It is optional and, unlike the
+other three limits, not a simulation-profile completeness requirement.
+
+### Surface connectors
+
+A connector type is a point connector unless it declares
+`interface: surface`. A surface connector mates with point connectors anywhere
+on an analytic surface, and several point connectors can share it:
+
+```yaml
+connector_types:
+  shell:
+    interface: surface
+    gender: genderless
+    compatible_with: [magnet]
+    allowed_orientations: {mode: continuous, values_rad: []}
+    surface:
+      shape: sphere                 # the only shape in format 0.1
+      center_m: [0.0, 0.0, 0.0]     # in the connector frame
+      radius_m: 0.06
+      capacity: 12
+      min_separation_rad: 1.0471975511965976
+    physical_connection:
+      constraint: fixed
+  magnet:
+    compatible_with: [shell]
+    allowed_orientations: {mode: continuous, values_rad: []}
+    physical_connection:
+      constraint: fixed
+      surface_realizations: [driven_fixed, ball, static_fixed]
+```
+
+`surface` is required with `interface: surface` and forbidden otherwise. For a
+surface pair, `acceptance_region.position_tolerance_m` bounds the seat gap and
+`orientation_tolerance_rad` bounds tilt from the surface normal.
+
+**On a pair that includes a surface connector, `physical_connection.constraint`
+must be `fixed`.** The constraint that actually runs is chosen at commit from
+`surface_realizations`, in order, among those the backend supports, and is
+recorded on the commit event; so `constraint: fixed` next to a `ball`
+realisation is not a contradiction. `surface_realizations` is allowed only with
+`constraint: fixed`; values are `driven_fixed`, `ball`, `static_fixed` and the
+reserved `physical`. A pair that declares no list is realised as
+`static_fixed`. When both types declare a list, the lists must be identical.
+
+Validation rules for surface connectors:
+
+| Code | Severity | Rule |
+|---|---|---|
+| `connector.surface_orientation_discrete` | error | a surface type's `allowed_orientations` must be continuous or omitted |
+| `connector.surface_pair_invalid` | error | two surface types cannot be compatible |
+| `connector.surface_constraint_invalid` | error | a surface pair must author `constraint: fixed` |
+| `connector.surface_realizations_conflict` | error | two declared lists differ |
+| `connector.surface_realizations_unused` | completeness | a list on a type with no surface partner |
+| `connector.surface_realization_unsupported` | completeness | `physical` is listed |
+| `connector.surface_not_on_root_link` | completeness | the mock backend cannot place a surface connector off the root link |
+| `connector.magnet_height_joint_invalid` | error | not a prismatic joint of the module |
+| `connector.surface_drive_joint_invalid` | error | not a revolute or continuous joint of the module |
+
+"Completeness" issues are warnings in the authoring profile and errors in the
+simulation profile.
+
+Point connector instances may declare surface-related fields:
+
+```yaml
+connectors:
+  - id: upper
+    connector_type: magnet
+    parent_link: strut_body
+    local_pose: {xyz_m: [0.0, 0.0, 0.03], rpy_rad: [0.0, 0.0, 0.0]}
+    docking_axis: [0.0, 0.0, 1.0]
+    magnet_height_joint: lift_upper   # prismatic; h = offset - joint position
+    magnet_height_offset_m: 0.0
+    surface_contact_links: [strut_body, wheel_left, wheel_right]
+    surface_drive:
+      model: differential
+      left_joint: wheel_left
+      right_joint: wheel_right
+      wheel_radius_m: 0.01
+      track_m: 0.056
+```
+
+`surface_contact_links` is reserved for runtime contact exclusion and not yet
+consumed. `surface_drive` describes how two wheels slide the connector over a
+surface; the runtime does not yet feed it measured wheel rates.
 
 ## Capabilities
 

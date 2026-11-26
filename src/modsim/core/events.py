@@ -79,7 +79,9 @@ class DockCommitted(Event):
 
     A point-to-surface snap moves the point side. When that side is already
     connected to other modules, the commit keeps the measured pose instead of
-    moving them, and sets this flag.
+    moving them, and sets this flag. It is never true together with
+    ``alignment == AlignmentMode.NOMINAL``: ``alignment`` always describes the
+    committed pose, and this flag says nominal was requested but not applied.
     """
     attachment: SurfaceAttachment | None = None
     """Where the point side sat on the surface at commit; ``None`` for point-to-point."""

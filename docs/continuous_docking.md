@@ -1,12 +1,31 @@
-# Continuous docking 0.1 (draft for review)
+# Continuous docking 0.1
 
-**Status: reviewed draft, not implemented.** Phase 0 is complete and the
-user reviewed this draft on 2026-11-25. **§14 records the review decisions and
-amendments. Where §14 and an earlier section differ, §14 wins.** §14.4 defines
-the Phase 1 scope. Nothing in this document runs yet. It records what Phase 0
-found in the code and the contract that later phases will implement. Once it is accepted, each section becomes either
-part of this document's implemented contract or an amendment to
-`docking_semantics.md`, `backends.md` or `robot_pack_spec.md`.
+**Status: Phase 1 implemented; later phases are draft.** The schema, validator,
+core semantics and mock backend (§14.4) run and are tested. Sections and
+bullets marked *(Phase 2)* to *(Phase 5)* are still draft contract. **§14
+records the review decisions. Where §14 and an earlier section differ, §14
+wins;** amendments that are implemented have been folded into the sections
+they amend. The implemented parts are also stated in `docking_semantics.md`,
+`backends.md`, `robot_pack_spec.md` and `model_views.md`.
+
+Implemented in Phase 1:
+
+| Area | Code |
+|---|---|
+| Schema and validator rules (§3) | `robot_packs/schema.py`, `robot_packs/validator.py` |
+| Surface geometry and attachment state (§4, §6) | `core/surface.py`, `WorldState.surface_attachment` |
+| Point-to-surface acceptance and broad phase (§4) | `connectors/surface.py` |
+| Multi-occupancy, guards, side ordering (§5) | `core/entities.py`, `core/state.py`, `connectors/guards.py`, `connectors/docking.py` |
+| Realisation selection and retarget contract (§7) | `connectors/docking.py`, `backends/base.py`, `backends/mock.py` |
+| Per-axis break limits (§8.1) | `runtime/session.py` |
+| View fields and protocol version 4 (§9) | `model_views/`, `runtime/inspection_protocol.py` |
+| Slide driving (§11) | `runtime/surface_slide.py` |
+
+Tests: `tests/test_continuous_docking.py`,
+`tests/test_continuous_docking_schema.py`, `tests/test_surface_slide.py`,
+`tests/test_break_limits.py`, `tests/test_mock_constraint_types.py` and
+`tests/test_studio_surface_round_trip.py` (Studio edit, save and reload keep
+the new fields), using the synthetic pack in `tests/surface_fixtures.py`.
 
 Continuous (freeform) docking means a point connector can attach **anywhere**
 on a surface connector, several point connectors can share one surface, and an
@@ -39,22 +58,15 @@ be digitised before Phase 5.
 | Contact forces per body pair "exist" | **Wrong.** `supports_contact_forces` is advertised, but no snapshot field or API carries contact forces. | §7.5 |
 | `stepwise_fixed` fallback (re-create every k steps) | **Rejected.** It either breaks event-only mutation or spams dock, undock, split and merge events. It is replaced by `static_fixed`. | §7.1 |
 
-Two existing defects matter to this work and should be fixed in Phase 1
-whatever else is decided:
+Phase 0 found two existing defects. Both are fixed:
 
-- `MockBackendAdapter.capabilities()` advertises `BALL`, `CUSTOM` and
-  `COMPLIANT` ([mock.py:85-92](../src/modsim/backends/mock.py#L85-L92)), but
-  `create_physical_connection` welds every one of them rigidly. This is the
-  silent faking the contract forbids. Only the guard that refuses `ball` and
-  `custom` ([guards.py:21](../src/modsim/connectors/guards.py#L21)) hides it.
-  Enabling `ball` would expose it, so the mock must stop advertising what it
-  does not do.
-- `docking_semantics.md` §6 says a commit re-checks guards and acceptance. The
-  code reuses the proposal computed earlier in the same pass and relies on the
-  `engaged` set in `DockingManager.run`
-  ([docking.py:419](../src/modsim/connectors/docking.py#L419)). That is
-  equivalent for point connectors but not for capacity and separation, so
-  surface pairs need a real re-check at commit (§5.2).
+- The mock advertised `BALL`, `CUSTOM` and `COMPLIANT` but welded every one of
+  them rigidly. Because the guards accept `compliant`, a compliant dock on the
+  mock was silently faked as a weld (A6). The mock now advertises `{FIXED}` and
+  refuses every other type with `DockFailed(BACKEND_REFUSED)`.
+- `docking_semantics.md` §6 said a commit re-checks guards. The code reuses the
+  proposal from the same pass, which is equivalent for point connectors only.
+  Surface pairs are now re-guarded at commit (§5.2), and the contract says so.
 
 ## 2. What does not change
 
@@ -132,7 +144,21 @@ Additions to `schema.py`:
 | `PhysicalConnectionSpec` | `ball: BallConstraintSpec \| None` | required iff `constraint: ball` (§7.3) |
 | `ConnectorLimits` | `max_torsion_moment_nm` | new and optional. The model has no torsion field today ([schema.py:385](../src/modsim/robot_packs/schema.py#L385)). |
 | `DockingPolicySpec` | `break_limits: ConnectorLimits \| None = None` | opt-in per-axis breaking (§8) |
-| `ConnectorSpec` | `magnet_height_joint: Identifier \| None` | optional prismatic joint whose position gives the magnet height (§8.2) |
+| `ConnectorSpec` | `magnet_height_joint: Identifier \| None` and `magnet_height_offset_m` (h₀, default 0) | optional prismatic joint whose position gives the magnet height h = h₀ − q (§8.2, A8) |
+| `ConnectorSpec` | `surface_contact_links: tuple[str, ...] = ()` | links that touch a mated surface; reserved for contact exclusion (A4, Phase 2) |
+| `ConnectorSpec` | `surface_drive: SurfaceDriveSpec \| None` | `model: differential`, `left_joint`, `right_joint`, `wheel_radius_m`, `track_m` (§11) |
+
+**`ball` parameters are optional while authoring.** A bare `constraint: ball`
+was already valid authoring data, and an existing test relies on it, so
+`ball:` is not required by the schema. The simulation profile reports a ball
+without its anchor as `connector.physical_connection_unsupported`, and the
+guards refuse it, exactly as before. `ball:` is forbidden on any other
+constraint.
+
+**On a pair that includes a surface connector, the authored `constraint` must
+be `fixed`** (A7). The constraint that actually runs comes from the chosen
+entry in `surface_realizations` and is recorded on `DockCommitted.constraint`.
+A pair that declares no `surface_realizations` is realised as `static_fixed`.
 
 `SurfaceRealization` takes the values `driven_fixed`, `ball`, `static_fixed`
 and `physical`. In Phase 1, `physical` is accepted by the schema but rejected
@@ -147,8 +173,15 @@ by the simulation profile.
 - `surface_realizations` is meaningful only on a pair that includes a surface
   connector. On a point-only pair it is a warning in the authoring profile and
   an error in the simulation profile.
-- A `hinge` physical connection on a surface pair is an error, because a hinge
+- Any authored constraint other than `fixed` on a surface pair is an error
+  (`connector.surface_constraint_invalid`, A7). That includes `hinge`, whose
   line on a sphere is undefined.
+- `physical` in `surface_realizations` is a warning in the authoring profile and
+  an error in the simulation profile (`connector.surface_realization_unsupported`).
+- `magnet_height_joint` must name a prismatic joint of the module, and the
+  `surface_drive` joints must be revolute or continuous joints of the module.
+- `max_torsion_moment_nm` is not a completeness requirement, so existing packs
+  that declare normal, shear and bending only stay valid for simulation.
 - A surface connector must be on the module's **root link**, or the simulation
   profile reports that the mock backend cannot place it. This is the existing
   mock limitation ([mock.py](../src/modsim/backends/mock.py) reports every link
@@ -170,10 +203,11 @@ body and not in backend options.
   backend does not.
 - Backend options are engine-specific tuning and must not change semantics.
 
-Experiments may override the list per scene with an optional
-`SceneSpec.surface_realizations`. This follows the precedent of
-`connection_budget`, which already lives in the scene. The runtime selects the
-first entry the backend supports and records it (§7.1).
+*(Not in Phase 1.)* Experiments may override the list per scene with an
+optional `SceneSpec.surface_realizations`, following the precedent of
+`connection_budget`. §14.4 did not include it, so it is not implemented yet.
+The runtime selects the first entry the backend supports and records it
+(§7.1).
 
 ## 4. Point-to-surface geometry
 
@@ -321,9 +355,30 @@ are unaffected. The reasons:
 
 The views already sort endpoints themselves
 ([topology.py `_connection_edge`](../src/modsim/model_views/topology.py)).
-Phase 1 must confirm that no other consumer requires
-`connector_a < connector_b`. The docking and state code checked so far does
-not.
+Phase 1 confirmed that no consumer requires `connector_a < connector_b`: the
+only ordering comparison is `DockingManager._canonical`, which keys requested
+pairs, and planners key on connection ids. The requested-pair and detection
+sets keep canonical sorted keys; only the proposal and everything after it use
+point-first order.
+
+**Snapping moves side A for a surface pair.** Both backends' nominal snap moved
+module B, which for a surface pair is the node and would drag every other strut
+on it. `ConnectionRequest.snap_side` (default `"b"`) is set to `"a"` for surface
+pairs, so the strut moves. The MuJoCo adapter refuses side-A snapping until
+Phase 3 implements it, rather than moving the wrong module.
+
+**A surface snap happens only when the strut is alone.** Moving side A is safe
+only when side A's assembly is the strut by itself. If the strut already
+belongs to a larger assembly (for example it is docked to another node), the
+snap would drag that structure or, when the dock closes a loop such as a
+triangle of nodes and struts, could not be done at all. In that case the
+commit keeps the **measured** pose: `DockCommitted.alignment` is `measured` and
+`DockCommitted.nominal_alignment_withheld` is true. Every `DockCommitted` now
+records the alignment it actually used. `alignment` describes the committed
+pose; `nominal_alignment_withheld` is true exactly when nominal was requested
+and the pose is measured, so it is never true together with
+`alignment: nominal`. `docking_semantics.md` §7 tabulates the three cases. (The mock still refuses a side-A snap
+that would move a weld loop, as a defence; the core no longer asks for one.)
 
 ## 6. Attachment state
 
@@ -332,11 +387,14 @@ not.
 ```python
 @dataclass(frozen=True, slots=True)
 class SurfaceAttachment:
-    normal_local: Vec3        # n in the surface connector frame
-    frame_local: Transform    # A_q in the surface connector frame (spin included)
+    normal_local: Vec3  # n in the surface connector frame
+    frame_local: Transform  # A_q in the surface connector frame (spin included)
     seat_gap_m: float
-    magnet_height_m: float | None   # from magnet_height_joint, if declared
+    magnet_height_m: float | None  # from magnet_height_joint, if declared
 ```
+
+`polar_rad`, `azimuth_rad`, `spin_rad` and `spin_reference_degenerate` are
+derived properties of `SurfaceAttachment` (`modsim.core.surface`).
 
 (θ, φ, ψ) are **derived display coordinates**, not canonical state. The
 hypothesis stored (θ, φ, ψ). That chart is singular at the poles. Worse, by
@@ -381,7 +439,10 @@ events.
 
 `DockCommitted` gains `realization: SurfaceRealization | None = None` (§7.1)
 and `attachment: SurfaceAttachment | None = None`, holding the attachment at
-commit time. `UndockCommitted` is unchanged.
+commit time. `ConnectionRuntime` copies them as `realization` and
+`committed_attachment`. `UndockCommitted` is unchanged. The attachment at
+commit is measured before any nominal snap; the snapped pose appears in the
+live attachment from the next sample.
 
 ## 7. Backend contract
 
@@ -394,9 +455,12 @@ commit time. `UndockCommitted` is unchanged.
 | `static_fixed` | `FIXED` | `FIXED` | No sliding. Slide commands for this connection are refused with `SurfaceSlideError`. |
 | `physical` | none (core force field) | `supports_link_wrench` | Phase 5 (§10) |
 
-At commit, the runtime takes the first realisation in the resolved list whose
-capability the backend advertises. If none is supported, the dock fails with
-`DockFailed(BACKEND_REFUSED)` and a detail naming the list and the backend.
+At commit, the runtime tries the realisations in the resolved list whose
+capability the backend advertises, in order. A backend refusal falls through
+to the next one (A4), and only the last refusal fails the dock, with every
+refusal in the detail. If no listed realisation is advertised, the dock fails
+with `DockFailed(BACKEND_REFUSED)` and a detail naming the list and the
+backend.
 The chosen realisation is recorded on `DockCommitted` and `ConnectionRuntime`.
 `DockCommitted.constraint` records the executed constraint type (`fixed` or
 `ball`), so views and replay see what physically existed.
@@ -421,8 +485,9 @@ as for `SupportsJointCommands` and `SupportsModuleKinematics`. The seven-method
 class ConnectionRetarget:
     handle: ConstraintHandle
     connector_a_local: Transform
-    connector_b_local: Transform      # for surfaces: the new A_q in link B
+    connector_b_local: Transform  # for surfaces: the new A_q in link B
     relative_transform: Transform
+
 
 @runtime_checkable
 class SupportsConnectionRetarget(Protocol):
@@ -437,18 +502,26 @@ class SupportsConnectionRetarget(Protocol):
 - **Timing.** A retarget is a connection change under rule 5. It acts within
   `connection_change_delay_substeps` of the next step.
 - **Atomic, as joint commands are.** The whole batch is validated before any
-  update is applied. `False` means the handle is not held, and the session then
-  raises `BackendError` because that indicates an adapter bug.
+  update is applied. Each update gets a flag; `False` marks an update whose
+  handle is not held or that the backend refused, and then **no** update in the
+  batch was applied.
+- **Refusal handling.** The slide driver drops the refused updates, resends the
+  rest, stops sliding the refused connections and reports them in
+  `RuntimeSession.surface_slide_report.refusals`. It does not raise: a refused
+  loop retarget on the mock is a legitimate limitation, not an adapter bug. A
+  batch whose result count does not match raises `BackendError`.
 
-**MuJoCo.** Rewrite the weld's `eq_data` relpose, which is
+**MuJoCo** *(Phase 3)*. Rewrite the weld's `eq_data` relpose, which is
 `body_relative_transform` of the three new transforms. This is O(1) per
 connection, needs no recompile, and sets `_rows_stale`. The wrench reference is
 unchanged because side A is the point side (§5.3).
 
-**Mock.** The mock moves the connected component on side B as a rigid body to
-the new relative pose. Its welded groups already move rigidly. It refuses a
-retarget whose edge closes a loop in its weld graph, because a kinematic
-backend cannot resolve that, and it says so in the refusal.
+**Mock.** The mock moves the connected component that contains **side A** (the
+sliding strut), once this weld is ignored, as a rigid body so the commanded
+relative pose holds. Side B and everything else welded to it stay put, so the
+node and its other struts do not move (A1). It refuses a retarget when both
+sides stay connected without this weld (a loop), and
+`MockBackendAdapter.refusal_reason` explains why.
 
 ### 7.3 Ball (open question 6)
 
@@ -459,15 +532,23 @@ surface-only primitive:
 physical_connection:
   constraint: ball
   ball:
-    anchor_m: [0.0, 0.0, 0.0]   # in each endpoint connector frame
+    anchor_m: [0.0, 0.0, 0.0]  # in connector A's frame
 ```
 
-For a surface realisation, the core builds the spec itself. The anchor is the
-sphere centre, expressed in the surface frame on one side and, on the point
-side, as the matching point at commit (on −â at distance R + gap). The backend
-therefore sees an ordinary ball request.
+`anchor_m` is the pivot in **connector A's frame**; connector B's anchor is the
+same point carried by the committed relative transform. The draft said "in
+each endpoint connector frame", which is ambiguous when the two frames are not
+coincident. For a surface realisation, the core builds the spec itself: the
+anchor is the sphere centre expressed in the point connector's frame at commit.
+The backend therefore sees an ordinary ball request.
 
-**MuJoCo.** A new pool of single `mjEQ_CONNECT` equalities, sized by the
+**`ball` is free-sliding only in 0.1** (A3). A ball holds the radial distance,
+so nothing presses the wheels onto the shell, and wheel friction has no normal
+load. A `ball` connection slides and spins passively under external load;
+`set_surface_slide` on it raises `SurfaceSlideError`. Wheel-driven `ball` needs
+the magnet preload and therefore the link-wrench primitive (Phase 5).
+
+**MuJoCo** *(Phase 3)*. A new pool of single `mjEQ_CONNECT` equalities, sized by the
 already-existing `ConnectionBudget.ball`. Wrenches reuse the connect-row
 capture used for hinges. Like hinges, ball constraints keep body collision,
 which the wheels need for traction.
@@ -479,17 +560,21 @@ The other existing types are not used here. `compliant` remains deferred: it
 needs the `solref` conversion described in `docking_semantics.md` §9. `custom`
 is not used.
 
-### 7.4 Contact exclusion
+### 7.4 Contact exclusion *(Phase 2; decided by A4)*
 
-Under `driven_fixed`, the weld claims MuJoCo's paired exclusion for the two
-constrained bodies (strut body and shell). The wheels and casters stay in
-contact with the shell. If the retarget follows wheel odometry exactly, wheels
-roll without slipping and friction stays small. The one-step lag may still
-produce spurious load. Phase 3 will measure this before deciding anything. If
-an exclusion is needed, it is added as an optional field
-`ConnectionRequest.extra_contact_exclusions: tuple[tuple[str, str], ...]`
-(link pairs), refused by a backend that cannot honour it. It is not a separate
-per-step call, because exclusions change only at dock and undock.
+Under `driven_fixed`, any wheel contact that does not match the odometry loads
+the weld, and that load feeds the per-axis break check. So:
+
+- `ConnectionRequest.extra_contact_exclusions: tuple[tuple[str, str], ...]` is
+  added in Phase 2, defaulting to `()`;
+- for a `driven_fixed` surface connection, the core fills it with every
+  (point-side link, surface link) pair whose point-side link is listed in
+  `ConnectorSpec.surface_contact_links` (FreeSN: the four wheels and the strut
+  body). The schema field exists from Phase 1; nothing consumes it yet;
+- a backend that cannot honour the exclusions refuses the request, and the
+  runtime falls through to the next realisation (already implemented, §7.1);
+- Phase 3 measures the residual weld wrench during a steady slide as a
+  regression check.
 
 ### 7.5 Contact forces
 
@@ -507,12 +592,14 @@ These are defaulted fields after the existing ones, as was done for hinges:
 
 ```python
 surface_realization: SurfaceRealization | None = None
-surface_center_link_b: Vec3 | None = None   # informational; ball anchors are in the spec
+surface_center_link_b: Vec3 | None = None  # informational; ball anchors are in the spec
 ```
 
 `connector_b_local` carries A_q, `physical_connection` carries the realised
-spec (`fixed`, or `ball` with anchors), and A is the point side. A backend that
-ignores the two new fields still builds the correct constraint.
+spec (`fixed`, or `ball` with its anchor), and A is the point side. A backend
+that ignores the two new fields still builds the correct constraint. A third
+field, `snap_side: Literal["a", "b"] = "b"`, says which side a nominal snap
+moves (§5.3); a backend that cannot snap side A must refuse such a request.
 
 **Open question 1, answered.** Reuse `ConnectionRequest`. The hinge
 precedent added only a sub-spec under `physical_connection` and one defaulted
@@ -525,12 +612,12 @@ branch on it for no physical difference.
 
 | Field | mock | MuJoCo |
 |---|---|---|
-| `supports_connection_retarget` (new) | yes | yes (Phase 3) |
-| `supported_constraint_types` | `{FIXED}`: **remove** `BALL`, `CUSTOM` and `COMPLIANT` (§1) | `{FIXED, HINGE, BALL}` (Phase 3) |
+| `supports_connection_retarget` (new) | yes | not yet (Phase 3) |
+| `supported_constraint_types` | `{FIXED}` | `{FIXED, HINGE}`; `BALL` in Phase 3 |
 | `supports_link_wrench` (new, Phase 5) | no | Phase 5 |
 
-`modsim.runtime.requirements` gains `SURFACE_SLIDE`, which is satisfied by
-`supports_connection_retarget` only (A3).
+`BackendRequirements` gains `surface_slide`, which only
+`supports_connection_retarget` satisfies (A3).
 
 ## 8. Load and release
 
@@ -540,28 +627,43 @@ branch on it for no physical difference.
 `ConnectorLimits` is not reused for breaking, because the generic cube,
 SMORES-EP and M-Blocks packs already declare `limits` as datasheet
 documentation. M-Blocks declares a 23 N normal limit, and consuming it could
-break the existing hinge pivots. This has not been measured. With `break_limits` declared,
-`_evaluate_overloads`
-([session.py:367](../src/modsim/runtime/session.py#L367)) resolves the wrench in
-connector A's frame and checks four quantities:
+break the existing hinge pivots. This has not been measured. With `break_limits`
+declared, `RuntimeSession._evaluate_overloads` decomposes the wrench about
+connector A's **world docking axis** â (the axis is authored in the parent-link
+frame and need not be the connector frame's z):
 
 ```text
-normal   |F_z|            shear    |(F_x, F_y)|
-torsion  |M_z|            bending  |(M_x, M_y)|
+normal   |F·â|            shear    |F − (F·â)â|
+torsion  |M·â|            bending  |M − (M·â)â|
 ```
 
-For each quantity, the lower limit of the two sides governs, as with
-`break_force_n`. `ConnectorOverloaded` gains
-`quantity: str = "force_magnitude"`, so existing events keep their meaning.
+The whole-force `break_force_n` check runs first, as before. For each axis
+quantity, the lower limit of the two sides governs. The first exceeded quantity
+is reported as `ConnectorOverloaded(quantity=...)` with values in that
+quantity's unit, and the connection is released. The wrench is read only when
+`break_limits` are declared, because a backend may compute moments lazily.
+`ConnectorOverloaded.quantity` defaults to `"force_magnitude"`, so existing
+events keep their meaning, and a per-axis event does not overwrite
+`ConnectionRuntime.measured_force_n`.
+
 Checking a moment limit needs `supports_constraint_torques`. On a backend
-without it, a moment limit is a session-creation error, not a silently skipped
-check. The mock currently reports `torque_nm=(0,0,0)` while advertising no
-torque support. It must report `None` for consistency.
+without it, a moment limit is a `BackendError` from `RuntimeSession.create`,
+raised before the backend loads, not a silently skipped check. The mock now
+reports `torque_nm=None`, matching its capabilities; `set_constraint_force`
+also accepts a world-frame force vector.
+
+**Every exceeded axis releases the connection; that is an approximation**
+(A5). Real FreeSN slips when shear or torsion exceeds its limit and detaches
+only under excess normal force or bending. Slip under load is out of scope
+until `physical` mode.
 
 ### 8.2 Height-dependent hold (optional in Phase 3, required in Phase 5)
 
 If the point connector declares `magnet_height_joint`, the magnet height
-h = h₀ − q_lift is read from that joint's state. The sign follows the CAD
+h = h₀ − q_lift is read from that joint's state, with h₀ the defaulted
+`magnet_height_offset_m` (0 for FreeSN, whose CAD zero pose has h = 0). Phase 1
+implements the reading (`WorldState.magnet_height_m` and
+`SurfaceAttachment.magnet_height_m`); the force curve below is Phase 5. The sign follows the CAD
 notes: positive lift protrudes the magnet. The axial limit becomes F(h), and
 the shear limit becomes μ·F(h). Retracting the magnets therefore releases the
 connection through the ordinary overload path. In constrained realisations the
@@ -577,7 +679,9 @@ about 79 N normal strength when seated on the wheels, and under 30 N by about
 
 - `DockedConnectionEdge` gains `attachment: SurfaceAttachmentDTO | None = None`
   (normal in the surface frame, θ and φ, ψ with a degeneracy flag, seat gap,
-  magnet height) and `realization: str | None = None`. Edge and node sets are
+  magnet height) and `realization: SurfaceRealization | None = None`. Both are
+  filled for topology and lattice edges. A lattice edge's surface endpoint has
+  no face label (`source_face`/`target_face` and their residuals are `None`). Edge and node sets are
   unchanged. The topology builder's cache token already includes
   `sample_sequence`, so a sliding attachment refreshes the view without a
   topology revision.
@@ -587,10 +691,11 @@ about 79 N normal strength when seated on the wheels, and under 30 N by about
   adding these fields changes the wire format. **The Runtime Inspector protocol
   moves to version 4.** The framing tests in
   `tests/test_runtime_inspection_protocol.py` are updated accordingly.
-- Discrete identity is a separate builder, `spherical_attachment`, configured
+- *(Deferred to Phase 2.)* Discrete identity is a separate builder,
+  `spherical_attachment`, configured
   with `subdivision: icosphere_2`. A frequency-2 icosphere has 42 vertices and
   80 faces, which matches the T-RO paper's 42 sensors and 80 spherical
-  triangles. That match is an inference and must be confirmed against the paper.
+  triangles (confirmed, §14.1).
   The builder reports each attachment's triangle index and residual and derives
   its result without writing to `WorldState`, as the cubic lattice does.
 - Rendering the attachment in the inspector (a sphere glyph with markers) is
@@ -619,15 +724,38 @@ The core holds a `SurfaceSlideDriver` beside the `DockingManager` in
   and a spin rate (rad/s). It is validated like a joint command. An unknown
   connection, a non-sliding realisation or non-finite values raise
   `SurfaceSlideError`.
-- A drive model on the point `ConnectorSpec` turns wheel joint velocities into
-  that command. In Phase 3 it is `surface_drive: {model: differential,
-  left_joint, right_joint, wheel_radius_m, track_m}`; the FreeSN geometry is
-  set in Phase 4.
+- Only `driven_fixed` connections accept commands. `static_fixed` and `ball`
+  raise `SurfaceSlideError` (A3), as does a backend without
+  `supports_connection_retarget`. Commands persist until
+  `clear_surface_slide` or until the connection is released.
+- A drive model on the point `ConnectorSpec` turns wheel joint rates into that
+  command: `surface_drive: {model: differential, left_joint, right_joint,
+  wheel_radius_m, track_m}`. Phase 1 provides it as the pure function
+  `differential_slide_command`; nothing feeds it measured wheel rates until
+  Phase 3. The FreeSN geometry is set in Phase 4.
 - Step order: `adapter.step` → `snapshot` → `ingest` → overloads → docking pass
   → **slide update**. The slide update integrates each `driven_fixed` command
-  on the sphere and sends one retarget batch. Running after the docking pass
-  means connections released in this step are skipped, and connections
-  committed in this step start sliding at the next one.
+  on the sphere (a rotation about the centre plus a spin about the normal) and
+  sends one retarget batch. Running after the docking pass means connections
+  released in this step are skipped, and connections committed in this step
+  start sliding at the next one. The world measures each retarget at the next
+  ingest. The commanded target is integrated from the measured attachment at
+  the time the command was set.
+
+**Sliding is guarded** (A2). Before sending a batch, the update checks each
+target against the other connections on the same surface: their new targets if
+they were processed earlier in this step, otherwise their measured attachments.
+
+- A target inside `min_separation_rad` of another connection is clamped to the
+  boundary along the commanded great circle (found by bisection, so it never
+  lands inside). The spin part of the command still applies.
+- An attachment already inside the boundary (for example after physics pushed
+  it there) may only move away; a move that would bring it closer is dropped.
+- Commands are processed in sorted connection-id order, so two struts closing
+  on each other in one step give the same result on every run.
+
+Clamps are reported in `RuntimeSession.surface_slide_report.clamps`, not as
+events; like the command, a clamp is controller-side (§6.3).
 
 ## 12. Test plan
 
@@ -656,8 +784,11 @@ strut module with two root-link point connectors)
 - side ordering: A is the point side even when its id sorts after the shell's;
 - event log: a 1,000-step slide adds zero events; replaying the events plus the
   samples reproduces the attachments;
-- the mock no longer advertises `ball`, `custom` or `compliant`, and existing
-  tests that relied on those flags are found and updated.
+- the mock no longer advertises `ball`, `custom` or `compliant`. No existing
+  test relied on those flags, so none was changed for A6.
+
+All of the Phase 1 items above, and the amendment tests listed in §14.4, are
+implemented.
 
 **Phase 2: contract and conformance** (`tests/test_backend_conformance.py`)
 
@@ -685,6 +816,10 @@ strut module with two root-link point connectors)
 
 **Throughout:** ruff, all three pyright projects and the full pytest suite
 pass. SMORES-EP and M-Blocks tests are untouched.
+
+The only existing test changed in Phase 1 is
+`tests/test_runtime_inspection_protocol.py`, whose framing cases name the
+protocol version and were moved to version 4 (14.2 item 3).
 
 ## 13. Open items for the reviewer
 
@@ -744,91 +879,25 @@ copies are in `Claude outputs/freesn_reference/papers/` (gitignored).
 
 ### 14.3 Amendments
 
-**A1. The mock retarget moves side A, not side B (amends §7.2).** Side A is the
-point connector, the strut that is sliding. Moving side B's component would
-drag the node and every other strut on it. The mock moves the connected
-component that contains side A once this edge is removed, as a rigid body, so
-the commanded relative pose holds. It still refuses a retarget when both sides
-remain in one component without this edge (a loop), and says so in the
-refusal.
+Implemented amendments are folded into the sections they amend; each keeps a
+one-line note here.
 
-**A2. Sliding is guarded (amends §5.2 and §11).** Separation is enforced while
-sliding, not only at commit. Before the slide update sends a batch, it checks
-each commanded target attachment against the measured attachments of the other
-connections on the same surface:
-
-- a target inside `min_separation_rad` of another connection is **clamped** to
-  the boundary along the commanded direction, and the scenario status reports
-  it; the move is never applied past the boundary;
-- if the current attachment is already inside the boundary (for example after
-  physics pushed it there), the command may only move it away;
-- commands are processed in sorted connection-id order, so the result is
-  deterministic when two struts close on each other in one step.
-
-Without this, a kinematic `driven_fixed` slide can drive one strut through
-another, and the resulting constraint forces would trip the break limits. The
-clamp is not logged as an event; it is controller-side, like the slide command
-itself (§6.3).
-
-**A3. `ball` is free-sliding only (amends §7.1 and §7.3).** A ball constraint
-holds the radial distance, so nothing presses the wheels onto the shell. On
-FreeSN that pressing is the magnet's preload. Without it, wheel friction has no
-normal load and the wheels cannot drive. In 0.1:
-
-- `ball` means passive slide and spin under external load. `SURFACE_SLIDE`
-  (§7.7) is satisfied **only** by `supports_connection_retarget`, not by `BALL`;
-- `set_surface_slide` on a `ball` connection raises `SurfaceSlideError`, the
-  same as `static_fixed`;
-- wheel-driven `ball` needs the magnet preload, which needs the link-wrench
-  primitive. That is deferred to Phase 5 together with `physical`.
-
-**A4. Contact exclusion under `driven_fixed` is decided now (amends §7.4).**
-The draft deferred this to a Phase 3 measurement. It is a correctness issue for
-overload, because any wheel contact that does not match the odometry loads the
-weld, and that load feeds the per-axis break check. Decision:
-
-- `ConnectionRequest.extra_contact_exclusions: tuple[tuple[str, str], ...]` is
-  added in the Phase 2 contract work, defaulting to `()`;
-- for a `driven_fixed` surface connection, core fills it with every
-  (point-side link, surface link) pair whose point-side link is listed in a new
-  optional `ConnectorSpec.surface_contact_links` (FreeSN: the four wheels and
-  the strut body, which carries the casters). Wheel and caster contacts against
-  the shell are therefore excluded, because the weld already does their job;
-- a backend that cannot honour the exclusions refuses the request. Under the
-  §7.1 selection, the runtime then falls through to the next realisation;
-- Phase 3 still measures the residual weld wrench during a steady slide, now as
-  a regression check (bound: well below the break limits), not as the decision.
-
-**A5. Breaking on shear or torsion is an approximation; document it (amends
-§8.1).** Real FreeSN **slips** when shear or torsion exceeds the limit, and
-**detaches** when the normal force or bending moment does. In 0.1 every
-exceeded axis releases the connection through the ordinary overload path. This
-is conservative and simple. State it in the contract and in
-`ConnectorOverloaded.quantity` documentation. Slip under load is out of scope
-until `physical` mode.
-
-**A6. The mock's silent faking is already live (amends §1).** The guards'
-`SUPPORTED_CONSTRAINTS` includes `COMPLIANT`
-([guards.py](../src/modsim/connectors/guards.py)), so today a `compliant`
-connection on the mock passes the guards and is welded rigid with no warning.
-It is not only hidden. The Phase 1 fix covers all three types: the mock
-advertises `{FIXED}` only, and `compliant`, `ball` and `custom` requests are
-refused with `BACKEND_REFUSED`. Search the tests and example packs for anything
-that relies on the old set, and update it.
-
-**A7. Authored `constraint` on surface pairs (clarifies §3.1 and §3.2).** On a
-pair that includes a surface connector, `physical_connection.constraint` must
-be `fixed`. The constraint that actually runs comes from the chosen entry in
-`surface_realizations` and is recorded on `DockCommitted.constraint` (§7.1).
-Add one sentence to `robot_pack_spec.md` saying this, so `constraint: fixed`
-next to a `ball` realisation does not read as a contradiction. The validator
-rejects any other authored constraint on a surface pair.
-
-**A8. Magnet-height source (clarifies §8.2).** The relation h = h₀ − q_lift
-uses the CAD convention: positive lift protrudes the magnet, and h ∈ [−15,
-10] mm with h = 0 at the CAD zero pose. h₀ is therefore 0 for FreeSN. Make h₀
-an explicit, defaulted field next to `magnet_height_joint` rather than a
-constant in code.
+- **A1** (§7.2): the mock retarget moves side A's component, not side B's.
+  Implemented.
+- **A2** (§5.2, §11): separation is enforced while sliding, by clamping at the
+  boundary. Implemented.
+- **A3** (§7.1, §7.3, §7.7): `ball` is free-sliding only; only retarget
+  satisfies `surface_slide`. Implemented.
+- **A4** (§7.4): contact exclusion under `driven_fixed` is decided. The schema
+  field and the fall-through on refusal are implemented; the request field and
+  its use are Phase 2.
+- **A5** (§8.1): every exceeded axis releases; documented as an approximation.
+  Implemented.
+- **A6** (§1): the mock advertises and realises `fixed` only. Implemented as its
+  own commit; no existing test relied on the old set.
+- **A7** (§3.1, §3.2): a surface pair must author `constraint: fixed`.
+  Implemented, and stated in `robot_pack_spec.md`.
+- **A8** (§8.2): h₀ is the defaulted `magnet_height_offset_m`. Implemented.
 
 ### 14.4 Phase 1 scope
 

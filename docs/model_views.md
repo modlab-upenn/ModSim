@@ -172,6 +172,15 @@ graph edges. Each committed edge copies its physical constraint type from the
 canonical runtime connection, so a fixed bond and a transient hinge remain
 distinguishable in generated topology and lattice DTOs.
 
+A point-to-surface connection's edge also carries its `realization` and its
+live `attachment` (`SurfaceAttachmentDTO`: the normal in the surface frame,
+polar and azimuth angles, spin with a flag where its reference degenerates,
+seat gap and magnet height). Both are `None` on point-to-point edges. Because
+builders already observe sample revisions, a sliding attachment refreshes the
+view without a topology revision. In the cubic-lattice view a surface endpoint
+has no lattice face: its `source_face`/`target_face` and residual are `None`,
+and the renderer draws the edge from the module centre.
+
 ## Runtime Inspector consumer
 
 `modsim runtime PACK` is the first live consumer of generated model views. In

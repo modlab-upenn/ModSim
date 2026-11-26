@@ -8,7 +8,10 @@ is a roadmap; when the two differ, this document and the code under
 Format 0.1 covers the full semantic pipeline against the mock backend and fixed
 plus hinge connection execution under the optional MuJoCo adapter. Section 9
 records the implemented reserved-constraint bridge and its remaining physics
-limitations.
+limitations. Point-to-surface (continuous) docking, where a point connector
+attaches anywhere on a surface connector that several connectors share, runs
+on the core and the mock backend; §4.5 and §5.1 summarise it and
+`continuous_docking.md` is its full contract.
 
 ## 1. What ModSim owns and what a backend owns
 
@@ -39,9 +42,13 @@ semantics identical across the mock backend, MuJoCo, and anything later.
 1. adapter.step(dt)                 backend advances physics
 2. adapter.snapshot()               backend reports link poses, twists, forces
 3. world.ingest(snapshot)           adopt the sample; module roots and connector frames go stale
-4. overload evaluation              release connections past their break force
+4. overload evaluation              release connections past their break force or limits
 5. docking.run(world, adapter)      releases, then detection, then commits
+6. surface slide update             retarget sliding point-to-surface connections
 ```
+
+Step 6 runs whether or not connectors are processed, and only when slide
+commands are set (see `continuous_docking.md` §11). It writes no events.
 
 Docking decisions are always made against the state the backend just reported,
 never against a stale snapshot. Requested releases are processed before new
@@ -110,6 +117,14 @@ command produces an informative `DockFailed` rather than silence.
 Candidate pairs are emitted in sorted order, so the same world state always
 evaluates candidates in the same sequence.
 
+Surface connectors are left out of that hash, because a sphere's connector
+origin is its centre, a radius away from any mate. A second hash holds the
+centres of surface connectors that still have capacity, with cell size
+max(radius) + max(tolerance); each free point connector compatible with a
+surface type queries the 27 cells around it and keeps a pair when it lies
+within radius + tolerance of a centre. The expected cost is linear in point
+connectors plus surfaces.
+
 ## 3. Compatibility
 
 Compatibility is a type-level question, answered before any geometry, because it
@@ -174,6 +189,29 @@ Configuration recognition, topology equivalence, and reconfiguration planning al
 depend on knowing which discrete mating state was used, and reconstructing it
 after the fact is lossy.
 
+### 4.5 Point-to-surface pairs
+
+For a point connector against a surface connector, the core builds a *virtual
+attachment frame* at the closest point q on the sphere: z along the outward
+normal n, x along the point connector's x projected onto the tangent plane.
+That frame stands in for the surface and the four criteria above are evaluated
+unchanged, with the point connector always on side A. As a result:
+
+| Criterion | Measures |
+|---|---|
+| `position` | the seat gap \|p − c\| − R |
+| `axis_alignment` | tilt between the point's docking axis and −n |
+| `orientation` | roll is recorded; error is zero (both types are continuous) |
+| `relative_velocity` | point velocity against the surface body's velocity **at q**, including its lever arm |
+
+Nominal snapping uses the existing `nominal_relative_transform` against the
+virtual frame with zero roll, which removes gap and tilt and keeps the tangent
+position and spin. The request's `snap_side` is `"a"`, so the strut moves to the
+surface instead of the node moving to the strut. The snap is applied only
+when the strut is alone in its assembly; otherwise the commit keeps the measured pose, and `DockCommitted`
+records `alignment: measured` with `nominal_alignment_withheld: true`. Every
+`DockCommitted` records the alignment it actually used.
+
 ## 5. Guards
 
 Guards are the policy layer between "the geometry works" and "we should do it."
@@ -184,17 +222,31 @@ geometrically valid while the runtime still refuses to latch.
 |---|---|
 | `self_pair` | a connector cannot dock to itself |
 | `same_module` | both connectors belong to one module |
-| `already_engaged` | one connector already holds a connection |
-| `cooldown` | `redock_cooldown_s` has not elapsed |
+| `already_engaged` | a point connector already holds a connection |
+| `surface_full` | a surface connector already holds `capacity` connections |
+| `surface_separation` | the attachment is closer than `min_separation_rad` to another connection on the surface |
+| `cooldown` | `redock_cooldown_s` has not elapsed (point connectors only) |
 | `physical_connection_undefined` | neither type declares a connection, or the two conflict |
-| `physical_connection_unsupported` | `ball` or `custom` — parameters not modelled in 0.1 |
+| `physical_connection_unsupported` | `custom`, a `ball` without its anchor, or a surface pair not authored as `fixed` |
 | `command_required` | not both types are auto-latching and no command was issued |
 
 Conflicting `physical_connection` intent is rejected rather than resolved. A pair
 where one end wants a rigid weld and the other wants compliance has no defensible
 default, so it is surfaced as an authoring error. Hinge ends must also declare
 the same complete `HingeConstraintSpec`; a disagreement about axis or anchor
-separation is rejected.
+separation is rejected. The same holds for ball anchors and for two non-empty
+`surface_realizations` lists that differ.
+
+### 5.1 Multi-occupancy
+
+A point connector holds at most one connection. A surface connector holds up
+to its `capacity`, listed in `ConnectorInstance.connection_ids`;
+`connection_id` returns the sole connection or `None`. `is_engaged` means
+"holds at least one connection", and `has_capacity` says whether a connector
+can accept another. A surface connector is `DOCKED` while it holds any
+connection and returns to `FREE` only when the last one is released. Cooldowns
+after an undock or a failed dock apply to the point side only, so one strut
+leaving does not lock out the others.
 
 **Loop closure** — docking two modules that already share an assembly — is
 *allowed* but flagged with a warning on the `GuardResult`. Closed kinematic
@@ -211,7 +263,7 @@ A logical connection is created **only after** the backend confirms the physical
 constraint exists.
 
 ```text
-1. re-check guards and acceptance against the current snapshot
+1. evaluate guards and acceptance against the current snapshot
 2. build a ConnectionRequest
 3. outcome = adapter.create_physical_connection(request)
 4. success -> DockCommitted, then AssemblyMerged if two components joined
@@ -228,11 +280,27 @@ If the backend reports `supports_runtime_constraints: false`, the attempt is
 refused before it is made. ModSim degrades explicitly rather than silently
 claiming connections that no physics engine is enforcing.
 
-Failure sets both connectors to `FAILED` and starts their cooldown. `FAILED` is
+Failure sets each point connector in the pair to `FAILED` and starts its
+cooldown; a surface connector is never marked `FAILED` and takes no cooldown,
+so one failed strut does not block the others. `FAILED` is
 cleared at the next `ingest`, so a rejected attempt can never strand a connector.
 
-Within one pass a connector may commit at most once. Because proposals are
-evaluated in sorted order, which pair wins is deterministic.
+Proposals are evaluated once per pass against the current snapshot. Within one
+pass a point connector may commit at most once. A surface connector may accept
+several commits in one pass, so before each surface pair commits its capacity
+and separation guards are evaluated again, including the commits made earlier
+in the pass. Because proposals are evaluated in sorted order, which pair wins is
+deterministic.
+
+**Surface realisations.** A point-to-surface pair is authored as `fixed` and
+lists its preferred realisations (`driven_fixed`, `ball`, `static_fixed`). The
+commit tries each one the backend advertises, in order; a refusal falls
+through to the next. The executed constraint (`fixed` or `ball`) is recorded on
+`DockCommitted.constraint`, and the chosen realisation and the attachment at
+commit on `DockCommitted.realization` and `DockCommitted.attachment`. The live
+attachment is measured state: `WorldState.surface_attachment(connection_id)`
+resolves it lazily from the current sample, and sliding never writes an
+event.
 
 ### 6.1 Event-only mutation
 
@@ -265,6 +333,23 @@ The `snap_to_nominal` flag travels on the `ConnectionRequest`, so the backend
 performs the actual repositioning. The world sees the snapped pose on the next
 ingest, not in the step that committed the dock.
 
+**What `DockCommitted` records.** The connector types' policy says what was
+*requested*; the event says what was *applied*:
+
+| Requested (either type `nominal`?) | Snap applied? | `alignment` | `nominal_alignment_withheld` |
+|---|---|---|---|
+| no | no | `measured` | `false` |
+| yes | yes | `nominal` | `false` |
+| yes | no: a point-to-surface strut that is not alone in its assembly | `measured` | `true` |
+
+So `alignment` is always the alignment of the committed `relative_transform`,
+and `nominal_alignment_withheld` is true exactly when nominal alignment was
+requested but the committed pose is the measured one. The flag is never true
+together with `alignment: nominal`. Only point-to-surface pairs can withhold a
+snap (§4.5); for point-to-point pairs the flag is always false. Events
+recorded before these fields existed read as `measured`/`false`, so a replay
+that needs the requested policy must take it from the Robot Pack.
+
 ## 8. Undocking, assemblies, and load
 
 Undocking removes the backend constraint first, then applies `UndockCommitted`,
@@ -288,6 +373,15 @@ a valid assembly of size one.
 declares `break_force_n`, a measured force above the limit emits
 `ConnectorOverloaded` and releases the connection. The *lower* of the two
 declared break forces governs: a joint is only as strong as its weakest half.
+
+A connector type may also opt in to per-axis `docking_policy.break_limits`
+(normal, shear, bending, torsion). The wrench is decomposed about connector A's
+docking axis, and the first exceeded quantity is reported in
+`ConnectorOverloaded.quantity` and releases the connection. The descriptive
+`limits` never break a connection. Moment limits need a backend that reports
+constraint moments; otherwise `RuntimeSession.create` raises `BackendError`.
+Releasing on excess shear or torsion is an approximation for a magnetic
+connector that would slip instead (`continuous_docking.md` §8.1).
 
 ## 9. The MuJoCo backend
 
@@ -431,8 +525,15 @@ Every link of a module reports the module pose, because the mock has no
 articulated kinematics. Modules with internal joints therefore need a real
 backend before their non-root connectors mean anything.
 
-It also exposes `fail_next_connection` and `set_constraint_force` so the failure
-and overload paths are testable without a physics engine.
+It also exposes `fail_next_connection` and `set_constraint_force` (a scalar or a
+world-frame force vector) so the failure and overload paths are testable
+without a physics engine. Its wrenches report the moment as unmeasured
+(`None`).
+
+The mock implements connection retargeting for sliding point-to-surface
+connections: it moves the welded component on side A (the strut) so the new
+relative pose holds, and refuses a retarget or a side-A snap that would have to
+move a closed loop of welds.
 
 ## 11. Running a session
 
@@ -519,7 +620,8 @@ print(session.metrics().as_dict())
 an Isaac Sim adapter
 articulated kinematics in the mock backend
 ALIGNING and LOAD_BEARING lifecycle transitions driven by the engine
-ball and custom physical connections
+custom physical connections, and ball execution in any backend
+point-to-surface retarget, ball and side-A snapping in the MuJoCo adapter
 compliant connection translation in the MuJoCo adapter
 connector load estimates beyond a single constraint-force magnitude
 constraint moment/wrench reporting beyond scalar equality-force conventions
