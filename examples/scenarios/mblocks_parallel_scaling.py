@@ -374,7 +374,7 @@ def run(
             for session in sessions:  # ModSim state sync (snapshot -> WorldState)
                 snapshot = session.adapter.snapshot()
                 session.world.ingest(snapshot)
-                tick_events.append(session._evaluate_overloads(snapshot.constraint_forces_n))
+                tick_events.append(session._evaluate_overloads(snapshot))
             t2 = time.perf_counter()
             active = 0
             for k, (view, scenario) in enumerate(zip(scoped, scenarios, strict=True)):

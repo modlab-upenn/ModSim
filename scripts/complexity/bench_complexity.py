@@ -135,7 +135,7 @@ def tick_stages(session: RuntimeSession, dt: float, ticks: int) -> dict[str, flo
         t2 = time.perf_counter()
         world.ingest(snapshot)
         t3 = time.perf_counter()
-        session._evaluate_overloads(snapshot.constraint_forces_n)
+        session._evaluate_overloads(snapshot)
         t4 = time.perf_counter()
         session.process_docking()
         t5 = time.perf_counter()
