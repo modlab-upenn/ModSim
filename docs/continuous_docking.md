@@ -677,6 +677,8 @@ strut module with two root-link point connectors)
 - ball pool exhaustion refuses the connection; ball wrenches;
 - per-axis overload: a load applied along each axis breaks only on that axis's
   limit;
+- side-A nominal snapping: a lone strut's nominal surface dock moves the strut
+  (root free joint) and not the node, replacing the current refusal;
 - the `driven_fixed` slide follows wheel odometry within a tolerance, and the
   weld wrench stays below a bound during a steady slide (this measurement
   decides §7.4).
@@ -829,6 +831,32 @@ an explicit, defaulted field next to `magnet_height_joint` rather than a
 constant in code.
 
 ### 14.4 Phase 1 scope
+
+**Delivered**, with these differences from the list below:
+
+- the `spherical_attachment` builder (item 9) is deferred to Phase 2, as this
+  section allows;
+- `ball:` parameters are optional while authoring (§3.1), the ball anchor is
+  expressed in connector A's frame (§7.3), and `ConnectionRequest` gained
+  `snap_side` so a surface snap moves the strut (§5.3);
+- a surface snap is applied only when the strut is alone in its assembly;
+  otherwise the commit keeps the measured pose and records that on
+  `DockCommitted` (§5.3);
+- the MuJoCo adapter changed in one place only: it refuses side-A snapping
+  rather than moving the wrong module.
+
+**Deferred:**
+
+- `SceneSpec.surface_realizations`, the per-scene override of the realisation
+  list (§3.3). It was not in the Phase 1 list. Schedule it with the Phase 2
+  contract work or later.
+- **Side-A snapping in MuJoCo is a Phase 3 item.** Until then the adapter
+  refuses any request with `snap_side="a"`, so on MuJoCo a nominal surface
+  dock by a lone strut is refused through ordinary two-phase commit (and falls
+  through to the next realisation, which is refused the same way). Measured
+  alignment is unaffected. Phase 3 must move the strut's root free joint so
+  the requested pose holds, as `_snap_to_nominal` already does for side B.
+- The `spherical_attachment` builder (Phase 2, see above).
 
 Phase 1 = schema, validator, core semantics and the mock backend. It runs
 without MuJoCo. Implement, in this order, and stop for review at the end:
