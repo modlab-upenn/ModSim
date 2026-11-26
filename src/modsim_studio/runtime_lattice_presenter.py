@@ -164,10 +164,10 @@ class PresentedLatticeConnection:
     target: str
     connector_a: str
     connector_b: str
-    source_face: LatticeFace
-    target_face: LatticeFace
-    source_face_residual_rad: float
-    target_face_residual_rad: float
+    source_face: LatticeFace | None
+    target_face: LatticeFace | None
+    source_face_residual_rad: float | None
+    target_face_residual_rad: float | None
     path: tuple[Point2D, ...]
     marker: Point2D
     selected: bool = False
@@ -750,7 +750,10 @@ def _measured_lattice_position(
     )
 
 
-def _face_vector(face: LatticeFace) -> Vec3:
+def _face_vector(face: LatticeFace | None) -> Vec3:
+    # A surface endpoint has no lattice face; draw the edge from the module centre.
+    if face is None:
+        return (0.0, 0.0, 0.0)
     return {
         "positive_x": (1.0, 0.0, 0.0),
         "negative_x": (-1.0, 0.0, 0.0),

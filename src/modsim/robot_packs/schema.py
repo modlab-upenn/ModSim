@@ -16,6 +16,7 @@ from pydantic import (
     JsonValue,
     StrictBool,
     StrictFloat,
+    StrictInt,
     StringConstraints,
     field_validator,
     model_validator,
@@ -158,6 +159,41 @@ class PhysicalConstraintType(StrEnum):
     CUSTOM = "custom"
 
 
+class ConnectorInterface(StrEnum):
+    """Whether a connector mates at one point or anywhere on a surface."""
+
+    POINT = "point"
+    SURFACE = "surface"
+
+
+class SurfaceShape(StrEnum):
+    """Analytic shape of a surface connector. Planes and cylinders are reserved."""
+
+    SPHERE = "sphere"
+
+
+class SurfaceRealization(StrEnum):
+    """How a point-to-surface connection is realised physically, in preference order.
+
+    ``driven_fixed`` is a fixed constraint whose relative pose the runtime
+    retargets as the point connector slides. ``ball`` holds the radial distance
+    and lets the point connector slide and spin freely. ``static_fixed`` is an
+    ordinary fixed constraint that never slides. ``physical`` (no constraint;
+    a core-computed magnetic force) is reserved for a later format.
+    """
+
+    DRIVEN_FIXED = "driven_fixed"
+    BALL = "ball"
+    STATIC_FIXED = "static_fixed"
+    PHYSICAL = "physical"
+
+
+class SurfaceDriveModel(StrEnum):
+    """Kinematic model that turns wheel joint rates into a surface slide."""
+
+    DIFFERENTIAL = "differential"
+
+
 class AlignmentMode(StrEnum):
     """How a committed connection's relative pose is chosen."""
 
@@ -284,6 +320,22 @@ class JointSpec(StrictModel):
         return self
 
 
+class SurfaceDriveSpec(StrictModel):
+    """Wheels that slide a point connector over a mated surface."""
+
+    model: SurfaceDriveModel = SurfaceDriveModel.DIFFERENTIAL
+    left_joint: Identifier
+    right_joint: Identifier
+    wheel_radius_m: PositiveFloat
+    track_m: PositiveFloat = Field(description="Distance between the left and right wheels.")
+
+    @model_validator(mode="after")
+    def require_distinct_wheels(self) -> Self:
+        if self.left_joint == self.right_joint:
+            raise ValueError("surface drive needs two different wheel joints")
+        return self
+
+
 class ConnectorSpec(StrictModel):
     """A connector instance attached to a module link or frame."""
 
@@ -300,6 +352,25 @@ class ConnectorSpec(StrictModel):
         default=None,
         description="Unit approach axis expressed in the connector parent-link frame.",
     )
+    magnet_height_joint: Identifier | None = Field(
+        default=None,
+        description=(
+            "Prismatic joint whose position gives this connector's magnet height. "
+            "h = magnet_height_offset_m - joint position."
+        ),
+    )
+    magnet_height_offset_m: FiniteFloat = Field(
+        default=0.0,
+        description="Magnet height h0 when the magnet_height_joint is at zero.",
+    )
+    surface_contact_links: tuple[NonEmptyString, ...] = Field(
+        default=(),
+        description=(
+            "Links of this module that touch a mated surface (wheels, casters). "
+            "Reserved for runtime contact exclusion; not consumed in format 0.1."
+        ),
+    )
+    surface_drive: SurfaceDriveSpec | None = None
     metadata: Metadata = Field(default_factory=dict, max_length=128)
 
     @model_validator(mode="after")
@@ -362,12 +433,38 @@ class HingeConstraintSpec(StrictModel):
     )
 
 
+class BallConstraintSpec(StrictModel):
+    """Geometry required to realise a ball (point) joint between two connector frames."""
+
+    anchor_m: Vector3 = Field(
+        default=(0.0, 0.0, 0.0),
+        description=(
+            "Pivot point in connector A's frame. Connector B's anchor is the same point, "
+            "carried by the committed connector-frame relative transform."
+        ),
+    )
+
+
 class PhysicalConnectionSpec(StrictModel):
     """Physical constraint requested from a simulation backend."""
 
     constraint: PhysicalConstraintType
     compliance: ComplianceSpec | None = None
     hinge: HingeConstraintSpec | None = None
+    ball: BallConstraintSpec | None = Field(
+        default=None,
+        description=(
+            "Ball geometry. Optional while authoring; a ball without it is reported "
+            "as unsupported by the simulation profile."
+        ),
+    )
+    surface_realizations: tuple[SurfaceRealization, ...] = Field(
+        default=(),
+        description=(
+            "Preferred physical realisations of a point-to-surface connection, in order. "
+            "Allowed only with constraint: fixed."
+        ),
+    )
 
     @model_validator(mode="after")
     def validate_constraint_parameters(self) -> Self:
@@ -379,6 +476,13 @@ class PhysicalConnectionSpec(StrictModel):
             raise ValueError("hinge constraints require hinge parameters")
         if self.constraint is not PhysicalConstraintType.HINGE and self.hinge is not None:
             raise ValueError("hinge parameters require a hinge constraint")
+        if self.constraint is not PhysicalConstraintType.BALL and self.ball is not None:
+            raise ValueError("ball parameters require a ball constraint")
+        if self.surface_realizations:
+            if self.constraint is not PhysicalConstraintType.FIXED:
+                raise ValueError("surface_realizations require constraint: fixed")
+            if len(set(self.surface_realizations)) != len(self.surface_realizations):
+                raise ValueError("surface_realizations must not contain duplicates")
         return self
 
 
@@ -388,6 +492,7 @@ class ConnectorLimits(StrictModel):
     max_normal_force_n: PositiveFloat | None = None
     max_shear_force_n: PositiveFloat | None = None
     max_bending_moment_nm: PositiveFloat | None = None
+    max_torsion_moment_nm: PositiveFloat | None = None
 
 
 class DockingPolicySpec(StrictModel):
@@ -423,6 +528,31 @@ class DockingPolicySpec(StrictModel):
             "Null means the connection never breaks under load."
         ),
     )
+    break_limits: ConnectorLimits | None = Field(
+        default=None,
+        description=(
+            "Per-axis limits (normal, shear, bending, torsion) above which the connection "
+            "releases. Opt-in: the descriptive connector limits never break a connection."
+        ),
+    )
+
+
+class SurfaceSpec(StrictModel):
+    """Analytic geometry and occupancy of a surface connector."""
+
+    shape: SurfaceShape = SurfaceShape.SPHERE
+    center_m: Vector3 = Field(
+        default=(0.0, 0.0, 0.0),
+        description="Centre of the sphere in the connector frame.",
+    )
+    radius_m: PositiveFloat
+    capacity: Annotated[StrictInt, Field(ge=1)] = Field(
+        description="Maximum number of simultaneous connections on this surface."
+    )
+    min_separation_rad: Annotated[StrictFloat, Field(ge=0.0, le=math.pi)] = Field(
+        default=0.0,
+        description="Minimum central angle between two attachments on this surface.",
+    )
 
 
 class ConnectorTypeSpec(StrictModel):
@@ -439,7 +569,22 @@ class ConnectorTypeSpec(StrictModel):
     limits: ConnectorLimits | None = None
     supports_undocking: StrictBool = False
     docking_policy: DockingPolicySpec | None = None
+    interface: ConnectorInterface = ConnectorInterface.POINT
+    surface: SurfaceSpec | None = None
     metadata: Metadata = Field(default_factory=dict, max_length=128)
+
+    @model_validator(mode="after")
+    def require_surface_geometry(self) -> Self:
+        if self.interface is ConnectorInterface.SURFACE and self.surface is None:
+            raise ValueError("surface connectors require surface geometry")
+        if self.interface is not ConnectorInterface.SURFACE and self.surface is not None:
+            raise ValueError("surface geometry requires interface: surface")
+        return self
+
+    @property
+    def is_surface(self) -> bool:
+        """Whether this type mates anywhere on an analytic surface."""
+        return self.interface is ConnectorInterface.SURFACE
 
     @property
     def effective_docking_policy(self) -> DockingPolicySpec:

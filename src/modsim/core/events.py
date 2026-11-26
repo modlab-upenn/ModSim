@@ -20,8 +20,9 @@ from modsim.core.ids import (
     ConnectorInstanceId,
     ConstraintHandle,
 )
+from modsim.core.surface import SurfaceAttachment
 from modsim.core.transforms import Transform
-from modsim.robot_packs.schema import PhysicalConstraintType
+from modsim.robot_packs.schema import PhysicalConstraintType, SurfaceRealization
 
 
 class DockFailureReason(StrEnum):
@@ -69,6 +70,10 @@ class DockCommitted(Event):
     constraint: PhysicalConstraintType = PhysicalConstraintType.FIXED
     orientation_rad: float = 0.0
     orientation_index: int | None = None
+    realization: SurfaceRealization | None = None
+    """How a point-to-surface connection was realised; ``None`` for point-to-point."""
+    attachment: SurfaceAttachment | None = None
+    """Where the point side sat on the surface at commit; ``None`` for point-to-point."""
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

@@ -10,7 +10,7 @@ is enforcing.
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from modsim.backends.base import (
     BackendAdapter,
@@ -29,6 +29,11 @@ from modsim.connectors.guards import (
     evaluate_dock_guards,
     evaluate_undock_guards,
 )
+from modsim.connectors.surface import (
+    candidate_surface_pairs,
+    evaluate_surface_acceptance,
+    virtual_attachment_connector,
+)
 from modsim.core.entities import ConnectorInstance, ConnectorLifecycleState
 from modsim.core.events import (
     AssemblyMerged,
@@ -43,7 +48,16 @@ from modsim.core.events import (
 )
 from modsim.core.ids import ConnectionId, ConnectorInstanceId, connection_id
 from modsim.core.state import WorldState
-from modsim.robot_packs.schema import AlignmentMode, ConnectorTypeSpec
+from modsim.core.surface import SurfaceContact, attachment_from_contact, surface_center
+from modsim.core.transforms import Transform, Vec3
+from modsim.robot_packs.schema import (
+    AlignmentMode,
+    BallConstraintSpec,
+    ConnectorTypeSpec,
+    PhysicalConnectionSpec,
+    PhysicalConstraintType,
+    SurfaceRealization,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +70,12 @@ class DockProposal:
     acceptance: AcceptanceResult
     guard: GuardResult
     requested: bool = False
+    surface_contact: SurfaceContact | None = None
+    """Where the point side meets the surface, for a point-to-surface pair.
+
+    For such a pair ``connector_a`` is always the point connector and
+    ``connector_b`` the surface connector (docs/continuous_docking.md 5.3).
+    """
 
     @property
     def viable(self) -> bool:
@@ -140,12 +160,16 @@ class DockingManager:
         informative ``DockFailed`` instead of silence.
         """
         radius = self.detection_radius(world)
+        connector_types = world.pack.hardware_catalog.connector_types
         positions = [
             (connector.id, connector.world_pose.translation)
             for connector in world.connectors.values()
-            if connector.resolved and not connector.is_engaged
+            if connector.resolved
+            and not connector.is_engaged
+            and not connector_types[connector.connector_type_id].is_surface
         ]
         pairs = set(candidate_pairs(positions, radius))
+        pairs.update(self._surface_candidates(world, positions))
         pairs.update(self.requested_pairs)
 
         proposals: list[DockProposal] = []
@@ -155,6 +179,43 @@ class DockingManager:
             if proposal is not None:
                 proposals.append(proposal)
         return tuple(proposals)
+
+    def _surface_candidates(
+        self,
+        world: WorldState,
+        point_positions: list[tuple[ConnectorInstanceId, Vec3]],
+    ) -> set[tuple[ConnectorInstanceId, ConnectorInstanceId]]:
+        """Return canonical point-to-surface candidate pairs (section 4.3)."""
+        connector_types = world.pack.hardware_catalog.connector_types
+        surfaces: list[tuple[ConnectorInstanceId, Vec3, float]] = []
+        tolerance = 0.0
+        for connector in world.connectors.values():
+            connector_type = connector_types[connector.connector_type_id]
+            spec = connector_type.surface
+            if spec is None or not connector.resolved or not world.has_capacity(connector.id):
+                continue
+            surfaces.append(
+                (connector.id, surface_center(connector.world_pose, spec), spec.radius_m)
+            )
+            if connector_type.acceptance_region is not None:
+                tolerance = max(tolerance, connector_type.acceptance_region.position_tolerance_m)
+        if not surfaces:
+            return set()
+        surface_types = {
+            connector_types[world.connector(surface_id).connector_type_id].id
+            for surface_id, _, _ in surfaces
+        }
+        points = [
+            (connector_id, position)
+            for connector_id, position in point_positions
+            if surface_types.intersection(
+                connector_types[world.connector(connector_id).connector_type_id].compatible_with
+            )
+        ]
+        return {
+            self._canonical(point_id, surface_id)
+            for point_id, surface_id in candidate_surface_pairs(points, surfaces, tolerance)
+        }
 
     def _evaluate(
         self,
@@ -171,9 +232,32 @@ class DockingManager:
             type_b = world.connector_type(connector_b_id)
         except KeyError:
             return None
+        if type_a.is_surface and not type_b.is_surface:
+            # Side A of a point-to-surface pair is always the point connector.
+            connector_a, connector_b = connector_b, connector_a
+            type_a, type_b = type_b, type_a
+            connector_a_id, connector_b_id = connector_b_id, connector_a_id
         compatibility = evaluate_compatibility(type_a, type_b)
-        acceptance = evaluate_acceptance(connector_a, connector_b, type_a, type_b)
-        guard = evaluate_dock_guards(world, connector_a, connector_b, requested=requested)
+        contact: SurfaceContact | None = None
+        if type_b.is_surface and not type_a.is_surface:
+            surface = connector_b
+            acceptance, contact = evaluate_surface_acceptance(
+                connector_a,
+                surface,
+                type_a,
+                type_b,
+                surface_link_pose=world.link_pose(surface.module_id, surface.parent_link),
+                surface_velocity_at=lambda point: world.point_velocity(
+                    surface.module_id, surface.parent_link, point
+                ),
+            )
+        elif type_b.is_surface:
+            acceptance = _unsatisfied_pair("two surface connectors cannot mate")
+        else:
+            acceptance = evaluate_acceptance(connector_a, connector_b, type_a, type_b)
+        guard = evaluate_dock_guards(
+            world, connector_a, connector_b, requested=requested, surface_contact=contact
+        )
         return DockProposal(
             connector_a=connector_a_id,
             connector_b=connector_b_id,
@@ -181,6 +265,7 @@ class DockingManager:
             acceptance=acceptance,
             guard=guard,
             requested=requested,
+            surface_contact=contact,
         )
 
     # ------------------------------------------------------------------
@@ -229,14 +314,24 @@ class DockingManager:
             raise ValueError("a viable proposal must carry a physical connection spec")
 
         snap = self._snaps_to_nominal(type_a, type_b)
+        contact = proposal.surface_contact
+        mate_b = (
+            connector_b
+            if contact is None
+            else virtual_attachment_connector(connector_b, contact, connector_b.world_velocity_m_s)
+        )
+        # A surface snap keeps the measured attachment frame, spin included,
+        # so it snaps to roll zero against A_q rather than to the measured roll.
         relative = (
             nominal_relative_transform(
-                connector_a, connector_b, proposal.acceptance.orientation_rad
+                connector_a,
+                mate_b,
+                0.0 if contact is not None else proposal.acceptance.orientation_rad,
             )
             if snap
             else proposal.acceptance.relative_transform
         )
-        request = ConnectionRequest(
+        base_request = ConnectionRequest(
             connection_id=proposal.connection_id,
             module_a=connector_a.module_id,
             link_a=connector_a.parent_link,
@@ -245,17 +340,48 @@ class DockingManager:
             module_b=connector_b.module_id,
             link_b=connector_b.parent_link,
             connector_b=connector_b.id,
-            connector_b_local=connector_b.local_pose,
+            connector_b_local=mate_b.local_pose,
             relative_transform=relative,
             physical_connection=physical,
             orientation_rad=proposal.acceptance.orientation_rad,
             orientation_index=proposal.acceptance.orientation_index,
             snap_to_nominal=snap,
+            snap_side="a" if contact is not None else "b",
         )
+        if contact is None:
+            attempts: tuple[tuple[SurfaceRealization | None, ConnectionRequest], ...] = (
+                (None, base_request),
+            )
+        else:
+            attempts = self._surface_attempts(world, adapter, base_request, physical, contact)
+            if not attempts:
+                return (
+                    world.apply(
+                        DockFailed(
+                            time_s=world.time_s,
+                            connector_a=proposal.connector_a,
+                            connector_b=proposal.connector_b,
+                            reason=DockFailureReason.BACKEND_REFUSED,
+                            detail=_no_realization_detail(adapter, physical),
+                        )
+                    ),
+                )
 
         world.mark_lifecycle(connector_a.id, ConnectorLifecycleState.IN_ACCEPTANCE_REGION)
         world.mark_lifecycle(connector_b.id, ConnectorLifecycleState.IN_ACCEPTANCE_REGION)
-        outcome = self._create_connection(adapter, request)
+        # Try each realisation the backend advertises, in authored order. A
+        # refusal falls through to the next one; only the last refusal fails
+        # the dock. Point-to-point pairs have exactly one attempt.
+        refusals: list[str] = []
+        realization: SurfaceRealization | None = None
+        request = base_request
+        outcome = ConnectionOutcome.refused("no attempt was made")
+        for realization, request in attempts:
+            outcome = self._create_connection(adapter, request)
+            if outcome.success and outcome.handle is not None:
+                break
+            detail = outcome.detail or "backend refused the constraint"
+            refusals.append(detail if realization is None else f"{realization.value}: {detail}")
         if not outcome.success or outcome.handle is None:
             return (
                 world.apply(
@@ -264,7 +390,7 @@ class DockingManager:
                         connector_a=proposal.connector_a,
                         connector_b=proposal.connector_b,
                         reason=DockFailureReason.BACKEND_REFUSED,
-                        detail=outcome.detail or "backend refused the constraint",
+                        detail="; ".join(refusals),
                     )
                 ),
             )
@@ -282,6 +408,14 @@ class DockingManager:
                 constraint=request.physical_connection.constraint,
                 orientation_rad=proposal.acceptance.orientation_rad,
                 orientation_index=proposal.acceptance.orientation_index,
+                realization=realization,
+                attachment=(
+                    None
+                    if contact is None
+                    else attachment_from_contact(
+                        contact, connector_b.world_pose, world.magnet_height_m(connector_a.id)
+                    )
+                ),
             )
         )
         events: list[Event] = [committed]
@@ -296,6 +430,61 @@ class DockingManager:
                 )
             )
         return tuple(events)
+
+    @staticmethod
+    def _surface_attempts(
+        world: WorldState,
+        adapter: BackendAdapter,
+        request: ConnectionRequest,
+        physical: PhysicalConnectionSpec,
+        contact: SurfaceContact,
+    ) -> tuple[tuple[SurfaceRealization, ConnectionRequest], ...]:
+        """Return the realisations to try for a surface pair, each with its request.
+
+        An authored list is honoured in order; a pair that declares none is
+        realised as ``static_fixed``, which is exactly the authored ``fixed``.
+        Realisations the backend does not advertise are skipped here, so the
+        backend only ever sees requests it claims to support.
+        """
+        capabilities = adapter.capabilities()
+        supported = capabilities.supported_constraint_types
+        preferred = physical.surface_realizations or (SurfaceRealization.STATIC_FIXED,)
+        link_b = world.link_pose(request.module_b, request.link_b)
+        center_link_b = (
+            None if link_b is None else link_b.inverse().apply_point(contact.center_world)
+        )
+        fixed = PhysicalConnectionSpec(constraint=PhysicalConstraintType.FIXED)
+        attempts: list[tuple[SurfaceRealization, ConnectionRequest]] = []
+        point_pose = world.connector(request.connector_a).world_pose
+        ball = PhysicalConnectionSpec(
+            constraint=PhysicalConstraintType.BALL,
+            ball=BallConstraintSpec(
+                anchor_m=point_pose.inverse().apply_point(contact.center_world)
+            ),
+        )
+        realised: dict[SurfaceRealization, PhysicalConnectionSpec] = {}
+        if PhysicalConstraintType.FIXED in supported:
+            realised[SurfaceRealization.STATIC_FIXED] = fixed
+            if capabilities.supports_connection_retarget:
+                realised[SurfaceRealization.DRIVEN_FIXED] = fixed
+        if PhysicalConstraintType.BALL in supported:
+            realised[SurfaceRealization.BALL] = ball
+        for realization in preferred:
+            spec = realised.get(realization)
+            # ``physical`` needs a link-wrench primitive no backend offers yet.
+            if spec is not None:
+                attempts.append(
+                    (
+                        realization,
+                        replace(
+                            request,
+                            physical_connection=spec,
+                            surface_realization=realization,
+                            surface_center_link_b=center_link_b,
+                        ),
+                    )
+                )
+        return tuple(attempts)
 
     @staticmethod
     def _snaps_to_nominal(type_a: ConnectorTypeSpec, type_b: ConnectorTypeSpec) -> bool:
@@ -419,25 +608,49 @@ class DockingManager:
         engaged: set[ConnectorInstanceId] = set()
         for proposal in proposals:
             if proposal.connector_a in engaged or proposal.connector_b in engaged:
-                # A connector can only commit once per pass. Sorted evaluation
-                # order makes which pair wins deterministic.
+                # A point connector can only commit once per pass. Sorted
+                # evaluation order makes which pair wins deterministic.
                 continue
+            if proposal.surface_contact is not None and proposal.viable:
+                # A surface accepts several commits per pass, so its capacity
+                # and separation are re-checked against the commits made
+                # earlier in this pass before this one is attempted.
+                proposal = replace(proposal, guard=self._recheck_guard(world, proposal))
             committed = self.commit(world, adapter, proposal)
             events.extend(committed)
             if any(isinstance(event, DockCommitted) for event in committed):
-                engaged.update((proposal.connector_a, proposal.connector_b))
+                engaged.update(
+                    connector
+                    for connector in (proposal.connector_a, proposal.connector_b)
+                    if not world.connector(connector).surface
+                )
 
         stale = {pair for pair in self.requested_pairs if self._is_stale(world, pair)}
         self.requested_pairs -= stale
         return tuple(events)
 
     @staticmethod
+    def _recheck_guard(world: WorldState, proposal: DockProposal) -> GuardResult:
+        return evaluate_dock_guards(
+            world,
+            world.connector(proposal.connector_a),
+            world.connector(proposal.connector_b),
+            requested=proposal.requested,
+            surface_contact=proposal.surface_contact,
+        )
+
+    @staticmethod
     def _is_stale(
         world: WorldState,
         pair: tuple[ConnectorInstanceId, ConnectorInstanceId],
     ) -> bool:
+        """Whether a queued command can no longer be attempted.
+
+        A command goes stale once its point end holds a connection or its
+        surface end is full.
+        """
         try:
-            return any(world.connector(connector).is_engaged for connector in pair)
+            return any(not world.connector(connector).has_capacity for connector in pair)
         except KeyError:
             return True
 
@@ -482,6 +695,30 @@ class DockingManager:
         return tuple(events)
 
 
+def _no_realization_detail(adapter: BackendAdapter, physical: PhysicalConnectionSpec) -> str:
+    preferred = physical.surface_realizations or (SurfaceRealization.STATIC_FIXED,)
+    names = ", ".join(realization.value for realization in preferred)
+    return (
+        f"backend '{adapter.capabilities().name}' supports none of the surface "
+        f"realizations [{names}]"
+    )
+
+
+def _unsatisfied_pair(detail: str) -> AcceptanceResult:
+    return AcceptanceResult(
+        satisfied=False,
+        criteria=(),
+        relative_transform=Transform.identity(),
+        orientation_rad=0.0,
+        orientation_index=None,
+        detail=detail,
+    )
+
+
 def free_connectors(world: WorldState) -> tuple[ConnectorInstance, ...]:
-    """Return every connector that currently holds no connection."""
-    return tuple(connector for connector in world.connectors.values() if not connector.is_engaged)
+    """Return every connector that can accept another connection.
+
+    That is every point connector holding no connection, and every surface
+    connector below its capacity.
+    """
+    return tuple(connector for connector in world.connectors.values() if connector.has_capacity)

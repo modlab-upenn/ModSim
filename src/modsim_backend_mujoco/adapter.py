@@ -376,6 +376,13 @@ class MuJoCoBackendAdapter:
         kinds are refused instead of being approximated by a different joint.
         """
         constraint = request.physical_connection.constraint
+        if request.snap_to_nominal and request.snap_side != "b":
+            # Snapping side A (used by point-to-surface connections) is not
+            # implemented in this adapter yet; refuse rather than move the
+            # wrong module.
+            return ConnectionOutcome.refused(
+                "the MuJoCo backend snaps module B only; side-A nominal snapping is not implemented"
+            )
         if constraint is PhysicalConstraintType.FIXED:
             outcome = self._create_weld(request)
         elif constraint is PhysicalConstraintType.HINGE:

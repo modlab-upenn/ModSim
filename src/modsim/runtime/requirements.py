@@ -34,6 +34,13 @@ class BackendRequirements:
         default_factory=frozenset[PhysicalConstraintType]
     )
     joint_control_modes: frozenset[ControlMode] = field(default_factory=frozenset[ControlMode])
+    surface_slide: bool = False
+    """Point connectors are driven over a surface while attached.
+
+    Only ``supports_connection_retarget`` satisfies this. A ``ball`` constraint
+    lets a strut slide passively but cannot be driven, because nothing presses
+    the wheels onto the surface (docs/continuous_docking.md, amendment A3).
+    """
 
     def problems(self, capabilities: BackendCapabilities) -> tuple[str, ...]:
         """Return each requirement ``capabilities`` does not meet."""
@@ -52,6 +59,8 @@ class BackendRequirements:
             missing.append(f"{kind.value} connections")
         for mode in sorted(self.joint_control_modes - capabilities.supported_joint_control_modes):
             missing.append(f"{mode.value} joint control")
+        if self.surface_slide and not capabilities.supports_connection_retarget:
+            missing.append("driven surface sliding (connection retarget)")
         return tuple(missing)
 
 

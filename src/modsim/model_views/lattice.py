@@ -341,12 +341,16 @@ def _connection_edge(
     world = context.world
     if world is None:  # pragma: no cover - builder invariant
         raise ModelViewUnavailableError("builder 'cubic_lattice' requires a runtime WorldState")
-    endpoints: list[tuple[str, str, LatticeFace, float]] = []
+    endpoints: list[tuple[str, str, LatticeFace | None, float | None]] = []
     for module_id, connector_id in (
         (connection.module_a, connection.connector_a),
         (connection.module_b, connection.connector_b),
     ):
         connector = world.connector(connector_id)
+        if connector.surface:
+            # A surface connector has no docking axis of its own to label.
+            endpoints.append((str(module_id), str(connector_id), None, None))
+            continue
         face, residual = _nearest_face(
             connector.world_docking_axis,
             lattice_orientation,
@@ -375,8 +379,12 @@ def _connection_edge(
         created_at_s=connection.created_at_s,
         source_face=source_face,
         target_face=target_face,
-        source_face_residual_rad=_clean_scalar(source_residual),
-        target_face_residual_rad=_clean_scalar(target_residual),
+        source_face_residual_rad=None
+        if source_residual is None
+        else _clean_scalar(source_residual),
+        target_face_residual_rad=None
+        if target_residual is None
+        else _clean_scalar(target_residual),
     )
 
 

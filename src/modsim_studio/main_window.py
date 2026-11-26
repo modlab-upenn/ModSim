@@ -1421,13 +1421,32 @@ class MainWindow(QMainWindow):
                     axis=axis,
                     anchor_separation_m=anchor_separation_m,
                 )
+            # The editor has no widgets for ball anchors or surface
+            # realisations; keep the authored values when the constraint is
+            # unchanged so editing other fields never drops them.
+            previous_physical = connector_type.physical_connection
+            same_constraint = (
+                previous_physical is not None
+                and previous_physical.constraint.value == constraint_value
+            )
             physical_connection = (
                 PhysicalConnectionSpec(
                     constraint=PhysicalConstraintType(constraint_value),
                     compliance=compliance,
                     hinge=hinge,
+                    ball=previous_physical.ball
+                    if same_constraint and previous_physical is not None
+                    else None,
+                    surface_realizations=previous_physical.surface_realizations
+                    if same_constraint and previous_physical is not None
+                    else (),
                 )
                 if constraint_value
+                else None
+            )
+            previous_torsion = (
+                connector_type.limits.max_torsion_moment_nm
+                if connector_type.limits is not None
                 else None
             )
             limit_values = (
@@ -1440,8 +1459,9 @@ class MainWindow(QMainWindow):
                     max_normal_force_n=limit_values[0],
                     max_shear_force_n=limit_values[1],
                     max_bending_moment_nm=limit_values[2],
+                    max_torsion_moment_nm=previous_torsion,
                 )
-                if any(value is not None for value in limit_values)
+                if any(value is not None for value in (*limit_values, previous_torsion))
                 else None
             )
             docking_policy = (
@@ -1450,6 +1470,7 @@ class MainWindow(QMainWindow):
                     alignment=AlignmentMode(alignment.currentText()),
                     redock_cooldown_s=_optional_float(redock_cooldown.text()),
                     break_force_n=_optional_float(break_force.text()),
+                    break_limits=connector_type.effective_docking_policy.break_limits,
                 )
                 if declare_policy.isChecked()
                 else None

@@ -19,8 +19,10 @@ from modsim.robot_packs.schema import (
     ControlMode,
     JointType,
     LoadedRobotPack,
+    OrientationMode,
     PhysicalConstraintType,
     RobotPack,
+    SurfaceRealization,
 )
 
 ROBOT_PACK_MANIFEST = "robot_pack.yaml"
@@ -354,13 +356,10 @@ class RobotPackValidator:
                             )
                         )
 
-            if (
-                connector_type.physical_connection is not None
-                and connector_type.physical_connection.constraint
-                in {
-                    PhysicalConstraintType.BALL,
-                    PhysicalConstraintType.CUSTOM,
-                }
+            physical = connector_type.physical_connection
+            if physical is not None and (
+                physical.constraint is PhysicalConstraintType.CUSTOM
+                or (physical.constraint is PhysicalConstraintType.BALL and physical.ball is None)
             ):
                 issues.append(
                     self._issue(
@@ -368,7 +367,7 @@ class RobotPackValidator:
                         code="connector.physical_connection_unsupported",
                         message=(
                             "schema 0.1 does not yet carry the parameters needed for "
-                            f"'{connector_type.physical_connection.constraint.value}' constraints"
+                            f"'{physical.constraint.value}' constraints"
                         ),
                         document=connector_document,
                         path=(
@@ -379,11 +378,20 @@ class RobotPackValidator:
                         ),
                         entity_ref=connector_ref,
                         suggested_fix=(
-                            "Use a fixed, compliant, or hinge connection, or keep "
-                            "this pack in the authoring profile."
+                            "Use a fixed, compliant, or hinge connection, give a ball "
+                            "connection its ball anchor, or keep this pack in the "
+                            "authoring profile."
                         ),
                     )
                 )
+
+        self._validate_surface_connectors(
+            pack,
+            module_document=module_document,
+            connector_document=connector_document,
+            completeness_severity=completeness_severity,
+            issues=issues,
+        )
 
         for capability_id, capability in capabilities.items():
             for index, connector_type_id in enumerate(capability.required_connector_types):
@@ -741,6 +749,214 @@ class RobotPackValidator:
             if issue is not None:
                 return issue
         return None
+
+    def _validate_surface_connectors(
+        self,
+        pack: RobotPack,
+        *,
+        module_document: str,
+        connector_document: str,
+        completeness_severity: Severity,
+        issues: list[ValidationIssue],
+    ) -> None:
+        """Check the continuous-docking rules of docs/continuous_docking.md section 3.2."""
+        connector_types = pack.hardware_catalog.connector_types
+
+        def surface_partners(type_id: str) -> tuple[str, ...]:
+            spec = connector_types[type_id]
+            return tuple(
+                other
+                for other in spec.compatible_with
+                if other in connector_types
+                and (spec.is_surface or connector_types[other].is_surface)
+            )
+
+        for type_id, spec in connector_types.items():
+            ref = f"connector_type:{type_id}"
+            physical = spec.physical_connection
+            if spec.is_surface and (
+                spec.allowed_orientations is not None
+                and spec.allowed_orientations.mode is not OrientationMode.CONTINUOUS
+            ):
+                issues.append(
+                    self._issue(
+                        severity=Severity.ERROR,
+                        code="connector.surface_orientation_discrete",
+                        message="a surface connector must allow continuous orientations",
+                        document=connector_document,
+                        path=("connector_types", type_id, "allowed_orientations", "mode"),
+                        entity_ref=ref,
+                        suggested_fix="Use mode: continuous, or omit allowed_orientations.",
+                    )
+                )
+            for index, other in enumerate(spec.compatible_with):
+                if other not in connector_types:
+                    continue
+                if spec.is_surface and connector_types[other].is_surface:
+                    issues.append(
+                        self._issue(
+                            severity=Severity.ERROR,
+                            code="connector.surface_pair_invalid",
+                            message=(
+                                f"surface connector types '{type_id}' and '{other}' cannot mate"
+                            ),
+                            document=connector_document,
+                            path=("connector_types", type_id, "compatible_with", index),
+                            entity_ref=ref,
+                            suggested_fix="Pair a surface connector with point connectors only.",
+                        )
+                    )
+            partners = surface_partners(type_id)
+            if physical is None:
+                continue
+            if partners and physical.constraint is not PhysicalConstraintType.FIXED:
+                issues.append(
+                    self._issue(
+                        severity=Severity.ERROR,
+                        code="connector.surface_constraint_invalid",
+                        message=(
+                            f"'{physical.constraint.value}' cannot be authored on a pair with a "
+                            "surface connector; author constraint: fixed and choose the "
+                            "realisation with surface_realizations"
+                        ),
+                        document=connector_document,
+                        path=("connector_types", type_id, "physical_connection", "constraint"),
+                        entity_ref=ref,
+                        suggested_fix="Set constraint: fixed.",
+                    )
+                )
+            if not physical.surface_realizations:
+                continue
+            if not partners:
+                issues.append(
+                    self._issue(
+                        severity=completeness_severity,
+                        code="connector.surface_realizations_unused",
+                        message=(
+                            "surface_realizations has no effect: no compatible pair "
+                            "includes a surface connector"
+                        ),
+                        document=connector_document,
+                        path=(
+                            "connector_types",
+                            type_id,
+                            "physical_connection",
+                            "surface_realizations",
+                        ),
+                        entity_ref=ref,
+                        suggested_fix="Remove surface_realizations.",
+                    )
+                )
+            if SurfaceRealization.PHYSICAL in physical.surface_realizations:
+                issues.append(
+                    self._issue(
+                        severity=completeness_severity,
+                        code="connector.surface_realization_unsupported",
+                        message="the 'physical' surface realisation is not implemented",
+                        document=connector_document,
+                        path=(
+                            "connector_types",
+                            type_id,
+                            "physical_connection",
+                            "surface_realizations",
+                        ),
+                        entity_ref=ref,
+                        suggested_fix="Use driven_fixed, ball or static_fixed.",
+                    )
+                )
+            for other in partners:
+                other_physical = connector_types[other].physical_connection
+                if (
+                    type_id < other
+                    and other_physical is not None
+                    and other_physical.surface_realizations
+                    and other_physical.surface_realizations != physical.surface_realizations
+                ):
+                    issues.append(
+                        self._issue(
+                            severity=Severity.ERROR,
+                            code="connector.surface_realizations_conflict",
+                            message=(
+                                f"connector types '{type_id}' and '{other}' declare different "
+                                "surface_realizations"
+                            ),
+                            document=connector_document,
+                            path=(
+                                "connector_types",
+                                type_id,
+                                "physical_connection",
+                                "surface_realizations",
+                            ),
+                            entity_ref=ref,
+                            suggested_fix="Declare the list on one side, or make them identical.",
+                        )
+                    )
+
+        for module_id, module in pack.hardware_catalog.module_types.items():
+            joints = {joint.id: joint for joint in module.joints}
+            for index, connector in enumerate(module.connectors):
+                ref = f"module_type:{module_id}/connector:{connector.id}"
+                path: tuple[str | int, ...] = ("module_types", module_id, "connectors", index)
+                connector_type = connector_types.get(connector.connector_type)
+                if (
+                    connector_type is not None
+                    and connector_type.is_surface
+                    and connector.parent_link != module.root_link
+                ):
+                    issues.append(
+                        self._issue(
+                            severity=completeness_severity,
+                            code="connector.surface_not_on_root_link",
+                            message=(
+                                "a surface connector off the root link cannot be placed by "
+                                "the mock backend, which has no articulated kinematics"
+                            ),
+                            document=module_document,
+                            path=(*path, "parent_link"),
+                            entity_ref=ref,
+                            suggested_fix=f"Attach the connector to '{module.root_link}'.",
+                        )
+                    )
+                height_joint = connector.magnet_height_joint
+                if height_joint is not None and (
+                    height_joint not in joints
+                    or joints[height_joint].type is not JointType.PRISMATIC
+                ):
+                    issues.append(
+                        self._issue(
+                            severity=Severity.ERROR,
+                            code="connector.magnet_height_joint_invalid",
+                            message=(
+                                f"magnet_height_joint '{height_joint}' is not a prismatic "
+                                "joint of this module"
+                            ),
+                            document=module_document,
+                            path=(*path, "magnet_height_joint"),
+                            entity_ref=ref,
+                        )
+                    )
+                drive = connector.surface_drive
+                if drive is None:
+                    continue
+                for field_name in ("left_joint", "right_joint"):
+                    joint_id = getattr(drive, field_name)
+                    if joint_id not in joints or joints[joint_id].type not in {
+                        JointType.CONTINUOUS,
+                        JointType.REVOLUTE,
+                    }:
+                        issues.append(
+                            self._issue(
+                                severity=Severity.ERROR,
+                                code="connector.surface_drive_joint_invalid",
+                                message=(
+                                    f"surface drive {field_name} '{joint_id}' is not a "
+                                    "revolute or continuous joint of this module"
+                                ),
+                                document=module_document,
+                                path=(*path, "surface_drive", field_name),
+                                entity_ref=ref,
+                            )
+                        )
 
     @staticmethod
     def _is_within(path: Path, root: Path) -> bool:

@@ -186,10 +186,11 @@ class CubicLatticeNode(ModuleGraphNode):
 class CubicLatticeConnectionEdge(DockedConnectionEdge):
     """A docked connection whose endpoints are labelled by lattice-facing sides."""
 
-    source_face: LatticeFace
-    target_face: LatticeFace
-    source_face_residual_rad: float = Field(ge=0.0)
-    target_face_residual_rad: float = Field(ge=0.0)
+    source_face: LatticeFace | None
+    """``None`` for a surface connector, which has no lattice-facing side of its own."""
+    target_face: LatticeFace | None
+    source_face_residual_rad: float | None = Field(default=None, ge=0.0)
+    target_face_residual_rad: float | None = Field(default=None, ge=0.0)
 
 
 class CubicLatticeOccupancyConflict(ModelViewDTO):

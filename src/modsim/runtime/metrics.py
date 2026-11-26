@@ -46,6 +46,8 @@ class DockingMetrics:
     assembly_split_count: int
     connector_overload_count: int
     event_count_total: int
+    surface_slots_occupied: int = 0
+    """Connections held by surface connectors; a surface counts once in the connector counts."""
 
     @property
     def docking_success_rate(self) -> float:
@@ -93,4 +95,9 @@ def collect_metrics(world: WorldState) -> DockingMetrics:
         assembly_split_count=log.count_of(AssemblySplit),
         connector_overload_count=log.count_of(ConnectorOverloaded),
         event_count_total=len(log),
+        surface_slots_occupied=sum(
+            len(connector.connection_ids)
+            for connector in world.connectors.values()
+            if connector.surface
+        ),
     )

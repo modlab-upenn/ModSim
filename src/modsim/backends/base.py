@@ -41,7 +41,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Literal, Protocol, runtime_checkable
 
 from modsim.core.entities import JointCommand
 from modsim.core.ids import (
@@ -59,6 +59,7 @@ from modsim.robot_packs.schema import (
     PhysicalConnectionSpec,
     PhysicalConstraintType,
     RobotPack,
+    SurfaceRealization,
 )
 
 
@@ -107,6 +108,8 @@ class BackendCapabilities:
 
     Empty with ``supports_runtime_constraints`` means fixed connections only.
     """
+    supports_connection_retarget: bool = False
+    """The adapter implements :class:`SupportsConnectionRetarget` for fixed connections."""
     connection_change_delay_substeps: int = 0
     """Internal steps before a connection change takes physical effect.
 
@@ -162,6 +165,36 @@ class ConnectionRequest:
     orientation_rad: float = 0.0
     orientation_index: int | None = None
     snap_to_nominal: bool = False
+    snap_side: Literal["a", "b"] = "b"
+    """Which side a nominal snap moves. ``"b"`` (the default) moves module B.
+
+    A point-to-surface connection sets ``"a"``, so the sliding strut moves to
+    the surface instead of dragging the node and every other strut on it.
+    """
+    surface_realization: SurfaceRealization | None = None
+    """For a point-to-surface connection, how it is realised; informational.
+
+    The backend never needs it: side A is the point connector, side B's
+    ``connector_b_local`` is the virtual attachment frame on the surface, and
+    ``physical_connection`` is already the realised ``fixed`` or ``ball`` spec.
+    """
+    surface_center_link_b: Vec3 | None = None
+    """The surface's sphere centre in link B's frame; informational."""
+
+
+@dataclass(frozen=True, slots=True)
+class ConnectionRetarget:
+    """A new desired relative pose for an existing fixed connection.
+
+    The fields mean what they mean in :class:`ConnectionRequest`. For a
+    point-to-surface connection, ``connector_b_local`` is the new virtual
+    attachment frame on the surface, in link B's frame.
+    """
+
+    handle: ConstraintHandle
+    connector_a_local: Transform
+    connector_b_local: Transform
+    relative_transform: Transform
 
 
 @dataclass(frozen=True, slots=True)
@@ -217,6 +250,27 @@ class SupportsJointCommands(Protocol):
         joints: tuple[JointInstanceId, ...] | None = None,
     ) -> None:
         """Clear selected persistent targets, or every target when omitted."""
+        ...
+
+
+@runtime_checkable
+class SupportsConnectionRetarget(Protocol):
+    """Optional backend ability to change an existing fixed connection's relative pose.
+
+    It is advertised by ``BackendCapabilities.supports_connection_retarget``.
+    One call carries every update for a step. A retarget is a connection change
+    under rule 5 of the timing contract: it acts within
+    ``connection_change_delay_substeps`` of the next ``step``. Implementations
+    validate the whole batch before applying any of it, and return one flag per
+    update, ``False`` marking an update whose handle is not held or that was
+    refused. If any flag is ``False``, no update in the batch was applied.
+    """
+
+    def retarget_physical_connections(
+        self,
+        updates: tuple[ConnectionRetarget, ...],
+    ) -> tuple[bool, ...]:
+        """Apply a batch of relative-pose updates atomically."""
         ...
 
 

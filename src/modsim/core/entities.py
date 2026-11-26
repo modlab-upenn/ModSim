@@ -21,8 +21,9 @@ from modsim.core.ids import (
     ModuleInstanceId,
 )
 from modsim.core.snapshot import JointState
+from modsim.core.surface import SurfaceAttachment
 from modsim.core.transforms import ZERO_VEC3, Transform, Vec3
-from modsim.robot_packs.schema import ControlMode, PhysicalConstraintType
+from modsim.robot_packs.schema import ControlMode, PhysicalConstraintType, SurfaceRealization
 
 
 @dataclass(frozen=True, slots=True)
@@ -219,7 +220,8 @@ class ConnectorInstance:
         "_world_pose",
         "_world_velocity_m_s",
         "available_at_s",
-        "connection_id",
+        "capacity",
+        "connection_ids",
         "connector_id",
         "connector_type_id",
         "id",
@@ -227,6 +229,7 @@ class ConnectorInstance:
         "local_pose",
         "module_id",
         "parent_link",
+        "surface",
     )
 
     def __init__(
@@ -245,6 +248,9 @@ class ConnectorInstance:
         local_pose: Transform | None = None,
         resolved: bool = False,
         available_at_s: float = 0.0,
+        *,
+        surface: bool = False,
+        capacity: int = 1,
     ) -> None:
         self.id = id
         self.module_id = module_id
@@ -252,7 +258,13 @@ class ConnectorInstance:
         self.connector_type_id = connector_type_id
         self.parent_link = parent_link
         self.lifecycle_state = lifecycle_state
-        self.connection_id = connection_id
+        self.surface = surface
+        """Whether this is a surface connector that can hold several connections."""
+        self.capacity = capacity if surface else 1
+        self.connection_ids: tuple[ConnectionId, ...] = (
+            () if connection_id is None else (connection_id,)
+        )
+        """Every connection this connector holds, sorted. At most one unless ``surface``."""
         self.local_pose = local_pose if local_pose is not None else Transform.identity()
         self.available_at_s = available_at_s
         self._world_pose = world_pose if world_pose is not None else Transform.identity()
@@ -356,8 +368,29 @@ class ConnectorInstance:
 
     @property
     def is_engaged(self) -> bool:
-        """Whether this connector currently holds or is releasing a connection."""
+        """Whether this connector currently holds or is releasing a connection.
+
+        For a surface connector this means "holds at least one connection";
+        use :attr:`has_capacity` to ask whether it can accept another.
+        """
         return self.lifecycle_state in ENGAGED_STATES
+
+    @property
+    def has_capacity(self) -> bool:
+        """Whether this connector can accept one more connection now.
+
+        A point connector has capacity while it is not engaged. A surface
+        connector has capacity while it holds fewer connections than its
+        declared capacity.
+        """
+        if self.surface:
+            return len(self.connection_ids) < self.capacity
+        return not self.is_engaged
+
+    @property
+    def connection_id(self) -> ConnectionId | None:
+        """Return the connection this connector holds, if it holds exactly one."""
+        return self.connection_ids[0] if len(self.connection_ids) == 1 else None
 
 
 @dataclass(slots=True)
@@ -379,6 +412,10 @@ class ConnectionRuntime:
     # preserves callers that passed ``measured_force_n`` positionally before
     # constraint type became part of canonical runtime state.
     constraint: PhysicalConstraintType = PhysicalConstraintType.FIXED
+    realization: SurfaceRealization | None = None
+    """How a point-to-surface connection is realised; ``None`` for point-to-point."""
+    committed_attachment: SurfaceAttachment | None = None
+    """The attachment at commit. The live attachment is ``WorldState.surface_attachment``."""
 
     @property
     def connectors(self) -> tuple[ConnectorInstanceId, ConnectorInstanceId]:

@@ -19,6 +19,7 @@ from modsim.backends.base import (
     BackendHandleRegistry,
     ConnectionOutcome,
     ConnectionRequest,
+    ConnectionRetarget,
 )
 from modsim.core.ids import ConstraintHandle, ModuleInstanceId
 from modsim.core.scene import SceneSpec
@@ -81,6 +82,7 @@ class MockBackendAdapter:
             supports_constraint_removal=True,
             supports_constraint_forces=True,
             supports_module_pose_write=True,
+            supports_connection_retarget=True,
             # The mock realises every connection as a rigid weld, so it
             # advertises only the constraint type that a weld actually is.
             supported_constraint_types=frozenset({PhysicalConstraintType.FIXED}),
@@ -184,7 +186,9 @@ class MockBackendAdapter:
         # connector frames coincide exactly, which is the whole point of the
         # nominal mode. A measured request freezes whatever pose exists now.
         if request.snap_to_nominal:
-            self._snap(request)
+            refusal = self._snap(request)
+            if refusal is not None:
+                return ConnectionOutcome.refused(refusal)
         body_a, body_b = self._bodies[request.module_a], self._bodies[request.module_b]
         self._welds[handle] = _Weld(
             handle=handle,
@@ -194,6 +198,58 @@ class MockBackendAdapter:
         )
         self._forces[handle] = 0.0
         return ConnectionOutcome.accepted(handle)
+
+    def retarget_physical_connections(
+        self,
+        updates: tuple[ConnectionRetarget, ...],
+    ) -> tuple[bool, ...]:
+        """Move each connection's side-A component so its new relative pose holds.
+
+        Side A is the point connector, the module that is sliding, so the
+        rigid component containing side A (once this weld is ignored) moves
+        and side B with everything else welded to it stays put. A retarget
+        whose two sides stay connected without this weld closes a loop that a
+        kinematic backend cannot resolve, so it is refused. Nothing is applied
+        unless every update in the batch is accepted.
+        """
+        plans: list[tuple[_Weld, frozenset[ModuleInstanceId], ConnectionRetarget]] = []
+        flags: list[bool] = []
+        for update in updates:
+            weld = self._welds.get(update.handle)
+            if weld is None:
+                flags.append(False)
+                continue
+            moving = self._component_without(weld.module_a, update.handle)
+            if weld.module_b in moving:
+                flags.append(False)
+                continue
+            plans.append((weld, moving, update))
+            flags.append(True)
+        if not all(flags):
+            return tuple(flags)
+        for weld, moving, update in plans:
+            body_a, body_b = self._bodies[weld.module_a], self._bodies[weld.module_b]
+            connector_b = body_b.pose.compose(update.connector_b_local)
+            connector_a = connector_b.compose(update.relative_transform.inverse())
+            target_a = connector_a.compose(update.connector_a_local.inverse())
+            delta = target_a.compose(body_a.pose.inverse())
+            for module_id in moving:
+                member = self._bodies[module_id]
+                member.pose = delta.compose(member.pose)
+            weld.relative_pose = body_b.pose.relative_to(body_a.pose)
+        return tuple(flags)
+
+    def refusal_reason(self, update: ConnectionRetarget) -> str | None:
+        """Explain why ``update`` would be refused, or return ``None``."""
+        weld = self._welds.get(update.handle)
+        if weld is None:
+            return f"mock backend holds no constraint '{update.handle}'"
+        if weld.module_b in self._component_without(weld.module_a, update.handle):
+            return (
+                f"retargeting '{update.handle}' would move a closed loop of welds; "
+                "the kinematic mock cannot resolve a loop"
+            )
+        return None
 
     def remove_physical_connection(self, handle: ConstraintHandle) -> bool:
         """Remove one weld, returning whether it existed."""
@@ -263,12 +319,31 @@ class MockBackendAdapter:
         except KeyError as error:
             raise BackendError(f"unknown module '{module_id}'") from error
 
-    def _snap(self, request: ConnectionRequest) -> None:
-        """Move module B so the requested connector-frame relative pose holds."""
+    def _snap(self, request: ConnectionRequest) -> str | None:
+        """Move one side so the requested connector-frame relative pose holds.
+
+        By default module B moves on its own, as before. With
+        ``snap_side == "a"`` the rigid component welded to module A moves
+        instead, which a loop back to module B would make impossible; that
+        case is refused rather than tearing a weld.
+        """
         body_a, body_b = self._bodies[request.module_a], self._bodies[request.module_b]
-        connector_a_world = body_a.pose.compose(request.connector_a_local)
-        target_connector_b = connector_a_world.compose(request.relative_transform)
-        body_b.pose = target_connector_b.compose(request.connector_b_local.inverse())
+        if request.snap_side == "b":
+            connector_a_world = body_a.pose.compose(request.connector_a_local)
+            target_connector_b = connector_a_world.compose(request.relative_transform)
+            body_b.pose = target_connector_b.compose(request.connector_b_local.inverse())
+            return None
+        moving = self._component_without(request.module_a, ConstraintHandle(""))
+        if request.module_b in moving:
+            return "mock backend cannot snap side A of a connection that closes a weld loop"
+        connector_b_world = body_b.pose.compose(request.connector_b_local)
+        target_connector_a = connector_b_world.compose(request.relative_transform.inverse())
+        target_a = target_connector_a.compose(request.connector_a_local.inverse())
+        delta = target_a.compose(body_a.pose.inverse())
+        for module_id in moving:
+            member = self._bodies[module_id]
+            member.pose = delta.compose(member.pose)
+        return None
 
     @staticmethod
     def _integrate(body: _Body, dt_s: float) -> Transform:
@@ -285,6 +360,30 @@ class MockBackendAdapter:
         return Transform(translation=translation).compose(
             to_pivot.compose(about_origin).compose(to_pivot.inverse())
         )
+
+    def _component_without(
+        self,
+        seed: ModuleInstanceId,
+        excluded: ConstraintHandle,
+    ) -> frozenset[ModuleInstanceId]:
+        """Return the modules welded to ``seed`` when one weld is ignored."""
+        component = {seed}
+        queue = [seed]
+        while queue:
+            current = queue.pop()
+            for handle, weld in self._welds.items():
+                if handle == excluded:
+                    continue
+                if weld.module_a == current:
+                    other = weld.module_b
+                elif weld.module_b == current:
+                    other = weld.module_a
+                else:
+                    continue
+                if other not in component:
+                    component.add(other)
+                    queue.append(other)
+        return frozenset(component)
 
     def _groups(self) -> tuple[frozenset[ModuleInstanceId], ...]:
         """Return welded module groups as connected components."""
