@@ -167,7 +167,7 @@ class DockingManager:
         ]
         pairs = set(candidate_pairs(positions, radius))
         if world.surface_connectors:
-            pairs.update(self._surface_candidates(world, positions))
+            pairs.update(self._surface_candidates(world, positions, radius))
         pairs.update(self.requested_pairs)
 
         proposals: list[DockProposal] = []
@@ -182,11 +182,16 @@ class DockingManager:
         self,
         world: WorldState,
         point_positions: list[tuple[ConnectorInstanceId, Vec3]],
+        tolerance_m: float,
     ) -> set[tuple[ConnectorInstanceId, ConnectorInstanceId]]:
-        """Return canonical point-to-surface candidate pairs (section 4.3)."""
+        """Return canonical point-to-surface candidate pairs (section 4.3).
+
+        ``tolerance_m`` is the pack-wide detection radius, the same one the
+        point hash uses, so a candidate is detected whenever either side's
+        tolerance could admit it; acceptance then applies the stricter one.
+        """
         connector_types = world.pack.hardware_catalog.connector_types
         surfaces: list[tuple[ConnectorInstanceId, Vec3, float]] = []
-        tolerance = 0.0
         for connector_id in world.surface_connectors:
             connector = world.connector(connector_id)
             connector_type = connector_types[connector.connector_type_id]
@@ -196,8 +201,6 @@ class DockingManager:
             surfaces.append(
                 (connector.id, surface_center(connector.world_pose, spec), spec.radius_m)
             )
-            if connector_type.acceptance_region is not None:
-                tolerance = max(tolerance, connector_type.acceptance_region.position_tolerance_m)
         if not surfaces:
             return set()
         surface_types = {
@@ -213,7 +216,7 @@ class DockingManager:
         ]
         return {
             self._canonical(point_id, surface_id)
-            for point_id, surface_id in candidate_surface_pairs(points, surfaces, tolerance)
+            for point_id, surface_id in candidate_surface_pairs(points, surfaces, tolerance_m)
         }
 
     def _evaluate(

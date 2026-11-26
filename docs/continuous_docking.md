@@ -298,6 +298,11 @@ pairs them. Surface connectors are therefore removed from the point hash, and
 - query the 27 neighbouring cells for every resolved free point connector whose
   type lists a surface type in `compatible_with`, and keep the pairs with
   \|p − c\| ≤ R + tolerance;
+- the tolerance in both is the largest `position_tolerance_m` of **every**
+  connector type in the pack, point types included. It is the same detection
+  radius the point hash uses, so a pair is detected (and its connectors marked
+  `CANDIDATE_DETECTED`) whenever either side's tolerance could admit it.
+  Acceptance then applies the stricter of the two tolerances (§4.1);
 - emit the pairs in sorted order and merge them with the point pairs and the
   requested pairs before evaluation.
 

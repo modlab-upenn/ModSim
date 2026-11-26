@@ -124,7 +124,9 @@ origin is its centre, a radius away from any mate. A second hash holds the
 centres of surface connectors that still have capacity, with cell size
 max(radius) + max(tolerance); each free point connector compatible with a
 surface type queries the 27 cells around it and keeps a pair when it lies
-within radius + tolerance of a centre. The expected cost is linear in point
+within radius + tolerance of a centre. The tolerance is the same pack-wide
+maximum the point hash uses, taken over every connector type, not only the
+surface types; acceptance then applies the stricter tolerance of the pair. The expected cost is linear in point
 connectors plus surfaces.
 
 ## 3. Compatibility

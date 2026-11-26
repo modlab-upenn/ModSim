@@ -902,6 +902,37 @@ def test_the_stricter_seat_tolerance_governs_mixed_types(example_pack: RobotPack
     assert not criterion.satisfied
 
 
+@pytest.mark.parametrize(("gap_m", "detected"), [(0.004, True), (0.007, False)])
+def test_the_surface_broad_phase_uses_the_pack_wide_tolerance(
+    example_pack: RobotPack, gap_m: float, detected: bool
+) -> None:
+    # The magnet allows 6 mm and the shell SEAT_TOLERANCE_M. Detection uses
+    # the pack-wide 6 mm, as the point hash does; acceptance applies the
+    # stricter shell tolerance.
+    loose_magnet = pack_with(
+        example_pack,
+        acceptance_region={
+            "shape": "sphere",
+            "position_tolerance_m": 0.006,
+            "orientation_tolerance_rad": 0.1,
+            "max_relative_velocity_m_s": 0.05,
+        },
+    )
+    assert SEAT_TOLERANCE_M < 0.004
+    session = make_session(loose_magnet, strut_pose(DOWN, gap_m=gap_m))
+    assert session.docking.detection_radius(session.world) == pytest.approx(0.006)
+
+    proposals = session.proposals()
+
+    assert [(p.connector_a, p.connector_b) for p in proposals] == (
+        [(upper(0), SHELL)] if detected else []
+    )
+    if detected:
+        criterion = proposals[0].acceptance.criterion(POSITION)
+        assert criterion.tolerance == pytest.approx(SEAT_TOLERANCE_M)
+        assert not criterion.satisfied
+
+
 # ----------------------------------------------------------------------
 # nominal snapping is withheld when the strut is not alone
 # ----------------------------------------------------------------------
