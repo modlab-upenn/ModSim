@@ -11,19 +11,21 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import Literal
 
 import pytest
 
 pytest.importorskip("mujoco", reason="the MuJoCo backend extra is not installed")
 
 from conftest import with_connector_policy
+from modsim.backends.base import ConnectionRequest
 from modsim.core.events import (
     DockCommitted,
     DockFailed,
     Event,
     UndockCommitted,
 )
-from modsim.core.ids import ConnectorInstanceId, ModuleInstanceId
+from modsim.core.ids import ConnectorInstanceId, ModuleInstanceId, connection_id
 from modsim.core.scene import ModulePlacement, SceneSpec
 from modsim.core.transforms import (
     Transform,
@@ -33,6 +35,7 @@ from modsim.core.transforms import (
 )
 from modsim.model_views import ModelViewFactory
 from modsim.robot_packs import LoadedRobotPack, RobotPackLoader
+from modsim.robot_packs.schema import PhysicalConnectionSpec, PhysicalConstraintType
 from modsim.runtime.inspection import build_runtime_inspector_frame
 from modsim.runtime.reconfiguration import (
     ScriptedReconfigurationConfig,
@@ -384,3 +387,59 @@ def test_docking_holds_through_an_asymmetric_rotation(latching_pack: LoadedRobot
     assert measured.is_close(
         requested, position_tolerance_m=0.006, orientation_tolerance_rad=0.14
     ), "the weld did not preserve the committed relative orientation"
+
+
+@pytest.mark.parametrize("snap_side", ["a", "b"])
+def test_side_a_nominal_snapping_is_refused_and_side_b_still_welds(
+    latching_pack: LoadedRobotPack, snap_side: Literal["a", "b"]
+) -> None:
+    """Continuous docking 14.4: MuJoCo snaps module B only until Phase 3.
+
+    A side-A snap must be refused before anything moves, so two-phase commit
+    reports the refusal instead of the wrong module being dragged.
+    """
+    placements = (
+        ModulePlacement(instance_id=CUBE_0, module_type_id=MODULE_TYPE),
+        ModulePlacement(
+            instance_id=CUBE_1,
+            module_type_id=MODULE_TYPE,
+            # Apart, so the auto-latching pair does not dock by itself.
+            pose=Transform.from_translation((START_GAP_M, 0.0, 0.0)),
+        ),
+    )
+    session = RuntimeSession.create(
+        latching_pack, SceneSpec(placements=placements), "mujoco", gravity=(0.0, 0.0, 0.0)
+    )
+    adapter = session.adapter
+    assert isinstance(adapter, MuJoCoBackendAdapter)
+    session.step(0.0)
+    front = session.world.connector(FRONT_0)
+    rear = session.world.connector(REAR_1)
+    before = {module: session.world.modules[module].pose for module in (CUBE_0, CUBE_1)}
+    request = ConnectionRequest(
+        connection_id=connection_id(FRONT_0, REAR_1),
+        module_a=CUBE_0,
+        link_a=front.parent_link,
+        connector_a=FRONT_0,
+        connector_a_local=front.local_pose,
+        module_b=CUBE_1,
+        link_b=rear.parent_link,
+        connector_b=REAR_1,
+        connector_b_local=rear.local_pose,
+        relative_transform=rear.world_pose.relative_to(front.world_pose),
+        physical_connection=PhysicalConnectionSpec(constraint=PhysicalConstraintType.FIXED),
+        snap_to_nominal=True,
+        snap_side=snap_side,
+    )
+
+    outcome = adapter.create_physical_connection(request)
+
+    if snap_side == "b":
+        assert outcome.success
+        return
+    assert not outcome.success
+    assert outcome.handle is None
+    assert "side-A nominal snapping is not implemented" in (outcome.detail or "")
+    session.step(STEP_S)
+    for module, pose in before.items():
+        assert session.world.modules[module].pose.is_close(pose)

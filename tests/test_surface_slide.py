@@ -7,10 +7,16 @@ from dataclasses import replace
 
 import pytest
 
-from modsim.backends.base import BackendCapabilities, ConnectionOutcome, ConnectionRequest
+from modsim.backends.base import (
+    BackendCapabilities,
+    BackendError,
+    ConnectionOutcome,
+    ConnectionRequest,
+    ConnectionRetarget,
+)
 from modsim.backends.mock import MockBackendAdapter
 from modsim.core.events import DockCommitted, UndockCommitted
-from modsim.core.ids import ConnectionId, ConnectorInstanceId, connection_id
+from modsim.core.ids import ConnectionId, ConnectorInstanceId, ConstraintHandle, connection_id
 from modsim.core.surface import central_angle
 from modsim.core.transforms import (
     Transform,
@@ -360,3 +366,74 @@ def test_the_differential_drive_model_maps_wheel_rates_to_a_slide() -> None:
     turning = differential_slide_command(drive, -1.0, 1.0)
     assert turning.tangential_velocity_m_s == pytest.approx((0.0, 0.0))
     assert turning.spin_rate_rad_s == pytest.approx(0.02 / 0.05)
+
+
+# ----------------------------------------------------------------------
+# refused retargets (section 7.2)
+# ----------------------------------------------------------------------
+
+
+class _RefusingMock(MockBackendAdapter):
+    """Refuses every retarget of one handle; the rest of a batch goes through."""
+
+    __slots__ = ("calls", "refuse")
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.refuse: ConstraintHandle | None = None
+        self.calls: list[tuple[ConstraintHandle, ...]] = []
+
+    def retarget_physical_connections(
+        self, updates: tuple[ConnectionRetarget, ...]
+    ) -> tuple[bool, ...]:
+        self.calls.append(tuple(update.handle for update in updates))
+        flags = tuple(update.handle != self.refuse for update in updates)
+        if not all(flags):
+            return flags
+        return super().retarget_physical_connections(updates)
+
+
+def test_a_refused_retarget_is_dropped_reported_and_the_rest_resent(
+    example_pack: RobotPack,
+) -> None:
+    adapter = _RefusingMock()
+    session = docked(surface_pack(example_pack), DOWN, direction(2.0), adapter=adapter)
+    refused = session.world.connections[link(0)].constraint_handle
+    kept = session.world.connections[link(1)].constraint_handle
+    adapter.refuse = refused
+    for index in (0, 1):
+        session.set_surface_slide(link(index), SurfaceSlideCommand((0.01, 0.0)))
+    start = (normal_of(session, 0), normal_of(session, 1))
+
+    session.step(0.1)  # must not raise
+    report = session.surface_slide_report
+    session.step(0.0)
+
+    assert adapter.calls == [(refused, kept), (kept,)]
+    assert [refusal.connection_id for refusal in report.refusals] == [link(0)]
+    assert report.refusals[0].detail
+    assert link(0) not in session.surface_slides.commands
+    assert link(1) in session.surface_slides.commands
+    assert normal_of(session, 0) == pytest.approx(start[0], abs=1e-12)
+    assert central_angle(start[1], normal_of(session, 1)) > 1e-3
+
+    adapter.calls.clear()
+    session.step(0.1)
+    assert adapter.calls == [(kept,)]
+    assert session.surface_slide_report.refusals == ()
+
+
+class _MiscountingMock(MockBackendAdapter):
+    __slots__ = ()
+
+    def retarget_physical_connections(
+        self, updates: tuple[ConnectionRetarget, ...]
+    ) -> tuple[bool, ...]:
+        return (True,) * (len(updates) + 1)
+
+
+def test_a_retarget_result_of_the_wrong_length_raises(example_pack: RobotPack) -> None:
+    session = docked(surface_pack(example_pack), DOWN, adapter=_MiscountingMock())
+    session.set_surface_slide(link(0), SurfaceSlideCommand((0.01, 0.0)))
+    with pytest.raises(BackendError, match="different number of results"):
+        session.step(0.1)

@@ -241,6 +241,24 @@ def test_candidate_surface_pairs_finds_only_points_inside_the_shell() -> None:
     assert candidate_surface_pairs([], [], 0.003) == ()
 
 
+def test_candidate_surface_pairs_come_out_in_sorted_order() -> None:
+    # Points and surfaces are given in reverse id order; the output must not
+    # depend on that.
+    shells = [ConnectorInstanceId(f"node_{i}/shell") for i in (1, 0)]
+    centres = {shells[0]: (0.0, 0.0, 0.0), shells[1]: (0.03, 0.0, 0.0)}
+    points = [
+        (ConnectorInstanceId(f"strut_{i}/upper"), (0.015, 0.0, -0.06 + 0.001 * i))
+        for i in (2, 1, 0)
+    ]
+    surfaces = [(shell, centres[shell], RADIUS_M) for shell in shells]
+
+    pairs = candidate_surface_pairs(points, surfaces, 0.003)
+
+    assert len(pairs) == 6
+    assert pairs == tuple(sorted(pairs))
+    assert candidate_surface_pairs(points[::-1], surfaces[::-1], 0.003) == pairs
+
+
 def test_surface_broad_phase_work_grows_linearly(monkeypatch: pytest.MonkeyPatch) -> None:
     checks = 0
     real_norm = surface_module.vec_norm
@@ -341,6 +359,39 @@ def test_two_struts_on_one_spot_in_one_pass_resolve_by_sorted_order(
     outcome = run()
     assert outcome[0] == link(0)
     assert len(outcome) == 2 and "rad from connection" in outcome[1]
+    assert run() == outcome
+
+
+def test_three_struts_competing_for_one_surface_resolve_by_sorted_id_not_scene_order(
+    example_pack: RobotPack,
+) -> None:
+    # strut_0 sits between the other two: 0.5 rad from strut_1 and 0.7 rad
+    # from strut_2, both inside the 60 degree separation, while strut_1 and
+    # strut_2 are 1.2 rad apart. The scene lists the struts in reverse id
+    # order. Sorted order commits strut_0 alone; scene order would commit
+    # strut_2 and strut_1 instead.
+    polar = {0: 0.5, 1: 0.0, 2: 1.2}
+
+    def run() -> tuple[tuple[ConnectionId, ...], tuple[ConnectorInstanceId, ...]]:
+        placements = [ModulePlacement(NODE, "node", Transform.identity())]
+        placements.extend(
+            ModulePlacement(strut_id(i), "strut", strut_pose(direction(polar[i])))
+            for i in (2, 1, 0)
+        )
+        session = RuntimeSession.create(
+            pack_with(example_pack), SceneSpec.of(placements), MockBackendAdapter()
+        )
+        assert [m for m in session.world.modules if m != NODE] == [
+            strut_id(2),
+            strut_id(1),
+            strut_id(0),
+        ]
+        events = dock(session, 2, 1, 0)
+        refused = tuple(event.connector_a for event in events if isinstance(event, DockFailed))
+        return tuple(sorted(session.world.connections)), refused
+
+    outcome = run()
+    assert outcome == ((link(0),), (upper(1), upper(2)))
     assert run() == outcome
 
 
