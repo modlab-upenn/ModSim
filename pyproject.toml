@@ -104,6 +104,7 @@ exclude = [
   "tests/test_mblocks_planning_widgets.py",
   "tests/test_runtime_widgets.py",
   "tests/test_studio_appearance.py",
+  "tests/test_studio_surface_round_trip.py",
   "tests/test_studio_viewport.py",
   "tests/test_runtime_worker.py",
   # MuJoCo ships no type stubs, so strict mode reports every engine call as
