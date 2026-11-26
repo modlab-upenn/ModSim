@@ -22,7 +22,7 @@ from modsim.core.ids import (
 )
 from modsim.core.surface import SurfaceAttachment
 from modsim.core.transforms import Transform
-from modsim.robot_packs.schema import PhysicalConstraintType, SurfaceRealization
+from modsim.robot_packs.schema import AlignmentMode, PhysicalConstraintType, SurfaceRealization
 
 
 class DockFailureReason(StrEnum):
@@ -72,6 +72,15 @@ class DockCommitted(Event):
     orientation_index: int | None = None
     realization: SurfaceRealization | None = None
     """How a point-to-surface connection was realised; ``None`` for point-to-point."""
+    alignment: AlignmentMode = AlignmentMode.MEASURED
+    """Whether the committed relative pose was the measured one or snapped to nominal."""
+    nominal_alignment_withheld: bool = False
+    """True when nominal alignment was requested but not applied.
+
+    A point-to-surface snap moves the point side. When that side is already
+    connected to other modules, the commit keeps the measured pose instead of
+    moving them, and sets this flag.
+    """
     attachment: SurfaceAttachment | None = None
     """Where the point side sat on the surface at commit; ``None`` for point-to-point."""
 

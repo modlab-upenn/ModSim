@@ -49,6 +49,7 @@ from modsim.core.transforms import (
     vec_sub,
 )
 from modsim.robot_packs.schema import (
+    AlignmentMode,
     PhysicalConnectionSpec,
     PhysicalConstraintType,
     RobotPack,
@@ -778,3 +779,126 @@ def test_point_to_point_edges_have_no_surface_fields(example_pack: RobotPack) ->
     )
     assert isinstance(view, ModuleTopologyGraphView)
     assert view.edges[0].realization is None and view.edges[0].attachment is None
+
+
+def test_replaying_events_and_the_sample_reproduces_the_attachments(
+    example_pack: RobotPack,
+) -> None:
+    from modsim.core.state import WorldState
+    from modsim.runtime.surface_slide import SurfaceSlideCommand
+
+    pack = pack_with(example_pack)
+    scene = surface_scene(strut_pose(DOWN), strut_pose((1.0, 0.0, 0.0)))
+    session = RuntimeSession.create(pack, scene, MockBackendAdapter())
+    dock(session, 0, 1)
+    session.set_surface_slide(link(0), SurfaceSlideCommand((0.01, 0.0), 0.5))
+    for _ in range(20):
+        session.step(0.01)
+    session.step(0.0)
+
+    replay = WorldState.from_scene(pack, scene)
+    for event in session.world.event_log:
+        replay.apply(event)
+    replay.ingest(session.adapter.snapshot())
+
+    assert len(replay.event_log) == len(session.world.event_log)
+    for index in (0, 1):
+        assert replay.surface_attachment(link(index)) == session.world.surface_attachment(
+            link(index)
+        )
+
+
+def test_the_stricter_seat_tolerance_governs_mixed_types(example_pack: RobotPack) -> None:
+    strict_shell = surface_pack(
+        example_pack,
+        shell={
+            "acceptance_region": {
+                "shape": "sphere",
+                "position_tolerance_m": 0.001,
+                "orientation_tolerance_rad": 0.1,
+                "max_relative_velocity_m_s": 0.05,
+            }
+        },
+    )
+    session = make_session(strict_shell, strut_pose(DOWN, gap_m=0.002))
+
+    criterion = proposal_for(session, 0).acceptance.criterion(POSITION)
+
+    assert criterion.tolerance == pytest.approx(0.001)
+    assert not criterion.satisfied
+
+
+# ----------------------------------------------------------------------
+# nominal snapping is withheld when the strut is not alone
+# ----------------------------------------------------------------------
+
+
+def _strut_between(start: Vec3, end: Vec3) -> Transform:
+    """A strut whose lower end sits on the node at ``start`` and upper on ``end``."""
+    from modsim.core.transforms import minimal_rotation, vec_add
+
+    axis = vec_normalize(vec_sub(end, start))
+    middle = vec_scale(vec_add(start, end), 0.5)
+    return Transform(translation=middle, rotation=minimal_rotation((0.0, 0.0, 1.0), axis))
+
+
+def test_a_strut_already_on_a_node_closes_a_triangle_without_snapping(
+    example_pack: RobotPack,
+) -> None:
+    pack = surface_pack(
+        example_pack,
+        realizations=("static_fixed",),
+        # An equilateral triangle puts two struts 60 degrees apart on each node.
+        shell={"surface": {"radius_m": RADIUS_M, "capacity": 4, "min_separation_rad": 0.5}},
+        magnet={"docking_policy": {"alignment": "nominal"}},
+    )
+    side = 2.0 * (RADIUS_M + 0.03)
+    n0: Vec3 = (0.0, 0.0, 0.0)
+    n1: Vec3 = (side, 0.0, 0.0)
+    # Node 2 sits 1 mm beyond the ideal vertex, so its two struts start with a
+    # 0.5 mm seat gap that a snap would visibly remove.
+    n2: Vec3 = (side / 2.0, side * math.sqrt(3.0) / 2.0 + 0.001, 0.0)
+    placements = [
+        ModulePlacement(ModuleInstanceId(f"node_{i}"), "node", Transform(translation=p))
+        for i, p in enumerate((n0, n1, n2))
+    ] + [
+        ModulePlacement(strut_id(0), "strut", _strut_between(n0, n1)),
+        ModulePlacement(strut_id(1), "strut", _strut_between(n0, n2)),
+        ModulePlacement(strut_id(2), "strut", _strut_between(n1, n2)),
+    ]
+    adapter = MockBackendAdapter()
+    session = RuntimeSession.create(pack, SceneSpec.of(placements), adapter)
+
+    def shell(i: int) -> ConnectorInstanceId:
+        return ConnectorInstanceId(f"node_{i}/shell")
+
+    def lower(i: int) -> ConnectorInstanceId:
+        return ConnectorInstanceId(f"strut_{i}/lower")
+
+    # A strut on its own snaps; the commits that follow join existing structure.
+    session.request_dock(lower(0), shell(0))
+    alone = first(session.step(0.0), DockCommitted)
+    assert isinstance(alone, DockCommitted)
+    assert alone.alignment is AlignmentMode.NOMINAL and not alone.nominal_alignment_withheld
+
+    for point, surface in ((upper(0), 1), (lower(1), 0), (upper(1), 2), (lower(2), 1)):
+        session.request_dock(point, shell(surface))
+        session.step(0.0)
+    assert session.world.assemblies.count == 1
+    session.step(0.0)
+    before = {m: module.pose for m, module in session.world.modules.items()}
+
+    session.request_dock(upper(2), shell(2))
+    events = session.step(0.0)
+    session.step(0.0)
+
+    assert not any(isinstance(event, DockFailed) for event in events)
+    closing = first(events, DockCommitted)
+    assert isinstance(closing, DockCommitted)
+    assert closing.connector_a == upper(2)
+    assert closing.alignment is AlignmentMode.MEASURED
+    assert closing.nominal_alignment_withheld
+    for module_id, pose in before.items():
+        assert session.world.modules[module_id].pose.is_close(pose), module_id
+    attachment = session.world.surface_attachment(connection_id(upper(2), shell(2)))
+    assert attachment is not None and attachment.seat_gap_m > 1e-4

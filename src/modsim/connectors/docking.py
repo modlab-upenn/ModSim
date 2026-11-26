@@ -46,7 +46,7 @@ from modsim.core.events import (
     UndockCommitted,
     UndockFailed,
 )
-from modsim.core.ids import ConnectionId, ConnectorInstanceId, connection_id
+from modsim.core.ids import ConnectionId, ConnectorInstanceId, ModuleInstanceId, connection_id
 from modsim.core.state import WorldState
 from modsim.core.surface import SurfaceContact, attachment_from_contact, surface_center
 from modsim.core.transforms import Transform, Vec3
@@ -315,6 +315,13 @@ class DockingManager:
 
         snap = self._snaps_to_nominal(type_a, type_b)
         contact = proposal.surface_contact
+        snap_withheld = False
+        if snap and contact is not None and not _is_alone(world, connector_a.module_id):
+            # A surface snap moves side A. If the strut is already connected
+            # to anything, moving it would drag (or tear) that structure, so
+            # this commit keeps the measured pose instead and says so.
+            snap = False
+            snap_withheld = True
         mate_b = (
             connector_b
             if contact is None
@@ -409,6 +416,8 @@ class DockingManager:
                 orientation_rad=proposal.acceptance.orientation_rad,
                 orientation_index=proposal.acceptance.orientation_index,
                 realization=realization,
+                alignment=AlignmentMode.NOMINAL if snap else AlignmentMode.MEASURED,
+                nominal_alignment_withheld=snap_withheld,
                 attachment=(
                     None
                     if contact is None
@@ -693,6 +702,11 @@ class DockingManager:
             )
         self._detected = detected
         return tuple(events)
+
+
+def _is_alone(world: WorldState, module_id: ModuleInstanceId) -> bool:
+    """Whether a module is the only member of its assembly."""
+    return len(world.assemblies.members(world.assemblies.assembly_of(module_id))) == 1
 
 
 def _no_realization_detail(adapter: BackendAdapter, physical: PhysicalConnectionSpec) -> str:
