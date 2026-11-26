@@ -138,12 +138,18 @@ class ConstraintWrench:
 class ForceMagnitudeView(FrozenMapping[ConstraintHandle, float]):
     """Handle to force magnitude, read lazily from a wrench mapping."""
 
-    __slots__ = ("_wrenches",)
+    __slots__ = ("_magnitude", "_wrenches")
 
     def __init__(self, wrenches: Mapping[ConstraintHandle, ConstraintWrench]) -> None:
         self._wrenches = wrenches
+        # A backend's wrench mapping may answer magnitudes directly, without
+        # building a wrench per connection (the overload check reads every
+        # magnitude every tick).
+        self._magnitude = getattr(wrenches, "force_magnitude_n", None)
 
     def __getitem__(self, handle: ConstraintHandle) -> float:
+        if self._magnitude is not None:
+            return float(self._magnitude(handle))
         return self._wrenches[handle].force_magnitude_n
 
     def __iter__(self) -> Iterator[ConstraintHandle]:

@@ -33,7 +33,7 @@ from modsim.core.ids import (
     split_joint_instance_id,
 )
 from modsim.core.scene import SceneSpec
-from modsim.core.snapshot import BackendStateSnapshot, ConstraintWrench
+from modsim.core.snapshot import BackendStateSnapshot
 from modsim.core.transforms import (
     ZERO_VEC3,
     Quat,
@@ -64,6 +64,7 @@ from modsim_backend_mujoco.welds import (
     WeldPoolExhaustedError,
     body_relative_transform,
 )
+from modsim_backend_mujoco.wrenches import EqualityRows, WrenchTable, capture_wrenches
 
 MUJOCO_BACKEND_NAME = "mujoco"
 
@@ -137,7 +138,7 @@ class MuJoCoBackendAdapter:
         self._ground_height_m = ground_height_m
         self._compiled: CompiledScene | None = None
         self._sample_layout: SampleLayout | None = None
-        self._forces: dict[ConstraintHandle, ConstraintWrench] = {}
+        self._forces: WrenchTable = WrenchTable.empty()
         self._wrench_references: dict[ConstraintHandle, tuple[int, np.ndarray]] = {}
         self._immediate_connection_changes = immediate_connection_changes
         self._rows_stale = False
@@ -312,13 +313,14 @@ class MuJoCoBackendAdapter:
             constraint_wrenches=self._active_wrenches(),
         )
 
-    def _active_wrenches(self) -> dict[ConstraintHandle, ConstraintWrench]:
+    def _active_wrenches(self) -> WrenchTable:
         """Wrenches of the last solve, for connections that still exist."""
-        return {
-            handle: wrench
-            for handle, wrench in self._forces.items()
-            if self._welds.slot_for(handle) is not None or self._hinges.slot_for(handle) is not None
-        }
+        return self._forces.restricted(
+            lambda handle: (
+                self._welds.slot_for(handle) is not None
+                or self._hinges.slot_for(handle) is not None
+            )
+        )
 
     def set_joint_commands(self, commands: tuple[JointCommand, ...]) -> None:
         """Set a validated batch of persistent effort commands atomically."""
@@ -524,7 +526,7 @@ class MuJoCoBackendAdapter:
         self._contact_exclusions.clear()
         self._compiled = None
         self._sample_layout = None
-        self._forces = {}
+        self._forces = WrenchTable.empty()
         self._wrench_references = {}
         self._data = None
         self._scene = None
@@ -662,32 +664,28 @@ class MuJoCoBackendAdapter:
             rotation=_mat_to_quat(data.site_xmat[site_id]),
         )
 
-    def _constraint_forces(
-        self,
-        data: mujoco.MjData,
-    ) -> dict[ConstraintHandle, ConstraintWrench]:
+    def _constraint_forces(self, data: mujoco.MjData) -> WrenchTable:
         """Return the wrench of every active connection from the last solve.
 
         Must be called while ``data`` still holds the kinematics the solved
         constraint rows were built from (directly after ``mj_step2`` or
-        ``mj_forward``), so the rows, anchors and frames agree.
+        ``mj_forward``), so the rows, anchors and frames agree. The work is
+        batched across connections; see ``modsim_backend_mujoco.wrenches``.
         """
         model = self._require_compiled().model
-        wrenches: dict[ConstraintHandle, ConstraintWrench] = {}
-        rows = _EqualityForceRows(data)
-        for slot in self._welds.slots:
-            if slot.handle is not None and data.eq_active[slot.equality_id]:
-                wrenches[slot.handle] = _weld_wrench(
-                    model, data, rows, slot.equality_id, self._wrench_references.get(slot.handle)
-                )
-        for slot in self._hinges.slots:
-            if slot.handle is not None and all(
-                data.eq_active[equality] for equality in slot.equality_ids
-            ):
-                wrenches[slot.handle] = _hinge_wrench(
-                    model, data, rows, slot.equality_ids, self._wrench_references.get(slot.handle)
-                )
-        return wrenches
+        active = data.eq_active
+        references = self._wrench_references
+        welds = [
+            (slot.handle, slot.equality_id, _reference_local(references.get(slot.handle)))
+            for slot in self._welds.slots
+            if slot.handle is not None and active[slot.equality_id]
+        ]
+        hinges = [
+            (slot.handle, slot.equality_ids, _reference_local(references.get(slot.handle)))
+            for slot in self._hinges.slots
+            if slot.handle is not None and all(active[e] for e in slot.equality_ids)
+        ]
+        return capture_wrenches(model, data, welds, hinges)
 
     def _snap_to_nominal(
         self,
@@ -827,48 +825,8 @@ def _mat_to_quat(matrix: object) -> Quat:
     return _quat(result)
 
 
-class _EqualityForceRows:
-    """Solver rows of every equality constraint, grouped once per snapshot.
-
-    ``efc_id`` identifies the equality that produced each scalar solver row;
-    filtering by both constraint kind and equality id avoids mixing in contact,
-    friction, or limit forces. Grouping all rows in one pass (a stable sort, so
-    each group keeps constraint order) replaces a full scan per connection,
-    which grew quadratically with the number of active welds. The rows, and so
-    the magnitudes computed from them, are unchanged.
-    """
-
-    __slots__ = ("_bounds", "_forces")
-
-    def __init__(self, data: mujoco.MjData) -> None:
-        count = data.nefc
-        self._bounds: dict[int, tuple[int, int]] = {}
-        if count == 0:
-            self._forces = np.empty(0)
-            return
-        kinds = np.asarray(data.efc_type[:count])
-        equality = kinds == int(mujoco.mjtConstraint.mjCNSTR_EQUALITY)
-        identifiers = np.asarray(data.efc_id[:count])[equality]
-        forces = np.asarray(data.efc_force[:count])[equality]
-        order = np.argsort(identifiers, kind="stable")
-        identifiers = identifiers[order]
-        self._forces = forces[order]
-        if len(identifiers) == 0:
-            return
-        unique, starts = np.unique(identifiers, return_index=True)
-        ends = [*starts[1:].tolist(), len(identifiers)]
-        for equality_id, start, end in zip(unique.tolist(), starts.tolist(), ends, strict=True):
-            self._bounds[equality_id] = (start, end)
-
-    def __call__(self, equality_id: int) -> np.ndarray:
-        """Return solver rows belonging to one equality, in constraint order."""
-        bounds = self._bounds.get(equality_id)
-        if bounds is None:
-            return np.empty(0)
-        return self._forces[bounds[0] : bounds[1]]
-
-
-_ZERO_WRENCH = ConstraintWrench()
+_EqualityForceRows = EqualityRows
+"""Kept under its former name for callers that group equality rows directly."""
 
 
 def _first(*values: object) -> Any:
@@ -883,106 +841,13 @@ def _wrench_reference(body_a: int, request: ConnectionRequest) -> tuple[int, np.
     """Return body A and connector A's origin in body A's frame.
 
     The wrench is reported about connector A's origin, which is fixed in body
-    A, so storing it once keeps each per-step evaluation O(1).
+    A, so storing it once keeps each step's evaluation to array work.
     """
     return body_a, np.asarray(request.connector_a_local.translation, dtype=float)
 
 
-def _reference_point(data: mujoco.MjData, reference: tuple[int, np.ndarray]) -> np.ndarray:
-    body, local = reference
-    return data.xpos[body] + data.xmat[body].reshape(3, 3) @ local
-
-
-def _quat_mul(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-    aw, ax, ay, az = a
-    bw, bx, by, bz = b
-    return np.array(
-        (
-            aw * bw - ax * bx - ay * by - az * bz,
-            aw * bx + ax * bw + ay * bz - az * by,
-            aw * by - ax * bz + ay * bw + az * bx,
-            aw * bz + ax * by - ay * bx + az * bw,
-        )
-    )
-
-
-def _weld_rotation_map(model: mujoco.MjModel, data: mujoco.MjData, equality: int) -> np.ndarray:
-    """Return ``A`` with rotational rows = ``A @ (omega_a - omega_b)`` (world frame).
-
-    This mirrors ``mj_instantiateEquality`` for a body-semantic weld: the rows
-    are ``0.5 * torquescale * vec(neg(q_b) * (0, omega) * q_a * relpose)``. The
-    moment the rows apply to body A is therefore ``A.T @ rows``.
-    """
-    body_a = int(model.eq_obj1id[equality])
-    body_b = int(model.eq_obj2id[equality])
-    quat = _quat_mul(data.xquat[body_a], model.eq_data[equality, RELPOSE_ROTATION])
-    neg_b = data.xquat[body_b] * np.array((1.0, -1.0, -1.0, -1.0))
-    scale = 0.5 * float(model.eq_data[equality, TORQUE_SCALE])
-    columns = []
-    for axis in np.eye(3):
-        pure = np.array((0.0, axis[0], axis[1], axis[2]))
-        columns.append(_quat_mul(_quat_mul(neg_b, pure), quat)[1:] * scale)
-    return np.column_stack(columns)
-
-
-def _weld_wrench(
-    model: mujoco.MjModel,
-    data: mujoco.MjData,
-    rows_of: _EqualityForceRows,
-    equality: int,
-    reference: tuple[int, np.ndarray] | None,
-) -> ConstraintWrench:
-    """Return the wrench a weld applies to body A, about connector A's origin.
-
-    A weld contributes three translational rows, a world-frame force acting on
-    body A at its anchor, followed by three rotational rows, which encode a
-    couple through MuJoCo's weld torque scale and are mapped back to N m.
-    """
-    rows = rows_of(equality)
-    if len(rows) < 6:
-        return _ZERO_WRENCH
-    force = rows[:3]
-    body_a = int(model.eq_obj1id[equality])
-    rotation_a = data.xmat[body_a].reshape(3, 3)
-    anchor = data.xpos[body_a] + rotation_a @ model.eq_data[equality, RELPOSE_POSITION]
-    torque = _weld_rotation_map(model, data, equality).T @ rows[3:6]
-    if reference is not None:
-        torque = torque + np.cross(anchor - _reference_point(data, reference), force)
-    return ConstraintWrench(force_n=_vec3(force), torque_nm=_vec3(torque))
-
-
-def _hinge_wrench(
-    model: mujoco.MjModel,
-    data: mujoco.MjData,
-    rows_of: _EqualityForceRows,
-    equality_ids: tuple[int, int],
-    reference: tuple[int, np.ndarray] | None,
-) -> ConstraintWrench:
-    """Return the net wrench a two-point hinge applies to body A.
-
-    Each connect equality contributes a world-frame point force acting on body
-    A at its anchor. Their sum is the net force; their moments about connector
-    A's origin sum to the transmitted moment, whose hinge-axis component is
-    zero up to solver tolerance.
-    """
-    point_forces = [rows_of(equality) for equality in equality_ids]
-    if any(len(rows) < 3 for rows in point_forces):
-        return _ZERO_WRENCH
-    force = point_forces[0][:3] + point_forces[1][:3]
-    torque = np.zeros(3)
-    origin = (
-        _reference_point(data, reference)
-        if reference is not None
-        else data.xpos[int(model.eq_obj1id[equality_ids[0]])]
-    )
-    for equality, rows in zip(equality_ids, point_forces, strict=True):
-        body_a = int(model.eq_obj1id[equality])
-        anchor = (
-            data.xpos[body_a]
-            + data.xmat[body_a].reshape(3, 3) @ model.eq_data[equality, CONNECT_ANCHOR_BODY_A]
-        )
-        torque += np.cross(anchor - origin, rows[:3])
-    return ConstraintWrench(force_n=_vec3(force), torque_nm=_vec3(torque))
+def _reference_local(reference: tuple[int, np.ndarray] | None) -> np.ndarray | None:
+    return None if reference is None else reference[1]
 
 
 def _split(instance: ConnectorInstanceId) -> tuple[ModuleInstanceId, str]:
