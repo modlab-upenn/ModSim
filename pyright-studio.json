@@ -1,6 +1,7 @@
 {
   "include": [
-    "src/modsim_studio"
+    "src/modsim_studio",
+    "tests/test_studio_surface_round_trip.py"
   ],
   "pythonVersion": "3.11",
   "typeCheckingMode": "strict",
