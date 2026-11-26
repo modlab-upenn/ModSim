@@ -685,3 +685,96 @@ def test_unused_helper_distance() -> None:
     pose = strut_pose(DOWN)
     point = pose.apply_point((0.0, 0.0, 0.03))
     assert vec_norm(vec_sub(point, (0.0, 0.0, 0.0))) == pytest.approx(RADIUS_M)
+
+
+# ----------------------------------------------------------------------
+# views and protocol (section 9)
+# ----------------------------------------------------------------------
+
+
+def test_view_edges_carry_the_realization_and_live_attachment(example_pack: RobotPack) -> None:
+    from modsim.model_views import ModelViewContext, ModelViewFactory
+    from modsim.model_views.models import CubicLatticeView, ModuleTopologyGraphView
+    from modsim.robot_packs.schema import ModelViewSpec
+    from modsim.runtime.inspection import build_runtime_inspector_frame
+    from modsim.runtime.inspection_protocol import (
+        RUNTIME_PROTOCOL_VERSION,
+        RuntimeFrame,
+        decode_runtime_message,
+        encode_runtime_message,
+    )
+    from modsim.runtime.surface_slide import SurfaceSlideCommand
+
+    pack = pack_with(example_pack)
+    session = make_session(pack, strut_pose(DOWN, gap_m=0.001))
+    dock(session, 0)
+    factory = ModelViewFactory()
+    context = ModelViewContext(pack, session.world)
+    recipe = pack.manifest.model_views[0]
+
+    topology = factory.build(recipe, context)
+    assert isinstance(topology, ModuleTopologyGraphView)
+    edge = topology.edges[0]
+    assert edge.realization is SurfaceRealization.DRIVEN_FIXED
+    assert edge.attachment is not None
+    assert edge.attachment.seat_gap_m == pytest.approx(0.001, abs=1e-12)
+    # acos is ill-conditioned at the pole, hence the looser tolerance.
+    assert edge.attachment.polar_rad == pytest.approx(math.pi, abs=1e-6)
+
+    # Sliding changes the attachment on the next sample without a topology change.
+    revision = session.world.revision.topology_revision
+    session.set_surface_slide(link(0), SurfaceSlideCommand((0.01, 0.0)))
+    session.step(0.1)
+    session.step(0.0)
+    assert session.world.revision.topology_revision == revision
+    moved = factory.build(recipe, context)
+    assert isinstance(moved, ModuleTopologyGraphView)
+    assert moved.edges[0].attachment is not None
+    assert moved.edges[0].attachment.polar_rad < edge.attachment.polar_rad
+
+    lattice = factory.build(
+        ModelViewSpec.model_validate(
+            {
+                "id": "surface_lattice",
+                "builder": "cubic_lattice",
+                "configuration": {
+                    "pitch_m": 0.1,
+                    "position_tolerance_m": 0.005,
+                    "orientation_tolerance_rad": 0.08726646259971647,
+                },
+            }
+        ),
+        context,
+    )
+    assert isinstance(lattice, CubicLatticeView)
+    lattice_edge = lattice.edges[0]
+    assert lattice_edge.attachment is not None
+    faces = {lattice_edge.connector_a: lattice_edge.source_face}
+    faces[lattice_edge.connector_b] = lattice_edge.target_face
+    assert faces[str(SHELL)] is None
+    assert faces[str(upper(0))] is not None
+
+    frame = build_runtime_inspector_frame(session, recipe, factory)
+    decoded = decode_runtime_message(encode_runtime_message(RuntimeFrame(frame=frame)))
+    assert RUNTIME_PROTOCOL_VERSION == 4
+    assert isinstance(decoded, RuntimeFrame)
+    assert decoded.frame.view.edges[0].attachment == frame.view.edges[0].attachment
+    assert decoded.frame.metrics.surface_slots_occupied == 1
+
+
+def test_point_to_point_edges_have_no_surface_fields(example_pack: RobotPack) -> None:
+    from modsim.model_views import ModelViewContext, ModelViewFactory
+    from modsim.model_views.models import ModuleTopologyGraphView
+
+    session = RuntimeSession.create(
+        example_pack, SceneSpec.grid("generic_cube", 2, spacing_m=0.1), MockBackendAdapter()
+    )
+    session.request_dock(
+        ConnectorInstanceId("generic_cube_0/front"), ConnectorInstanceId("generic_cube_1/rear")
+    )
+    session.step(0.0)
+    view = ModelViewFactory().build(
+        example_pack.manifest.model_views[0], ModelViewContext(example_pack, session.world)
+    )
+    assert isinstance(view, ModuleTopologyGraphView)
+    assert view.edges[0].realization is None and view.edges[0].attachment is None

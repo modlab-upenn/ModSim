@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -26,9 +26,64 @@ from modsim.core.ids import (
     JointInstanceId,
 )
 from modsim.core.scene import SceneSpec
+from modsim.core.snapshot import BackendStateSnapshot
 from modsim.core.state import WorldState
-from modsim.robot_packs.schema import ControlMode, JointSpec, JointType, LoadedRobotPack, RobotPack
+from modsim.core.transforms import vec_dot, vec_norm, vec_normalize, vec_scale, vec_sub
+from modsim.robot_packs.schema import (
+    ConnectorLimits,
+    ControlMode,
+    JointSpec,
+    JointType,
+    LoadedRobotPack,
+    RobotPack,
+)
 from modsim.runtime.metrics import DockingMetrics, collect_metrics
+from modsim.runtime.surface_slide import SlideReport, SurfaceSlideCommand, SurfaceSlideDriver
+
+_AXIS_LIMITS = (
+    ("normal_force", "max_normal_force_n"),
+    ("shear_force", "max_shear_force_n"),
+    ("bending_moment", "max_bending_moment_nm"),
+    ("torsion_moment", "max_torsion_moment_nm"),
+)
+
+
+def _governing_break_limits(
+    first: ConnectorLimits | None,
+    second: ConnectorLimits | None,
+) -> dict[str, float]:
+    """Return the lower declared limit per quantity; a joint is as strong as its weaker half."""
+    result: dict[str, float] = {}
+    for quantity, field_name in _AXIS_LIMITS:
+        declared = [
+            value
+            for limits in (first, second)
+            if limits is not None
+            for value in (getattr(limits, field_name),)
+            if value is not None
+        ]
+        if declared:
+            result[quantity] = min(declared)
+    return result
+
+
+def _check_break_limit_support(pack: RobotPack, capabilities: BackendCapabilities) -> None:
+    """Refuse a pack whose moment break limits this backend cannot measure.
+
+    Skipping the check silently would let a connection carry any moment, so a
+    moment limit on a backend without moment telemetry is an explicit error.
+    """
+    if capabilities.supports_constraint_torques:
+        return
+    for type_id, connector_type in pack.hardware_catalog.connector_types.items():
+        limits = connector_type.effective_docking_policy.break_limits
+        if limits is None:
+            continue
+        if limits.max_bending_moment_nm is not None or limits.max_torsion_moment_nm is not None:
+            raise BackendError(
+                f"connector type '{type_id}' declares moment break limits, but backend "
+                f"'{capabilities.name}' does not report constraint moments"
+            )
 
 
 class JointCommandError(ValueError):
@@ -48,6 +103,7 @@ class RuntimeSession:
     adapter: BackendAdapter
     docking: DockingManager = field(default_factory=DockingManager)
     handles: BackendHandleRegistry = field(default_factory=BackendHandleRegistry)
+    surface_slides: SurfaceSlideDriver = field(default_factory=SurfaceSlideDriver)
     _changed_at_step: dict[ConnectionId, int] = field(
         default_factory=dict[ConnectionId, int], init=False, repr=False
     )
@@ -82,6 +138,7 @@ class RuntimeSession:
         problems = resolved.capabilities().world_support_problems(scene.world)
         if problems:
             raise BackendError("; ".join(problems))
+        _check_break_limit_support(pack, resolved.capabilities())
         handles = resolved.load(pack, scene, root=pack_root)
         world = WorldState.from_scene(pack, scene)
         session = cls(
@@ -157,6 +214,29 @@ class RuntimeSession:
         capabilities = self.adapter.capabilities()
         adapter = self._joint_command_adapter(capabilities)
         adapter.clear_joint_commands(batch)
+
+    def set_surface_slide(
+        self,
+        connection: ConnectionId,
+        command: SurfaceSlideCommand,
+    ) -> None:
+        """Slide a ``driven_fixed`` point-to-surface connection until told otherwise.
+
+        The command persists across steps. It is validated now: an unknown
+        connection, a connection that is not ``driven_fixed`` (``ball`` and
+        ``static_fixed`` cannot be driven), a backend that cannot retarget,
+        or non-finite values raise :class:`SurfaceSlideError`.
+        """
+        self.surface_slides.set(self.world, self.adapter, connection, command)
+
+    def clear_surface_slide(self, connections: Iterable[ConnectionId] | None = None) -> None:
+        """Stop sliding selected connections, or all of them."""
+        self.surface_slides.clear(connections)
+
+    @property
+    def surface_slide_report(self) -> SlideReport:
+        """What the last step's slide update clamped or had refused."""
+        return self.surface_slides.last_report
 
     def proposals(self) -> tuple[DockProposal, ...]:
         """Return the current candidate evaluations without committing any."""
@@ -359,36 +439,89 @@ class RuntimeSession:
         self.adapter.step(dt_s)
         snapshot = self.adapter.snapshot()
         self.world.ingest(snapshot)
-        events: list[Event] = list(self._evaluate_overloads(snapshot.constraint_forces_n))
+        events: list[Event] = list(self._evaluate_overloads(snapshot))
         if process_connectors:
             events.extend(self.process_docking())
+        # Sliding runs after the docking pass, so connections released this
+        # step are skipped and new ones start sliding at the next step.
+        self.surface_slides.update(self.world, self.adapter, dt_s)
         return tuple(events)
 
-    def _evaluate_overloads(
-        self,
-        forces_n: Mapping[ConstraintHandle, float],
-    ) -> tuple[Event, ...]:
+    def _evaluate_overloads(self, snapshot: BackendStateSnapshot) -> tuple[Event, ...]:
+        """Release every connection whose measured load exceeds a declared limit.
+
+        The whole-force ``break_force_n`` check runs first, as before. Then
+        the opt-in per-axis ``break_limits`` are checked against the wrench
+        resolved about connector A's docking axis. The first exceeded
+        quantity is reported and the connection is released.
+        """
+        forces_n = snapshot.constraint_forces_n
         events: list[Event] = []
         for connection in tuple(self.world.connections.values()):
             measured = forces_n.get(connection.constraint_handle)
             if measured is None:
                 continue
+            exceeded: tuple[str, float, float] | None = None
             limit = self._break_force_n(connection.connector_a, connection.connector_b)
-            if limit is None or measured <= limit:
+            if limit is not None and measured > limit:
+                exceeded = ("force_magnitude", measured, limit)
+            else:
+                exceeded = self._exceeded_axis_limit(
+                    connection.connector_a,
+                    connection.connector_b,
+                    snapshot,
+                    connection.constraint_handle,
+                )
+            if exceeded is None:
                 continue
+            quantity, value, limit_value = exceeded
             events.append(
                 self.world.apply(
                     ConnectorOverloaded(
                         time_s=self.world.time_s,
                         connection_id=connection.id,
-                        measured_force_n=measured,
-                        limit_n=limit,
+                        measured_force_n=value,
+                        limit_n=limit_value,
                         released=True,
+                        quantity=quantity,
                     )
                 )
             )
             events.extend(self.docking.undock(self.world, self.adapter, connection.id))
         return self.record_connection_changes(tuple(events))
+
+    def _exceeded_axis_limit(
+        self,
+        connector_a: ConnectorInstanceId,
+        connector_b: ConnectorInstanceId,
+        snapshot: BackendStateSnapshot,
+        handle: ConstraintHandle,
+    ) -> tuple[str, float, float] | None:
+        limits = _governing_break_limits(
+            self.world.connector_type(connector_a).effective_docking_policy.break_limits,
+            self.world.connector_type(connector_b).effective_docking_policy.break_limits,
+        )
+        if not limits:
+            # Read the wrench only when needed: a backend may compute moments lazily.
+            return None
+        wrench = snapshot.constraint_wrenches[handle]
+        axis = vec_normalize(self.world.connector(connector_a).world_docking_axis)
+        normal = vec_dot(wrench.force_n, axis)
+        measured: dict[str, float | None] = {
+            "normal_force": abs(normal),
+            "shear_force": vec_norm(vec_sub(wrench.force_n, vec_scale(axis, normal))),
+            "bending_moment": None,
+            "torsion_moment": None,
+        }
+        if wrench.torque_nm is not None:
+            twist = vec_dot(wrench.torque_nm, axis)
+            measured["torsion_moment"] = abs(twist)
+            measured["bending_moment"] = vec_norm(vec_sub(wrench.torque_nm, vec_scale(axis, twist)))
+        for quantity, limit in limits.items():
+            value = measured[quantity]
+            if value is not None and value > limit:
+                return quantity, value, limit
+        return None
 
     def _break_force_n(
         self,

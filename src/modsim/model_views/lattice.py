@@ -52,6 +52,7 @@ from modsim.model_views.models import (
     LatticeFace,
     ModelViewSourceStamp,
 )
+from modsim.model_views.topology import surface_attachment_dto
 from modsim.robot_packs.schema import ModelViewMode, ModelViewSpec
 
 _QUATERNION_TOLERANCE = 1e-6
@@ -377,6 +378,8 @@ def _connection_edge(
         orientation_rad=connection.orientation_rad,
         orientation_index=connection.orientation_index,
         created_at_s=connection.created_at_s,
+        realization=connection.realization,
+        attachment=surface_attachment_dto(world, connection),
         source_face=source_face,
         target_face=target_face,
         source_face_residual_rad=None

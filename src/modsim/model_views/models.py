@@ -13,7 +13,7 @@ from typing import Generic, Literal, Self, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from modsim.robot_packs.schema import PhysicalConstraintType
+from modsim.robot_packs.schema import PhysicalConstraintType, SurfaceRealization
 
 MODEL_VIEW_SCHEMA_VERSION: Literal["0.1"] = "0.1"
 
@@ -81,6 +81,25 @@ class GraphEdge(ModelViewDTO):
     target: str = Field(min_length=1)
 
 
+class SurfaceAttachmentDTO(ModelViewDTO):
+    """Where a point connector currently sits on a surface connector.
+
+    ``normal_local`` is the outward unit normal in the surface connector frame
+    and is the canonical value. Polar and azimuth angles are singular at the
+    surface frame's poles. Spin is measured from the surface frame's x axis
+    projected onto the tangent plane, or from y near the +-x poles, where
+    ``spin_reference_degenerate`` is true.
+    """
+
+    normal_local: tuple[float, float, float]
+    polar_rad: float
+    azimuth_rad: float
+    spin_rad: float
+    spin_reference_degenerate: bool
+    seat_gap_m: float
+    magnet_height_m: float | None = None
+
+
 class DockedConnectionEdge(GraphEdge):
     """One active connector connection represented as an undirected edge."""
 
@@ -92,6 +111,10 @@ class DockedConnectionEdge(GraphEdge):
     orientation_rad: float
     orientation_index: int | None = Field(default=None, ge=0)
     created_at_s: float = Field(ge=0.0)
+    realization: SurfaceRealization | None = None
+    """How a point-to-surface connection is realised; ``None`` for point-to-point."""
+    attachment: SurfaceAttachmentDTO | None = None
+    """The live attachment of a point-to-surface connection; ``None`` otherwise."""
 
 
 NodeT = TypeVar("NodeT", bound=GraphNode)

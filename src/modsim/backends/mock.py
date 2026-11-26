@@ -66,7 +66,7 @@ class MockBackendAdapter:
     def __init__(self) -> None:
         self._bodies: dict[ModuleInstanceId, _Body] = {}
         self._welds: dict[ConstraintHandle, _Weld] = {}
-        self._forces: dict[ConstraintHandle, float] = {}
+        self._forces: dict[ConstraintHandle, Vec3] = {}
         self._time_s = 0.0
         self._next_failure: str | None = None
 
@@ -152,8 +152,10 @@ class MockBackendAdapter:
         return BackendStateSnapshot(
             time_s=self._time_s,
             link_states=link_states,
+            # The mock measures no moments, which its capabilities say, so the
+            # moment part of each wrench is reported as unmeasured.
             constraint_wrenches={
-                handle: ConstraintWrench(force_n=(force_n, 0.0, 0.0))
+                handle: ConstraintWrench(force_n=force_n, torque_nm=None)
                 for handle, force_n in self._forces.items()
             },
         )
@@ -196,7 +198,7 @@ class MockBackendAdapter:
             module_b=request.module_b,
             relative_pose=body_b.pose.relative_to(body_a.pose),
         )
-        self._forces[handle] = 0.0
+        self._forces[handle] = ZERO_VEC3
         return ConnectionOutcome.accepted(handle)
 
     def retarget_physical_connections(
@@ -289,15 +291,18 @@ class MockBackendAdapter:
         """Make the next connection request fail, to exercise the failure path."""
         self._next_failure = detail
 
-    def set_constraint_force(self, handle: ConstraintHandle, force_n: float) -> None:
+    def set_constraint_force(self, handle: ConstraintHandle, force_n: float | Vec3) -> None:
         """Set the reported constraint force for one weld.
 
-        The mock has no geometry, so the force is reported along world x with
-        zero moment; only its magnitude is meaningful.
+        A scalar is reported along world x, where only its magnitude is
+        meaningful. A vector is reported as given, in the world frame, so
+        per-axis force limits can be exercised. Moments are never reported.
         """
         if handle not in self._welds:
             raise BackendError(f"unknown constraint '{handle}'")
-        self._forces[handle] = force_n
+        self._forces[handle] = (
+            (float(force_n), 0.0, 0.0) if isinstance(force_n, int | float) else force_n
+        )
 
     @property
     def welds(self) -> tuple[ConstraintHandle, ...]:

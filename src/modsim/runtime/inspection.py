@@ -186,8 +186,11 @@ def format_event_detail(event: Event) -> str:
     if isinstance(event, AssemblySplit):
         return f"{event.source_assembly_id} -> {' + '.join(event.resulting)}"
     if isinstance(event, ConnectorOverloaded):
+        unit = "N*m" if event.quantity.endswith("_moment") else "N"
+        label = "" if event.quantity == "force_magnitude" else f"{event.quantity} "
         return (
-            f"{event.connection_id}: {event.measured_force_n:.4g} N exceeded {event.limit_n:.4g} N"
+            f"{event.connection_id}: {label}{event.measured_force_n:.4g} {unit} exceeded "
+            f"{event.limit_n:.4g} {unit}"
         )
     return ""
 

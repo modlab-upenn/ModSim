@@ -122,12 +122,27 @@ class AssemblySplit(Event):
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class ConnectorOverloaded(Event):
-    """A connection's measured constraint force exceeded a declared limit."""
+    """A connection's measured load exceeded a declared limit.
+
+    ``quantity`` names what was measured. ``force_magnitude`` (the default) is
+    the whole constraint force against ``break_force_n``. The per-axis
+    quantities, checked against the opt-in ``docking_policy.break_limits``,
+    are resolved about connector A's docking axis: ``normal_force`` and
+    ``shear_force`` in newtons, ``bending_moment`` and ``torsion_moment`` in
+    newton-metres. ``measured_force_n`` and ``limit_n`` carry the value and
+    limit in that quantity's unit.
+
+    Every exceeded quantity releases the connection. That is an approximation
+    for shear and torsion: a real magnetic connector such as FreeSN slips
+    under excess shear or torsion and detaches only under excess normal force
+    or bending. Slip under load is not modelled.
+    """
 
     connection_id: ConnectionId
     measured_force_n: float
     limit_n: float
     released: bool = False
+    quantity: str = "force_magnitude"
 
 
 class EventLog:

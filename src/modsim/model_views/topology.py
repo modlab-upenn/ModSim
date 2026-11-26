@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Hashable
 
 from modsim.core.entities import ConnectionRuntime
+from modsim.core.state import WorldState
 from modsim.model_views.base import (
     ModelViewBuilder,
     ModelViewBuildError,
@@ -16,6 +17,7 @@ from modsim.model_views.models import (
     ModelViewSourceStamp,
     ModuleGraphNode,
     ModuleTopologyGraphView,
+    SurfaceAttachmentDTO,
 )
 from modsim.robot_packs.schema import ModelViewMode, ModelViewSpec
 
@@ -81,7 +83,7 @@ class ModuleTopologyGraphBuilder(ModelViewBuilder[ModuleTopologyGraphView]):
             for module in sorted(world.modules.values(), key=lambda item: str(item.id))
         )
         edges = tuple(
-            _connection_edge(connection)
+            _connection_edge(connection, world)
             for connection in sorted(world.connections.values(), key=lambda item: str(item.id))
         )
         return ModuleTopologyGraphView(
@@ -94,7 +96,29 @@ class ModuleTopologyGraphBuilder(ModelViewBuilder[ModuleTopologyGraphView]):
         )
 
 
-def _connection_edge(connection: ConnectionRuntime) -> DockedConnectionEdge:
+def surface_attachment_dto(
+    world: WorldState,
+    connection: ConnectionRuntime,
+) -> SurfaceAttachmentDTO | None:
+    """Return a connection's live surface attachment as a view DTO, if it has one."""
+    if connection.realization is None:
+        return None
+    attachment = world.surface_attachment(connection.id)
+    if attachment is None:
+        return None
+    normal = attachment.normal_local
+    return SurfaceAttachmentDTO(
+        normal_local=(float(normal[0]), float(normal[1]), float(normal[2])),
+        polar_rad=attachment.polar_rad,
+        azimuth_rad=attachment.azimuth_rad,
+        spin_rad=attachment.spin_rad,
+        spin_reference_degenerate=attachment.spin_reference_degenerate,
+        seat_gap_m=attachment.seat_gap_m,
+        magnet_height_m=attachment.magnet_height_m,
+    )
+
+
+def _connection_edge(connection: ConnectionRuntime, world: WorldState) -> DockedConnectionEdge:
     """Return an edge whose undirected endpoints have canonical ordering."""
     endpoints = (
         (str(connection.module_a), str(connection.connector_a)),
@@ -112,4 +136,6 @@ def _connection_edge(connection: ConnectionRuntime) -> DockedConnectionEdge:
         orientation_rad=connection.orientation_rad,
         orientation_index=connection.orientation_index,
         created_at_s=connection.created_at_s,
+        realization=connection.realization,
+        attachment=surface_attachment_dto(world, connection),
     )

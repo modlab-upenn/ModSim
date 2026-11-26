@@ -633,6 +633,10 @@ class WorldState:
 
     def _apply_overload(self, event: ConnectorOverloaded) -> bool:
         connection = self._connections.get(event.connection_id)
+        if event.quantity != "force_magnitude":
+            # A per-axis overload carries a component or a moment, not the
+            # whole constraint force recorded on the connection.
+            return False
         if connection is None or connection.measured_force_n == event.measured_force_n:
             return False
         connection.measured_force_n = event.measured_force_n
