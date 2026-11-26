@@ -1,0 +1,27 @@
+schema_version: '0.1'
+id: generic_cube
+name: Generic Cube Module
+version: 0.1.0
+description: Simulator-neutral example pack for the ModSim schema and CLI.
+metadata: {}
+model_views:
+  - id: module_topology
+    name: Module Topology
+    builder: module_topology_graph
+    modes:
+      - runtime
+    default: true
+    configuration: {}
+assets:
+  urdf:
+    generic_cube: assets/urdf/generic_cube.urdf
+  mesh_directories: {}
+  mujoco: {}
+  isaac_usd: {}
+  thumbnails: {}
+specs:
+  modules: specs/module_types.yaml
+  connectors: specs/connector_types.yaml
+  capabilities: specs/capabilities.yaml
+mappings:
+  urdf: mappings/urdf_mapping.yaml

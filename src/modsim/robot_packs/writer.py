@@ -6,10 +6,11 @@ import os
 import shutil
 import stat
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from contextlib import suppress
 from io import StringIO
 from pathlib import Path
+from typing import cast
 
 from pydantic import BaseModel, ValidationError
 from ruamel.yaml import YAML
@@ -259,9 +260,40 @@ class RobotPackWriter:
             documents.append((relative_path, self._model_data(mapping)))
         return tuple(documents)
 
-    @staticmethod
-    def _model_data(model: BaseModel) -> dict[str, object]:
-        return model.model_dump(mode="json", exclude_none=False)
+    @classmethod
+    def _model_data(cls, model: BaseModel) -> dict[str, object]:
+        data = model.model_dump(mode="json", exclude_none=False)
+        cls._omit_defaults(model, data)
+        return data
+
+    @classmethod
+    def _omit_defaults(cls, value: object, data: object) -> None:
+        """Remove fields listed in ``omitted_at_default`` that hold their default.
+
+        ``value`` is a model (or a container of models) and ``data`` its JSON
+        dump, walked in parallel. Leaving these fields out keeps a re-saved
+        pack loadable by earlier builds of the same schema version.
+        """
+        if isinstance(value, BaseModel):
+            if not isinstance(data, dict):
+                return
+            fields = cast("dict[str, object]", data)
+            omitted: frozenset[str] = getattr(type(value), "omitted_at_default", frozenset())
+            for name, field in type(value).model_fields.items():
+                item: object = getattr(value, name)
+                if name in omitted and item == field.get_default(call_default_factory=True):
+                    fields.pop(name, None)
+                elif name in fields:
+                    cls._omit_defaults(item, fields[name])
+        elif isinstance(value, Mapping) and isinstance(data, dict):
+            entries = cast("dict[object, object]", data)
+            for key, item in cast("Mapping[object, object]", value).items():
+                if key in entries:
+                    cls._omit_defaults(item, entries[key])
+        elif isinstance(value, tuple | list) and isinstance(data, list):
+            items = cast("Sequence[object]", value)
+            for item, dumped in zip(items, cast("list[object]", data), strict=False):
+                cls._omit_defaults(item, dumped)
 
     @classmethod
     def _without_catalog_id(cls, model: BaseModel) -> dict[str, object]:

@@ -1,0 +1,3 @@
+# Golden writer output: the trailing spaces are part of the canonical YAML
+# that RobotPackWriter emits when it folds long strings, so keep them exact.
+tests/data/writer_654b35c/** -whitespace

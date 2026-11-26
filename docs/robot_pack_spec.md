@@ -599,6 +599,25 @@ original directory if publication fails.
 Both operations produce deterministic YAML for a given model. Canonical writing
 does not preserve comments, anchors, quote choices, or hand formatting.
 
+Fields added to format 0.1 after its first release are written only when they
+differ from their default. A pack that does not use them therefore saves
+exactly as it did before they existed, and builds from before those fields
+can still load it, although their models reject unknown keys. Each model
+lists these fields in `omitted_at_default`. For the continuous-docking fields
+these are:
+
+- `interface` and `surface` on connector types;
+- `ball` and `surface_realizations` on `physical_connection`;
+- `break_limits` on `docking_policy`;
+- `max_torsion_moment_nm` on connector limits; and
+- `magnet_height_joint`, `magnet_height_offset_m`, `surface_contact_links` and
+  `surface_drive` on module connectors.
+
+A pack that sets any of these fields needs a build that knows them. A field
+added to 0.1 later must be listed in the same way, or the format must change
+version. `tests/test_writer.py` checks the generic cube, SMORES-EP and
+M-Blocks packs against the pre-continuous-docking writer's output.
+
 Model attributes and sequence fields are frozen, but keyed catalogs are
 currently shallow-frozen Python dictionaries. Treat loaded models as read-only.
 For programmatic edits, rebuild models through Pydantic validation and run

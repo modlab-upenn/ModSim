@@ -1,0 +1,15 @@
+schema_version: '0.1'
+backend: urdf
+asset_catalog: urdf
+module_types:
+  mblocks_3d:
+    asset_ref: mblocks_3d
+    link_map:
+      base_link: base_link
+      actuator_carrier_link_1: actuator_carrier_link_1
+      flywheel_link_1: flywheel_link_1
+    joint_map:
+      carrier_mount: carrier_joint
+      flywheel_spin: flywheel_joint
+    connector_frame_map: {}
+    constraint_map: {}

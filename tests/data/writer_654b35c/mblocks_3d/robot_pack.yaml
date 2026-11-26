@@ -1,0 +1,84 @@
+schema_version: '0.1'
+id: mblocks_3d
+name: 3D M-Blocks
+version: 0.1.0
+description: A CAD-derived M-Block-inspired cube with six passive magnetic face interfaces, a 
+  paper-reference one-plane flywheel bootstrap, and cubic-lattice model-view recipes. The supplied 
+  CAD meshes remain the visual source while a deliberately simplified +Y-axis actuator enables the 
+  first physical edge-pivot experiment.
+metadata:
+  asset_source: User-provided M-Block_description Fusion 360 export
+  repository_inclusion: authorized_by_user_for_modsim_implementation
+  redistribution_license: pending_explicit_declaration
+  target_platform: MIT 3D M-Block
+  target_publication_doi: 10.1109/ICRA.2015.7139450
+  fidelity: cad_visual_paper_reference_one_plane_physics
+  semantic_status: provisional_demo
+  nominal_lattice_pitch_m: 0.05
+  visual_mesh_envelope_m: 0.053
+  exported_total_mass_kg: 0.16287582771682235
+  published_reference_mass_kg: 0.15
+  nominal_physics_mass_kg: 0.15
+  flywheel_axis_source: paper_reference_one_plane_bootstrap
+  flywheel_axial_inertia_kg_m2: 8.4e-06
+  flywheel_speed_cap_rad_per_s: 2094.3951023931954
+  spinup_effort_cap_nm: 0.03
+  mechanical_brake_effort_cap_nm: 2.6
+  actuator_bootstrap: one_plane_positive_y
+  underactuated_three_plane_carrier_modeled: false
+  magnetic_capture_model: deterministic_constraint_transition
+  flywheel_axis_note: The supplied export places the wheel on the body diagonal. Its meshes are 
+    preserved, but the physical joint is intentionally aligned with +Y for one validated pivot 
+    plane. The published three-detent carrier is not yet modeled, so this pack must not be used for 
+    full-actuator fidelity claims.
+model_views:
+  - id: mblocks_topology
+    name: M-Blocks Topology
+    builder: module_topology_graph
+    modes:
+      - runtime
+    default: false
+    configuration: {}
+  - id: mblocks_lattice
+    name: M-Blocks Cubic Lattice
+    builder: cubic_lattice
+    modes:
+      - runtime
+    default: true
+    configuration:
+      pitch_m: 0.05
+      origin_world_m:
+        - 0.0
+        - 0.0
+        - 0.0
+      position_tolerance_m: 0.002
+      orientation_tolerance_rad: 0.05235987755982989
+  - id: mblocks_physics_lattice
+    name: M-Blocks Grounded Physics Lattice
+    builder: cubic_lattice
+    modes:
+      - runtime
+    default: false
+    configuration:
+      pitch_m: 0.05
+      origin_world_m:
+        - 0.0
+        - 0.0
+        - 0.025
+      position_tolerance_m: 0.003
+      orientation_tolerance_rad: 0.05235987755982989
+assets:
+  urdf:
+    mblocks_3d: assets/urdf/mblocks_3d.urdf
+  mesh_directories:
+    meshes: assets/meshes
+  mujoco:
+    mblocks_3d: assets/mujoco/mblocks_3d.xml
+  isaac_usd: {}
+  thumbnails: {}
+specs:
+  modules: specs/module_types.yaml
+  connectors: specs/connector_types.yaml
+  capabilities: specs/capabilities.yaml
+mappings:
+  urdf: mappings/urdf_mapping.yaml

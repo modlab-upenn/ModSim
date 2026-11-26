@@ -6,7 +6,7 @@ import math
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Annotated, Literal, Self
+from typing import Annotated, ClassVar, Literal, Self
 
 from pydantic import (
     AfterValidator,
@@ -104,6 +104,14 @@ class StrictModel(BaseModel):
         str_strip_whitespace=True,
         validate_default=True,
     )
+
+    omitted_at_default: ClassVar[frozenset[str]] = frozenset()
+    """Fields ``RobotPackWriter`` leaves out while they hold their default.
+
+    Fields added after a schema version was first released are listed here,
+    so re-saving a pack that does not use them writes what earlier builds of
+    the same ``schema_version`` (whose models forbid unknown keys) can load.
+    """
 
 
 class JointType(StrEnum):
@@ -339,6 +347,10 @@ class SurfaceDriveSpec(StrictModel):
 class ConnectorSpec(StrictModel):
     """A connector instance attached to a module link or frame."""
 
+    omitted_at_default: ClassVar[frozenset[str]] = frozenset(
+        {"magnet_height_joint", "magnet_height_offset_m", "surface_contact_links", "surface_drive"}
+    )
+
     id: Identifier
     connector_type: Identifier
     parent_link: NonEmptyString
@@ -448,6 +460,8 @@ class BallConstraintSpec(StrictModel):
 class PhysicalConnectionSpec(StrictModel):
     """Physical constraint requested from a simulation backend."""
 
+    omitted_at_default: ClassVar[frozenset[str]] = frozenset({"ball", "surface_realizations"})
+
     constraint: PhysicalConstraintType
     compliance: ComplianceSpec | None = None
     hinge: HingeConstraintSpec | None = None
@@ -489,6 +503,8 @@ class PhysicalConnectionSpec(StrictModel):
 class ConnectorLimits(StrictModel):
     """Known connector load limits. Null values represent unknown limits."""
 
+    omitted_at_default: ClassVar[frozenset[str]] = frozenset({"max_torsion_moment_nm"})
+
     max_normal_force_n: PositiveFloat | None = None
     max_shear_force_n: PositiveFloat | None = None
     max_bending_moment_nm: PositiveFloat | None = None
@@ -502,6 +518,8 @@ class DockingPolicySpec(StrictModel):
     mechanical description of a connector, so an omitted policy is equivalent
     to this model's defaults.
     """
+
+    omitted_at_default: ClassVar[frozenset[str]] = frozenset({"break_limits"})
 
     auto_latch: StrictBool = Field(
         default=False,
@@ -557,6 +575,8 @@ class SurfaceSpec(StrictModel):
 
 class ConnectorTypeSpec(StrictModel):
     """Reusable mechanical and semantic connector definition."""
+
+    omitted_at_default: ClassVar[frozenset[str]] = frozenset({"interface", "surface"})
 
     id: Identifier
     name: NonEmptyString | None = None

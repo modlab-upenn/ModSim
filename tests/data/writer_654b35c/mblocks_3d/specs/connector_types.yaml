@@ -1,0 +1,87 @@
+schema_version: '0.1'
+connector_types:
+  mblock_magnetic_face:
+    name: M-Block Passive Magnetic Face
+    active: false
+    gender: genderless
+    compatible_with:
+      - mblock_magnetic_face
+    allowed_orientations:
+      mode: discrete
+      values_rad:
+        - 0.0
+        - 1.5707963267948966
+        - 3.141592653589793
+        - 4.71238898038469
+    acceptance_region:
+      shape: cylinder
+      position_tolerance_m: 0.003
+      orientation_tolerance_rad: 0.17453292519943295
+      max_relative_velocity_m_s: 0.1
+    physical_connection:
+      constraint: fixed
+      compliance: null
+      hinge: null
+    limits:
+      max_normal_force_n: 23.0
+      max_shear_force_n: 18.0
+      max_bending_moment_nm: 0.45
+    supports_undocking: true
+    docking_policy:
+      auto_latch: true
+      alignment: measured
+      redock_cooldown_s: 1.0
+      break_force_n: null
+    metadata:
+      mechanism: passive_permanent_magnets
+      semantic_scope: one_face_bond_not_individual_magnets
+      final_connection_model: measured_fixed_weld
+      parameter_status: provisional_simulation
+      load_limit_note: The normal and hinge-force scales are initialized from the 2013 M-Blocks 
+        characterization. Shear and bending values are provisional mappings for structural 
+        validation and are not yet enforced by the MuJoCo adapter or calibrated against this CAD 
+        model.
+      transient_edge_hinge_supported: true
+      note: Published M-Blocks pivot on temporary magnetic edge hinges. The first physical demo uses
+        a deterministic face-to-hinge-to-face constraint transition; a continuous magnetic force 
+        field remains future work.
+  mblock_magnetic_edge_hinge:
+    name: M-Block Directed Magnetic Edge Hinge
+    active: false
+    gender: genderless
+    compatible_with:
+      - mblock_magnetic_edge_hinge
+    allowed_orientations:
+      mode: continuous
+      values_rad: []
+    acceptance_region:
+      shape: cylinder
+      position_tolerance_m: 0.003
+      orientation_tolerance_rad: 0.08726646259971647
+      max_relative_velocity_m_s: 0.2
+    physical_connection:
+      constraint: hinge
+      compliance: null
+      hinge:
+        axis:
+          - 0.0
+          - 1.0
+          - 0.0
+        anchor_separation_m: 0.04
+    limits:
+      max_normal_force_n: 23.0
+      max_shear_force_n: 18.0
+      max_bending_moment_nm: 0.45
+    supports_undocking: true
+    docking_policy:
+      auto_latch: false
+      alignment: measured
+      redock_cooldown_s: 0.1
+      break_force_n: null
+    metadata:
+      mechanism: passive_edge_magnets
+      semantic_scope: transient_pivot_edge
+      parameter_status: paper_reference_geometry_with_provisional_constraint
+      axis_frame: connector_local
+      deterministic_transition: true
+      magnetic_force_field_modeled: false

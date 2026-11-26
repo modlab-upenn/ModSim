@@ -1,0 +1,397 @@
+schema_version: '0.1'
+module_types:
+  mblocks_3d:
+    name: 3D M-Block One-Plane Physics Bootstrap
+    asset_ref: mblocks_3d
+    root_link: base_link
+    mass_kg: 0.15
+    joints:
+      - id: carrier_mount
+        source_joint_name: carrier_joint
+        type: fixed
+        parent_link: base_link
+        child_link: actuator_carrier_link_1
+        axis: null
+        control_modes: []
+        limits: null
+      - id: flywheel_spin
+        source_joint_name: flywheel_joint
+        type: continuous
+        parent_link: actuator_carrier_link_1
+        child_link: flywheel_link_1
+        axis:
+          - 0.0
+          - 1.0
+          - 0.0
+        control_modes:
+          - effort
+        limits:
+          lower_position_rad: null
+          upper_position_rad: null
+          lower_position_m: null
+          upper_position_m: null
+          max_velocity_rad_per_s: 2094.3951023931954
+          max_velocity_m_per_s: null
+          max_effort_nm: 2.6
+          max_effort_n: null
+    connectors:
+      - id: pos_x
+        connector_type: mblock_magnetic_face
+        parent_link: base_link
+        frame: null
+        local_pose:
+          xyz_m:
+            - 0.025
+            - 0.0
+            - 0.0
+          rpy_rad:
+            - 0.0
+            - 0.0
+            - 0.0
+        docking_axis:
+          - 1.0
+          - 0.0
+          - 0.0
+        approach_axis:
+          - 1.0
+          - 0.0
+          - 0.0
+        metadata:
+          face_axis: pos_x
+          pose_source: published_nominal_50_mm_lattice
+      - id: neg_x
+        connector_type: mblock_magnetic_face
+        parent_link: base_link
+        frame: null
+        local_pose:
+          xyz_m:
+            - -0.025
+            - 0.0
+            - 0.0
+          rpy_rad:
+            - 0.0
+            - 0.0
+            - 3.141592653589793
+        docking_axis:
+          - -1.0
+          - 0.0
+          - 0.0
+        approach_axis:
+          - -1.0
+          - 0.0
+          - 0.0
+        metadata:
+          face_axis: neg_x
+          pose_source: published_nominal_50_mm_lattice
+      - id: pos_y
+        connector_type: mblock_magnetic_face
+        parent_link: base_link
+        frame: null
+        local_pose:
+          xyz_m:
+            - 0.0
+            - 0.025
+            - 0.0
+          rpy_rad:
+            - 0.0
+            - 0.0
+            - 1.5707963267948966
+        docking_axis:
+          - 0.0
+          - 1.0
+          - 0.0
+        approach_axis:
+          - 0.0
+          - 1.0
+          - 0.0
+        metadata:
+          face_axis: pos_y
+          pose_source: published_nominal_50_mm_lattice
+      - id: neg_y
+        connector_type: mblock_magnetic_face
+        parent_link: base_link
+        frame: null
+        local_pose:
+          xyz_m:
+            - 0.0
+            - -0.025
+            - 0.0
+          rpy_rad:
+            - 0.0
+            - 0.0
+            - -1.5707963267948966
+        docking_axis:
+          - 0.0
+          - -1.0
+          - 0.0
+        approach_axis:
+          - 0.0
+          - -1.0
+          - 0.0
+        metadata:
+          face_axis: neg_y
+          pose_source: published_nominal_50_mm_lattice
+      - id: pos_z
+        connector_type: mblock_magnetic_face
+        parent_link: base_link
+        frame: null
+        local_pose:
+          xyz_m:
+            - 0.0
+            - 0.0
+            - 0.025
+          rpy_rad:
+            - 0.0
+            - -1.5707963267948966
+            - 0.0
+        docking_axis:
+          - 0.0
+          - 0.0
+          - 1.0
+        approach_axis:
+          - 0.0
+          - 0.0
+          - 1.0
+        metadata:
+          face_axis: pos_z
+          pose_source: published_nominal_50_mm_lattice
+      - id: neg_z
+        connector_type: mblock_magnetic_face
+        parent_link: base_link
+        frame: null
+        local_pose:
+          xyz_m:
+            - 0.0
+            - 0.0
+            - -0.025
+          rpy_rad:
+            - 0.0
+            - 1.5707963267948966
+            - 0.0
+        docking_axis:
+          - 0.0
+          - 0.0
+          - -1.0
+        approach_axis:
+          - 0.0
+          - 0.0
+          - -1.0
+        metadata:
+          face_axis: neg_z
+          pose_source: published_nominal_50_mm_lattice
+      - id: edge_pos_x_pos_z
+        connector_type: mblock_magnetic_edge_hinge
+        parent_link: base_link
+        frame: null
+        local_pose:
+          xyz_m:
+            - 0.025
+            - 0.0
+            - 0.025
+          rpy_rad:
+            - 0.0
+            - 0.0
+            - 0.0
+        docking_axis:
+          - 0.0
+          - 0.0
+          - 1.0
+        approach_axis:
+          - 0.0
+          - 0.0
+          - 1.0
+        metadata:
+          edge_axis: pos_y
+          pivot_role: reference_top_edge
+          directed_pair: edge_pos_x_neg_z
+          physics_scope: one_plane_bootstrap
+      - id: edge_pos_x_neg_z
+        connector_type: mblock_magnetic_edge_hinge
+        parent_link: base_link
+        frame: null
+        local_pose:
+          xyz_m:
+            - 0.025
+            - 0.0
+            - -0.025
+          rpy_rad:
+            - 0.0
+            - 0.0
+            - 0.0
+        docking_axis:
+          - 0.0
+          - 0.0
+          - -1.0
+        approach_axis:
+          - 0.0
+          - 0.0
+          - -1.0
+        metadata:
+          edge_axis: pos_y
+          pivot_role: moving_bottom_edge
+          directed_pair: edge_pos_x_pos_z
+          physics_scope: one_plane_bootstrap
+      - id: edge_neg_x_pos_z
+        connector_type: mblock_magnetic_edge_hinge
+        parent_link: base_link
+        frame: null
+        local_pose:
+          xyz_m:
+            - -0.025
+            - 0.0
+            - 0.025
+          rpy_rad:
+            - 0.0
+            - 0.0
+            - 0.0
+        docking_axis:
+          - 0.0
+          - 0.0
+          - 1.0
+        approach_axis:
+          - 0.0
+          - 0.0
+          - 1.0
+        metadata:
+          edge_axis: pos_y
+          pivot_role: reference_top_edge
+          directed_pair: edge_neg_x_neg_z
+          physics_scope: repeated_one_plane_rolls
+      - id: edge_neg_x_neg_z
+        connector_type: mblock_magnetic_edge_hinge
+        parent_link: base_link
+        frame: null
+        local_pose:
+          xyz_m:
+            - -0.025
+            - 0.0
+            - -0.025
+          rpy_rad:
+            - 0.0
+            - 0.0
+            - 0.0
+        docking_axis:
+          - 0.0
+          - 0.0
+          - -1.0
+        approach_axis:
+          - 0.0
+          - 0.0
+          - -1.0
+        metadata:
+          edge_axis: pos_y
+          pivot_role: moving_bottom_edge
+          directed_pair: edge_neg_x_pos_z
+          physics_scope: repeated_one_plane_rolls
+      - id: edge_pos_x_pos_z_from_pos_x
+        connector_type: mblock_magnetic_edge_hinge
+        parent_link: base_link
+        frame: null
+        local_pose:
+          xyz_m:
+            - 0.025
+            - 0.0
+            - 0.025
+          rpy_rad:
+            - 0.0
+            - 0.0
+            - 0.0
+        docking_axis:
+          - 1.0
+          - 0.0
+          - 0.0
+        approach_axis:
+          - 1.0
+          - 0.0
+          - 0.0
+        metadata:
+          edge_axis: pos_y
+          corner: pos_x_pos_z
+          directed_normal_axis: pos_x
+          directed_pair: edge_neg_x_pos_z_from_neg_x
+          physics_scope: repeated_one_plane_rolls
+      - id: edge_pos_x_neg_z_from_pos_x
+        connector_type: mblock_magnetic_edge_hinge
+        parent_link: base_link
+        frame: null
+        local_pose:
+          xyz_m:
+            - 0.025
+            - 0.0
+            - -0.025
+          rpy_rad:
+            - 0.0
+            - 0.0
+            - 0.0
+        docking_axis:
+          - 1.0
+          - 0.0
+          - 0.0
+        approach_axis:
+          - 1.0
+          - 0.0
+          - 0.0
+        metadata:
+          edge_axis: pos_y
+          corner: pos_x_neg_z
+          directed_normal_axis: pos_x
+          directed_pair: edge_neg_x_neg_z_from_neg_x
+          physics_scope: repeated_one_plane_rolls
+      - id: edge_neg_x_pos_z_from_neg_x
+        connector_type: mblock_magnetic_edge_hinge
+        parent_link: base_link
+        frame: null
+        local_pose:
+          xyz_m:
+            - -0.025
+            - 0.0
+            - 0.025
+          rpy_rad:
+            - 0.0
+            - 0.0
+            - 0.0
+        docking_axis:
+          - -1.0
+          - 0.0
+          - 0.0
+        approach_axis:
+          - -1.0
+          - 0.0
+          - 0.0
+        metadata:
+          edge_axis: pos_y
+          corner: neg_x_pos_z
+          directed_normal_axis: neg_x
+          directed_pair: edge_pos_x_pos_z_from_pos_x
+          physics_scope: repeated_one_plane_rolls
+      - id: edge_neg_x_neg_z_from_neg_x
+        connector_type: mblock_magnetic_edge_hinge
+        parent_link: base_link
+        frame: null
+        local_pose:
+          xyz_m:
+            - -0.025
+            - 0.0
+            - -0.025
+          rpy_rad:
+            - 0.0
+            - 0.0
+            - 0.0
+        docking_axis:
+          - -1.0
+          - 0.0
+          - 0.0
+        approach_axis:
+          - -1.0
+          - 0.0
+          - 0.0
+        metadata:
+          edge_axis: pos_y
+          corner: neg_x_neg_z
+          directed_normal_axis: neg_x
+          directed_pair: edge_pos_x_neg_z_from_pos_x
+          physics_scope: repeated_one_plane_rolls
+    capabilities:
+      - dock
+      - release_face_bond
+      - momentum_pivot

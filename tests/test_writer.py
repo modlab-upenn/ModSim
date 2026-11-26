@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import io
 import os
+import shutil
+import subprocess
+import sys
+import tarfile
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -295,3 +300,88 @@ def test_loader_rejects_writer_target_document_that_is_directory(
         RobotPackLoader().load(copied_pack)
 
     assert error.value.issue.code == "document.expected_file"
+
+
+# ----------------------------------------------------------------------
+# compatibility with builds from before continuous docking (review B1)
+# ----------------------------------------------------------------------
+
+_REPO = Path(__file__).resolve().parents[1]
+_PRE_SURFACE_COMMIT = "654b35c"
+"""The last commit before continuous docking added fields to schema 0.1."""
+_GOLDEN = Path(__file__).resolve().parent / "data" / f"writer_{_PRE_SURFACE_COMMIT}"
+_POINT_ONLY_PACKS = ("generic_cube", "smores_ep", "mblocks_3d")
+
+
+def _resave(name: str, destination: Path) -> Path:
+    loaded = RobotPackLoader().load(_REPO / "examples" / "robot_packs" / name)
+    return RobotPackWriter().write(loaded, destination / name).root
+
+
+@pytest.mark.parametrize("name", _POINT_ONLY_PACKS)
+def test_resaving_a_point_only_pack_reproduces_the_pre_surface_writer(
+    name: str, tmp_path: Path
+) -> None:
+    """New fields at their defaults are left out, so the output is unchanged.
+
+    The golden files are what the writer at the pre-surface commit produced
+    for the same example pack.
+    """
+    written = _resave(name, tmp_path)
+    golden = sorted(path.relative_to(_GOLDEN / name) for path in (_GOLDEN / name).rglob("*.yaml"))
+    produced = sorted(
+        path.relative_to(written)
+        for path in written.rglob("*.yaml")
+        if "assets" not in path.relative_to(written).parts
+    )
+
+    assert produced == golden
+    for relative in golden:
+        assert (written / relative).read_text(encoding="utf-8") == (
+            _GOLDEN / name / relative
+        ).read_text(encoding="utf-8"), relative
+
+
+def test_resaved_point_only_packs_load_under_the_pre_surface_schema(tmp_path: Path) -> None:
+    """Load the re-saved packs with the source tree of the pre-surface commit.
+
+    Skipped when that commit is not available, as in a shallow clone; the
+    golden comparison above still pins the output.
+    """
+    if shutil.which("git") is None:
+        pytest.skip("git is not available")
+    probe = subprocess.run(
+        ["git", "-C", str(_REPO), "cat-file", "-e", f"{_PRE_SURFACE_COMMIT}^{{commit}}"],
+        capture_output=True,
+        check=False,
+    )
+    if probe.returncode != 0:
+        pytest.skip(f"commit {_PRE_SURFACE_COMMIT} is not in this checkout")
+    old_tree = tmp_path / "old"
+    old_tree.mkdir()
+    archive = subprocess.run(
+        ["git", "-C", str(_REPO), "archive", _PRE_SURFACE_COMMIT, "src/modsim"],
+        capture_output=True,
+        check=True,
+    )
+    with tarfile.open(fileobj=io.BytesIO(archive.stdout)) as tar:
+        tar.extractall(old_tree, filter="data")
+    packs = [str(_resave(name, tmp_path / "saved")) for name in _POINT_ONLY_PACKS]
+
+    script = (
+        "import sys\n"
+        "sys.path.insert(0, sys.argv[1])\n"
+        "import modsim\n"
+        "from modsim.robot_packs import RobotPackLoader\n"
+        "assert modsim.__file__.startswith(sys.argv[1]), modsim.__file__\n"
+        "for root in sys.argv[2:]:\n"
+        "    RobotPackLoader().load(root)\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-I", "-c", script, str(old_tree / "src"), *packs],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=tmp_path,
+    )
+    assert result.returncode == 0, result.stderr

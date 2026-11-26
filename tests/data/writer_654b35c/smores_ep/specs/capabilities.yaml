@@ -1,0 +1,14 @@
+schema_version: '0.1'
+capabilities:
+  dock:
+    name: Dock
+    kind: primitive_action
+    description: Form a fixed connection through a compatible SMORES-EP face.
+    required_connector_types:
+      - ep_face
+  undock:
+    name: Undock
+    kind: primitive_action
+    description: Release an existing SMORES-EP face connection.
+    required_connector_types:
+      - ep_face

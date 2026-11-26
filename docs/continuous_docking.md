@@ -87,7 +87,10 @@ Phase 0 found two existing defects. Both are fixed:
   differential-drive model and break limits are all in `modsim`.
 - **Point-to-point docking** keeps its current behaviour bit for bit. SMORES-EP
   and M-Blocks packs declare no surface connectors, and every new field is
-  optional with a default that reproduces today's behaviour.
+  optional with a default that reproduces today's behaviour. The writer
+  leaves these fields out while they hold their defaults, so re-saving a
+  point-only pack gives the same YAML as before and earlier builds can still
+  load it (`robot_pack_spec.md`, persistence).
 
 ## 3. Schema
 
