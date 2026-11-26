@@ -108,6 +108,10 @@ class RuntimeSession:
         default_factory=dict[ConnectionId, int], init=False, repr=False
     )
     _change_delay_steps: int | None = field(default=None, init=False, repr=False)
+    _axis_limits: dict[tuple[str, str], dict[str, float]] | None = field(
+        default=None, init=False, repr=False
+    )
+    """Governing per-axis break limits by connector-type pair, built on first use."""
 
     @classmethod
     def create(
@@ -497,9 +501,30 @@ class RuntimeSession:
         snapshot: BackendStateSnapshot,
         handle: ConstraintHandle,
     ) -> tuple[str, float, float] | None:
-        limits = _governing_break_limits(
-            self.world.connector_type(connector_a).effective_docking_policy.break_limits,
-            self.world.connector_type(connector_b).effective_docking_policy.break_limits,
+        cache = self._axis_limits
+        if cache is None:
+            cache = self._axis_limits = {}
+            types = self.world.pack.hardware_catalog.connector_types
+            declared = {
+                type_id: spec.effective_docking_policy.break_limits
+                for type_id, spec in types.items()
+                if spec.effective_docking_policy.break_limits is not None
+            }
+            # Point-only packs that declare no break limits stay empty, so the
+            # overload check costs one dictionary lookup per connection.
+            if declared:
+                for first in types:
+                    for second in types:
+                        limits = _governing_break_limits(declared.get(first), declared.get(second))
+                        if limits:
+                            cache[(first, second)] = limits
+        if not cache:
+            return None
+        limits = cache.get(
+            (
+                self.world.connector(connector_a).connector_type_id,
+                self.world.connector(connector_b).connector_type_id,
+            )
         )
         if not limits:
             # Read the wrench only when needed: a backend may compute moments lazily.
