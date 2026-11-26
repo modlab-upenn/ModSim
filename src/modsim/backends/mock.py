@@ -22,7 +22,7 @@ from modsim.backends.base import (
 )
 from modsim.core.ids import ConstraintHandle, ModuleInstanceId
 from modsim.core.scene import SceneSpec
-from modsim.core.snapshot import BackendStateSnapshot, BodyState
+from modsim.core.snapshot import BackendStateSnapshot, BodyState, ConstraintWrench
 from modsim.core.transforms import (
     ZERO_VEC3,
     Transform,
@@ -81,6 +81,14 @@ class MockBackendAdapter:
             supports_constraint_removal=True,
             supports_constraint_forces=True,
             supports_module_pose_write=True,
+            supported_constraint_types=frozenset(
+                {
+                    PhysicalConstraintType.FIXED,
+                    PhysicalConstraintType.COMPLIANT,
+                    PhysicalConstraintType.BALL,
+                    PhysicalConstraintType.CUSTOM,
+                }
+            ),
         )
 
     def load(
@@ -147,7 +155,10 @@ class MockBackendAdapter:
         return BackendStateSnapshot(
             time_s=self._time_s,
             link_states=link_states,
-            constraint_forces_n=dict(self._forces),
+            constraint_wrenches={
+                handle: ConstraintWrench(force_n=(force_n, 0.0, 0.0))
+                for handle, force_n in self._forces.items()
+            },
         )
 
     def create_physical_connection(self, request: ConnectionRequest) -> ConnectionOutcome:
@@ -221,7 +232,11 @@ class MockBackendAdapter:
         self._next_failure = detail
 
     def set_constraint_force(self, handle: ConstraintHandle, force_n: float) -> None:
-        """Set the reported constraint force for one weld."""
+        """Set the reported constraint force for one weld.
+
+        The mock has no geometry, so the force is reported along world x with
+        zero moment; only its magnitude is meaningful.
+        """
         if handle not in self._welds:
             raise BackendError(f"unknown constraint '{handle}'")
         self._forces[handle] = force_n

@@ -722,18 +722,30 @@ class CoordinatedMomentumPivotScenario:
             events = self._release_faces_to_hinge()
             if self._phase is ReconfigurationPhase.FAILED:
                 return events
-            self._brake_started_at_s = self.session.world.time_s
             self._enter_phase(
                 ReconfigurationPhase.PIVOTING,
                 f"{action.label}: released onto hinge; applying synchronized brake impulse",
             )
-            self._set_brake_efforts()
+            self._start_brake_once_released()
             return events
         if self._held_for(config.spinup_timeout_s):
             self._fail("timed out spinning all coordinated flywheels to target speed")
             return ()
         self._set_spinup_efforts()
         return ()
+
+    def _start_brake_once_released(self) -> None:
+        """Begin the synchronized brake once the next step solves without the face cut."""
+        action = self._current_action()
+        if any(
+            self.session.connection_change_pending(pair.connection_id)
+            for pair in action.release_faces
+        ):
+            self._set_zero_efforts()
+            self._detail = f"{action.label}: waiting for the face release to take physical effect"
+            return
+        self._brake_started_at_s = self.session.world.time_s
+        self._set_brake_efforts()
 
     def _release_faces_to_hinge(self) -> tuple[Event, ...]:
         action = self._current_action()
@@ -777,12 +789,16 @@ class CoordinatedMomentumPivotScenario:
             f"{math.degrees(config.target_pivot_angle_rad):.1f} deg; flywheels "
             f"{min(projected):.1f}..{max(projected):.1f} rad/s"
         )
+        if self._brake_started_at_s is None:
+            # The face cut has not reached the physics yet; braking now would
+            # react against welds the engine still enforces.
+            self._start_brake_once_released()
+            return ()
         if self._brake_ended_at_s is None:
             if all(speed <= config.flywheel_stop_speed_rad_s + _EPSILON for speed in projected):
                 self._finish_brake()
             elif (
-                self._brake_started_at_s is not None
-                and self.session.world.time_s - self._brake_started_at_s + _EPSILON
+                self.session.world.time_s - self._brake_started_at_s + _EPSILON
                 >= config.brake_timeout_s
             ):
                 self._fail("mechanical brake did not stop every coordinated flywheel in time")

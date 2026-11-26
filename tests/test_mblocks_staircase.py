@@ -177,7 +177,7 @@ def test_runtime_runner_loads_the_kinematic_staircase_and_lattice_view() -> None
 @pytest.mark.parametrize(
     ("overrides", "message"),
     (
-        ({"backend": "mock"}, "requires the MuJoCo backend"),
+        ({"backend": "mock"}, "needs a backend with"),
         ({"gravity": False}, "requires gravity and the ground plane"),
         ({"ground": False}, "requires gravity and the ground plane"),
         ({"height_m": 0.024}, "requires height_m >= 0.025"),

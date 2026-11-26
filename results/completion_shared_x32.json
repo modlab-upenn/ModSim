@@ -1,0 +1,415 @@
+{
+  "mode": "shared",
+  "copies": 32,
+  "modules": 192,
+  "mujoco_version": "3.11.0",
+  "nbody": 577,
+  "ngeom": 769,
+  "neq": 704,
+  "nu": 192,
+  "setup_wall_s": 7.43276524997782,
+  "sim_time_s": 29.937999999975577,
+  "ticks": 59876,
+  "wall_s": 11083.559805000026,
+  "physics_wall_s": 196.30049126030644,
+  "sync_wall_s": 101.52939306985354,
+  "controller_wall_s": 10785.546398505161,
+  "real_time_factor": 0.002701117738947907,
+  "module_steps_per_s": 1037.2292117568425,
+  "tick_ms_mean": 185.10548939199882,
+  "tick_ms_p95": 128.9057079324266,
+  "peak_rss_mb": 730.71875,
+  "completed": 13,
+  "failed": 19,
+  "unfinished": 0,
+  "pivots_verified_total": 617,
+  "completion_s_mean": 27.7363076922884,
+  "completion_s_max": 28.238999999979537,
+  "stop_reason": "all copies finished",
+  "per_copy": [
+    {
+      "index": 0,
+      "origin_m": [
+        0.0,
+        0.0
+      ],
+      "phase": "failed",
+      "completed_at_s": null,
+      "verified_pivots": 18,
+      "replans": 0,
+      "detail": "Landing feedback exceeded the 20,000 RPM ceiling"
+    },
+    {
+      "index": 1,
+      "origin_m": [
+        0.4,
+        0.0
+      ],
+      "phase": "failed",
+      "completed_at_s": null,
+      "verified_pivots": 18,
+      "replans": 0,
+      "detail": "Landing feedback exceeded the 20,000 RPM ceiling"
+    },
+    {
+      "index": 2,
+      "origin_m": [
+        0.8,
+        0.0
+      ],
+      "phase": "failed",
+      "completed_at_s": null,
+      "verified_pivots": 18,
+      "replans": 0,
+      "detail": "Landing feedback exceeded the 20,000 RPM ceiling"
+    },
+    {
+      "index": 3,
+      "origin_m": [
+        1.2000000000000002,
+        0.0
+      ],
+      "phase": "complete",
+      "completed_at_s": 27.58549999998106,
+      "verified_pivots": 21,
+      "replans": 0,
+      "detail": "Target reached: 6 blocks, 21 verified pivots"
+    },
+    {
+      "index": 4,
+      "origin_m": [
+        1.6,
+        0.0
+      ],
+      "phase": "complete",
+      "completed_at_s": 28.238999999979537,
+      "verified_pivots": 21,
+      "replans": 0,
+      "detail": "Target reached: 6 blocks, 21 verified pivots"
+    },
+    {
+      "index": 5,
+      "origin_m": [
+        2.0,
+        0.0
+      ],
+      "phase": "failed",
+      "completed_at_s": null,
+      "verified_pivots": 18,
+      "replans": 0,
+      "detail": "Landing feedback exceeded the 20,000 RPM ceiling"
+    },
+    {
+      "index": 6,
+      "origin_m": [
+        0.0,
+        0.7
+      ],
+      "phase": "failed",
+      "completed_at_s": null,
+      "verified_pivots": 18,
+      "replans": 0,
+      "detail": "Landing feedback exceeded the 20,000 RPM ceiling"
+    },
+    {
+      "index": 7,
+      "origin_m": [
+        0.4,
+        0.7
+      ],
+      "phase": "failed",
+      "completed_at_s": null,
+      "verified_pivots": 18,
+      "replans": 0,
+      "detail": "Landing feedback exceeded the 20,000 RPM ceiling"
+    },
+    {
+      "index": 8,
+      "origin_m": [
+        0.8,
+        0.7
+      ],
+      "phase": "complete",
+      "completed_at_s": 27.58549999998106,
+      "verified_pivots": 21,
+      "replans": 0,
+      "detail": "Target reached: 6 blocks, 21 verified pivots"
+    },
+    {
+      "index": 9,
+      "origin_m": [
+        1.2000000000000002,
+        0.7
+      ],
+      "phase": "failed",
+      "completed_at_s": null,
+      "verified_pivots": 18,
+      "replans": 0,
+      "detail": "Landing feedback exceeded the 20,000 RPM ceiling"
+    },
+    {
+      "index": 10,
+      "origin_m": [
+        1.6,
+        0.7
+      ],
+      "phase": "complete",
+      "completed_at_s": 28.238999999979537,
+      "verified_pivots": 21,
+      "replans": 0,
+      "detail": "Target reached: 6 blocks, 21 verified pivots"
+    },
+    {
+      "index": 11,
+      "origin_m": [
+        2.0,
+        0.7
+      ],
+      "phase": "failed",
+      "completed_at_s": null,
+      "verified_pivots": 18,
+      "replans": 0,
+      "detail": "Landing feedback exceeded the 20,000 RPM ceiling"
+    },
+    {
+      "index": 12,
+      "origin_m": [
+        0.0,
+        1.4
+      ],
+      "phase": "failed",
+      "completed_at_s": null,
+      "verified_pivots": 18,
+      "replans": 0,
+      "detail": "Landing feedback exceeded the 20,000 RPM ceiling"
+    },
+    {
+      "index": 13,
+      "origin_m": [
+        0.4,
+        1.4
+      ],
+      "phase": "complete",
+      "completed_at_s": 27.58549999998106,
+      "verified_pivots": 21,
+      "replans": 0,
+      "detail": "Target reached: 6 blocks, 21 verified pivots"
+    },
+    {
+      "index": 14,
+      "origin_m": [
+        0.8,
+        1.4
+      ],
+      "phase": "complete",
+      "completed_at_s": 27.58549999998106,
+      "verified_pivots": 21,
+      "replans": 0,
+      "detail": "Target reached: 6 blocks, 21 verified pivots"
+    },
+    {
+      "index": 15,
+      "origin_m": [
+        1.2000000000000002,
+        1.4
+      ],
+      "phase": "failed",
+      "completed_at_s": null,
+      "verified_pivots": 18,
+      "replans": 0,
+      "detail": "Landing feedback exceeded the 20,000 RPM ceiling"
+    },
+    {
+      "index": 16,
+      "origin_m": [
+        1.6,
+        1.4
+      ],
+      "phase": "complete",
+      "completed_at_s": 27.58549999998106,
+      "verified_pivots": 21,
+      "replans": 0,
+      "detail": "Target reached: 6 blocks, 21 verified pivots"
+    },
+    {
+      "index": 17,
+      "origin_m": [
+        2.0,
+        1.4
+      ],
+      "phase": "complete",
+      "completed_at_s": 27.58549999998106,
+      "verified_pivots": 21,
+      "replans": 0,
+      "detail": "Target reached: 6 blocks, 21 verified pivots"
+    },
+    {
+      "index": 18,
+      "origin_m": [
+        0.0,
+        2.0999999999999996
+      ],
+      "phase": "failed",
+      "completed_at_s": null,
+      "verified_pivots": 20,
+      "replans": 0,
+      "detail": "timed out before every slab landing face entered measured acceptance (pivot angle 3.14158 rad)"
+    },
+    {
+      "index": 19,
+      "origin_m": [
+        0.4,
+        2.0999999999999996
+      ],
+      "phase": "failed",
+      "completed_at_s": null,
+      "verified_pivots": 18,
+      "replans": 0,
+      "detail": "Landing feedback exceeded the 20,000 RPM ceiling"
+    },
+    {
+      "index": 20,
+      "origin_m": [
+        0.8,
+        2.0999999999999996
+      ],
+      "phase": "complete",
+      "completed_at_s": 27.58549999998106,
+      "verified_pivots": 21,
+      "replans": 0,
+      "detail": "Target reached: 6 blocks, 21 verified pivots"
+    },
+    {
+      "index": 21,
+      "origin_m": [
+        1.2000000000000002,
+        2.0999999999999996
+      ],
+      "phase": "failed",
+      "completed_at_s": null,
+      "verified_pivots": 18,
+      "replans": 0,
+      "detail": "Landing feedback exceeded the 20,000 RPM ceiling"
+    },
+    {
+      "index": 22,
+      "origin_m": [
+        1.6,
+        2.0999999999999996
+      ],
+      "phase": "complete",
+      "completed_at_s": 27.58549999998106,
+      "verified_pivots": 21,
+      "replans": 0,
+      "detail": "Target reached: 6 blocks, 21 verified pivots"
+    },
+    {
+      "index": 23,
+      "origin_m": [
+        2.0,
+        2.0999999999999996
+      ],
+      "phase": "failed",
+      "completed_at_s": null,
+      "verified_pivots": 18,
+      "replans": 0,
+      "detail": "Landing feedback exceeded the 20,000 RPM ceiling"
+    },
+    {
+      "index": 24,
+      "origin_m": [
+        0.0,
+        2.8
+      ],
+      "phase": "complete",
+      "completed_at_s": 27.58549999998106,
+      "verified_pivots": 21,
+      "replans": 0,
+      "detail": "Target reached: 6 blocks, 21 verified pivots"
+    },
+    {
+      "index": 25,
+      "origin_m": [
+        0.4,
+        2.8
+      ],
+      "phase": "failed",
+      "completed_at_s": null,
+      "verified_pivots": 18,
+      "replans": 0,
+      "detail": "Landing feedback exceeded the 20,000 RPM ceiling"
+    },
+    {
+      "index": 26,
+      "origin_m": [
+        0.8,
+        2.8
+      ],
+      "phase": "complete",
+      "completed_at_s": 27.58549999998106,
+      "verified_pivots": 21,
+      "replans": 0,
+      "detail": "Target reached: 6 blocks, 21 verified pivots"
+    },
+    {
+      "index": 27,
+      "origin_m": [
+        1.2000000000000002,
+        2.8
+      ],
+      "phase": "failed",
+      "completed_at_s": null,
+      "verified_pivots": 18,
+      "replans": 0,
+      "detail": "Landing feedback exceeded the 20,000 RPM ceiling"
+    },
+    {
+      "index": 28,
+      "origin_m": [
+        1.6,
+        2.8
+      ],
+      "phase": "failed",
+      "completed_at_s": null,
+      "verified_pivots": 18,
+      "replans": 0,
+      "detail": "Landing feedback exceeded the 20,000 RPM ceiling"
+    },
+    {
+      "index": 29,
+      "origin_m": [
+        2.0,
+        2.8
+      ],
+      "phase": "failed",
+      "completed_at_s": null,
+      "verified_pivots": 18,
+      "replans": 0,
+      "detail": "Landing feedback exceeded the 20,000 RPM ceiling"
+    },
+    {
+      "index": 30,
+      "origin_m": [
+        0.0,
+        3.5
+      ],
+      "phase": "complete",
+      "completed_at_s": 28.238999999979537,
+      "verified_pivots": 21,
+      "replans": 0,
+      "detail": "Target reached: 6 blocks, 21 verified pivots"
+    },
+    {
+      "index": 31,
+      "origin_m": [
+        0.4,
+        3.5
+      ],
+      "phase": "failed",
+      "completed_at_s": null,
+      "verified_pivots": 18,
+      "replans": 0,
+      "detail": "Landing feedback exceeded the 20,000 RPM ceiling"
+    }
+  ]
+}

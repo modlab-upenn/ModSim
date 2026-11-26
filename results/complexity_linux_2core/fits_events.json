@@ -1,0 +1,124 @@
+{
+  "meta": {
+    "python": "3.13.18",
+    "machine": "x86_64",
+    "system": "Linux",
+    "processor": "x86_64",
+    "mujoco": "3.11.0",
+    "quick": false
+  },
+  "fits": [
+    {
+      "experiment": "event_a",
+      "backend": "mock",
+      "stage": "dock",
+      "slope": 0.261,
+      "x_range": [
+        16,
+        256
+      ],
+      "ms_range": [
+        0.0408,
+        0.0717
+      ]
+    },
+    {
+      "experiment": "event_a",
+      "backend": "mock",
+      "stage": "undock",
+      "slope": 0.635,
+      "x_range": [
+        16,
+        256
+      ],
+      "ms_range": [
+        0.0291,
+        0.1367
+      ]
+    },
+    {
+      "experiment": "event_a",
+      "backend": "mujoco",
+      "stage": "dock",
+      "slope": 0.059,
+      "x_range": [
+        16,
+        256
+      ],
+      "ms_range": [
+        0.2756,
+        0.3416
+      ]
+    },
+    {
+      "experiment": "event_a",
+      "backend": "mujoco",
+      "stage": "undock",
+      "slope": 0.146,
+      "x_range": [
+        16,
+        256
+      ],
+      "ms_range": [
+        0.2452,
+        0.3839
+      ]
+    },
+    {
+      "experiment": "event_n",
+      "backend": "mock",
+      "stage": "dock",
+      "slope": -0.007,
+      "x_range": [
+        64,
+        1024
+      ],
+      "ms_range": [
+        0.0371,
+        0.0369
+      ]
+    },
+    {
+      "experiment": "event_n",
+      "backend": "mock",
+      "stage": "undock",
+      "slope": -0.011,
+      "x_range": [
+        64,
+        1024
+      ],
+      "ms_range": [
+        0.0225,
+        0.0217
+      ]
+    },
+    {
+      "experiment": "event_n",
+      "backend": "mujoco",
+      "stage": "dock",
+      "slope": 0.269,
+      "x_range": [
+        64,
+        1024
+      ],
+      "ms_range": [
+        0.1304,
+        0.2799
+      ]
+    },
+    {
+      "experiment": "event_n",
+      "backend": "mujoco",
+      "stage": "undock",
+      "slope": 0.448,
+      "x_range": [
+        64,
+        1024
+      ],
+      "ms_range": [
+        0.069,
+        0.2491
+      ]
+    }
+  ]
+}

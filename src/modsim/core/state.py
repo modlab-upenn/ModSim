@@ -7,7 +7,7 @@ event log is a complete and replayable description of everything that happened.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
 
 from modsim.core.assemblies import AssemblyIndex
@@ -16,6 +16,7 @@ from modsim.core.entities import (
     ConnectorInstance,
     ConnectorLifecycleState,
     ModuleInstance,
+    SampleClock,
 )
 from modsim.core.events import (
     AssemblyMerged,
@@ -36,7 +37,7 @@ from modsim.core.ids import (
     split_joint_instance_id,
 )
 from modsim.core.scene import SceneSpec
-from modsim.core.snapshot import BackendStateSnapshot, JointState
+from modsim.core.snapshot import BackendStateSnapshot, FrozenMapping, JointState, LinkPoseView
 from modsim.core.transforms import Transform, quat_rotate
 from modsim.robot_packs.schema import ConnectorSpec, ConnectorTypeSpec, JointSpec, RobotPack
 
@@ -63,27 +64,43 @@ class WorldState:
     """All modules, connectors, connections, and derived assemblies in one world."""
 
     __slots__ = (
+        "_advancing_samples",
         "_assemblies",
         "_connections",
         "_connectors",
         "_connectors_by_module",
         "_event_log",
+        "_frame_clock",
+        "_module_clock",
         "_modules",
+        "_neighbours",
         "_pack",
+        "_parent_links_by_type",
         "_revision",
+        "_sample_snapshot",
         "_time_s",
     )
 
     def __init__(self, pack: RobotPack) -> None:
         self._pack = pack
         self._time_s = 0.0
+        self._advancing_samples = 0
         self._modules: dict[ModuleInstanceId, ModuleInstance] = {}
         self._connectors: dict[ConnectorInstanceId, ConnectorInstance] = {}
         self._connectors_by_module: dict[ModuleInstanceId, tuple[ConnectorInstanceId, ...]] = {}
         self._connections: dict[ConnectionId, ConnectionRuntime] = {}
+        # Module adjacency maintained per dock/undock: neighbour -> number of
+        # active connections between the pair (two modules may share several).
+        self._neighbours: dict[ModuleInstanceId, dict[ModuleInstanceId, int]] = {}
         self._assemblies = AssemblyIndex()
         self._event_log = EventLog()
         self._revision = WorldStateRevision()
+        # Module root states and connector world frames are derived lazily
+        # from the latest ingested sample (see ``ingest``).
+        self._sample_snapshot: BackendStateSnapshot | None = None
+        self._parent_links_by_type: dict[str, tuple[str, ...]] = {}
+        self._module_clock = SampleClock[ModuleInstance](self._resolve_module_root)
+        self._frame_clock = SampleClock[ConnectorInstance](self._resolve_connector_frame)
 
     # ------------------------------------------------------------------
     # construction
@@ -102,10 +119,12 @@ class WorldState:
                 pose=placement.pose,
                 link_poses={module_type.root_link: placement.pose},
             )
+            module.bind_sample_clock(world._module_clock)
             world._modules[module.id] = module
             connector_ids: list[ConnectorInstanceId] = []
             for connector_spec in module_type.connectors:
                 instance = world._build_connector(module.id, connector_spec)
+                instance.bind_frame_clock(world._frame_clock)
                 world._connectors[instance.id] = instance
                 connector_ids.append(instance.id)
             world._connectors_by_module[module.id] = tuple(connector_ids)
@@ -147,6 +166,16 @@ class WorldState:
     def time_s(self) -> float:
         """Return the most recently ingested backend time."""
         return self._time_s
+
+    @property
+    def advancing_samples(self) -> int:
+        """Return how many ingested samples advanced time, i.e. physics steps observed.
+
+        Counted at ingest, so it is the same however a caller drives the
+        backend. Several backend steps between two ingests count once, which
+        errs on the side of treating a recent connection change as pending.
+        """
+        return self._advancing_samples
 
     @property
     def modules(self) -> Mapping[ModuleInstanceId, ModuleInstance]:
@@ -224,77 +253,147 @@ class WorldState:
         self, *, exclude: ConnectionId | None = None
     ) -> dict[ModuleInstanceId, frozenset[ModuleInstanceId]]:
         """Return module-level adjacency implied by the active connections."""
-        neighbours: dict[ModuleInstanceId, set[ModuleInstanceId]] = {
-            module_id: set() for module_id in self._modules
+        result = {
+            module_id: frozenset(self._neighbours.get(module_id, ())) for module_id in self._modules
         }
-        for connection in self._connections.values():
-            if connection.id == exclude or connection.module_a == connection.module_b:
-                continue
-            neighbours[connection.module_a].add(connection.module_b)
-            neighbours[connection.module_b].add(connection.module_a)
-        return {module_id: frozenset(values) for module_id, values in neighbours.items()}
+        removed = self._connections.get(exclude) if exclude is not None else None
+        if removed is not None and removed.module_a != removed.module_b:
+            a, b = removed.module_a, removed.module_b
+            if self._neighbours[a][b] == 1:
+                result[a] = result[a] - {b}
+                result[b] = result[b] - {a}
+        return result
+
+    def _link(self, module_a: ModuleInstanceId, module_b: ModuleInstanceId) -> None:
+        for one, other in ((module_a, module_b), (module_b, module_a)):
+            counts = self._neighbours.setdefault(one, {})
+            counts[other] = counts.get(other, 0) + 1
+
+    def _unlink(self, module_a: ModuleInstanceId, module_b: ModuleInstanceId) -> None:
+        for one, other in ((module_a, module_b), (module_b, module_a)):
+            counts = self._neighbours[one]
+            if counts[other] == 1:
+                del counts[other]
+            else:
+                counts[other] -= 1
 
     # ------------------------------------------------------------------
     # snapshot ingestion
     # ------------------------------------------------------------------
 
     def ingest(self, snapshot: BackendStateSnapshot) -> None:
-        """Update module and connector kinematics from a backend observation."""
+        """Adopt a backend observation as the current kinematic sample.
+
+        Joint states and link poses are taken by reference when the backend
+        returns ``FrozenMapping`` views, and copied otherwise. Module root
+        state and connector frames are not recomputed here: they are derived
+        from this sample the first time they are read, and the values are the
+        same as an eager copy would produce.
+        """
+        if snapshot.time_s > self._time_s:
+            self._advancing_samples += 1
         self._time_s = snapshot.time_s
+        module_types = self._pack.hardware_catalog.module_types
         for module_id, module in self._modules.items():
             joints = snapshot.joint_states.get(module_id)
             if joints is not None:
-                module.joint_states = dict(joints)
+                # A FrozenMapping is an immutable, possibly lazy backend view:
+                # keep it by reference instead of materialising every joint.
+                module.joint_states = joints if isinstance(joints, FrozenMapping) else dict(joints)
             links = snapshot.link_states.get(module_id)
+            if links is None or module_types[module.module_type_id].root_link not in links:
+                # This sample does not report the root, so the module keeps its
+                # current root state: resolve it against the outgoing sample now.
+                module.settle()
             if links is None:
                 continue
-            module.link_poses = {name: body.pose for name, body in links.items()}
-            module_type = self._pack.hardware_catalog.module_types[module.module_type_id]
-            root = links.get(module_type.root_link)
-            if root is not None:
-                module.pose = root.pose
-                module.linear_velocity_m_s = root.linear_velocity_m_s
-                module.angular_velocity_rad_s = root.angular_velocity_rad_s
-        self._refresh_connector_frames(snapshot)
+            parent_links = self._connector_parent_links(module.module_type_id)
+            if any(link not in links for link in parent_links):
+                # A frame whose parent link vanishes keeps its last derived
+                # values; derive them from the outgoing sample first.
+                for connector_id in self._connectors_by_module[module_id]:
+                    connector = self._connectors[connector_id]
+                    if connector.parent_link not in links:
+                        connector.settle()
+            module.link_poses = (
+                LinkPoseView(links)
+                if isinstance(links, FrozenMapping)
+                else {name: body.pose for name, body in links.items()}
+            )
+        self._sample_snapshot = snapshot
+        self._module_clock.stamp += 1
+        self._frame_clock.stamp += 1
         self._clear_transient_states()
         self._advance_revision(sample=True)
 
-    def _refresh_connector_frames(self, snapshot: BackendStateSnapshot | None = None) -> None:
-        for connector in self._connectors.values():
-            module = self._modules[connector.module_id]
-            module_type = self._pack.hardware_catalog.module_types[module.module_type_id]
-            spec = self._connector_spec(module_type.connectors, connector.connector_id)
-            link_pose = module.link_poses.get(connector.parent_link)
-            if link_pose is None:
-                connector.resolved = False
-                continue
+    def _connector_parent_links(self, module_type_id: str) -> tuple[str, ...]:
+        cached = self._parent_links_by_type.get(module_type_id)
+        if cached is None:
+            connectors = self._pack.hardware_catalog.module_types[module_type_id].connectors
+            cached = tuple(dict.fromkeys(spec.parent_link for spec in connectors))
+            self._parent_links_by_type[module_type_id] = cached
+        return cached
 
-            measured = None
-            if snapshot is not None:
-                measured = snapshot.connector_frames.get(connector.module_id, {}).get(
-                    connector.connector_id
+    def _refresh_connector_frames(self) -> None:
+        """Mark every connector frame stale against the current sample."""
+        self._frame_clock.stamp += 1
+
+    def _resolve_module_root(self, module: ModuleInstance) -> None:
+        snapshot = self._sample_snapshot
+        root = None
+        if snapshot is not None:
+            links = snapshot.link_states.get(module.id)
+            if links is not None:
+                root = links.get(
+                    self._pack.hardware_catalog.module_types[module.module_type_id].root_link
                 )
-            connector.world_pose = (
-                measured if measured is not None else link_pose.compose(connector.local_pose)
-            )
+        if root is None:
+            module.store_root_state()
+            return
+        module.store_root_state(root.pose, root.linear_velocity_m_s, root.angular_velocity_rad_s)
 
-            # Docking and approach axes are authored in the parent-link frame,
-            # not the connector frame, so they rotate with the link.
-            if spec.docking_axis is not None:
-                connector.world_docking_axis = quat_rotate(link_pose.rotation, spec.docking_axis)
-            approach = spec.approach_axis or spec.docking_axis
-            if approach is not None:
-                connector.world_approach_axis = quat_rotate(link_pose.rotation, approach)
+    def _resolve_connector_frame(self, connector: ConnectorInstance) -> None:
+        snapshot = self._sample_snapshot
+        module = self._modules[connector.module_id]
+        link_pose = module.link_poses.get(connector.parent_link)
+        if link_pose is None:
+            connector.store_frame(resolved=False)
+            return
+        module_type = self._pack.hardware_catalog.module_types[module.module_type_id]
+        spec = self._connector_spec(module_type.connectors, connector.connector_id)
 
-            body = None
-            if snapshot is not None:
-                body = snapshot.body(connector.module_id, connector.parent_link)
-            connector.world_velocity_m_s = (
-                body.velocity_at(connector.world_pose.translation)
-                if body is not None
-                else module.linear_velocity_m_s
+        measured = None
+        if snapshot is not None:
+            measured = snapshot.connector_frames.get(connector.module_id, {}).get(
+                connector.connector_id
             )
-            connector.resolved = True
+        world_pose = measured if measured is not None else link_pose.compose(connector.local_pose)
+
+        # Docking and approach axes are authored in the parent-link frame,
+        # not the connector frame, so they rotate with the link.
+        docking_axis = None
+        if spec.docking_axis is not None:
+            docking_axis = quat_rotate(link_pose.rotation, spec.docking_axis)
+        approach_axis = None
+        approach = spec.approach_axis or spec.docking_axis
+        if approach is not None:
+            approach_axis = quat_rotate(link_pose.rotation, approach)
+
+        body = None
+        if snapshot is not None:
+            body = snapshot.body(connector.module_id, connector.parent_link)
+        velocity = (
+            body.velocity_at(world_pose.translation)
+            if body is not None
+            else module.linear_velocity_m_s
+        )
+        connector.store_frame(
+            resolved=True,
+            world_pose=world_pose,
+            world_docking_axis=docking_axis,
+            world_approach_axis=approach_axis,
+            world_velocity_m_s=velocity,
+        )
 
     def _clear_transient_states(self) -> None:
         """Reset per-step lifecycle states so a stale detection cannot persist.
@@ -380,6 +479,8 @@ class WorldState:
         for connector in (first, second):
             connector.lifecycle_state = ConnectorLifecycleState.DOCKED
             connector.connection_id = connection.id
+        if first.module_id != second.module_id:
+            self._link(first.module_id, second.module_id)
         self._assemblies.merge_on_connection(first.module_id, second.module_id)
 
     def _apply_undock_committed(self, event: UndockCommitted) -> None:
@@ -392,10 +493,13 @@ class WorldState:
             connector.connection_id = None
             connector.available_at_s = event.time_s + self._cooldown_s(connector_id)
         if connection.module_a != connection.module_b:
+            self._unlink(connection.module_a, connection.module_b)
+            # Only the affected assembly is walked, through the maintained
+            # adjacency, so an undock costs O(assembly) rather than O(world).
             self._assemblies.split_on_disconnection(
                 connection.module_a,
                 connection.module_b,
-                self.adjacency(),
+                _NeighbourView(self._neighbours),
             )
 
     def _apply_dock_failed(self, event: DockFailed) -> bool:
@@ -473,3 +577,21 @@ class WorldState:
             docking_revision=current.docking_revision + int(docking),
             event_revision=current.event_revision + int(event),
         )
+
+
+class _NeighbourView(Mapping[ModuleInstanceId, frozenset[ModuleInstanceId]]):
+    """Read-only adjacency over the maintained neighbour counts, built per lookup."""
+
+    __slots__ = ("_neighbours",)
+
+    def __init__(self, neighbours: dict[ModuleInstanceId, dict[ModuleInstanceId, int]]) -> None:
+        self._neighbours = neighbours
+
+    def __getitem__(self, module_id: ModuleInstanceId) -> frozenset[ModuleInstanceId]:
+        return frozenset(self._neighbours[module_id])
+
+    def __iter__(self) -> Iterator[ModuleInstanceId]:
+        return iter(self._neighbours)
+
+    def __len__(self) -> int:
+        return len(self._neighbours)

@@ -139,6 +139,23 @@ class DifferentialDriveReconfigurationConfig:
     connected_hold_s: float = 0.3
     latch_distance_m: float = 0.001
     action_timeout_s: float = 45.0
+    turn_stall_s: float = 1.0
+    """How long a turn on the spot may barely rotate before recovery starts."""
+    turn_stall_rate_ratio: float = 0.2
+    """A turn counts as stalled below this fraction of the commanded yaw rate."""
+    stall_recovery_s: float = 1.5
+    """Duration of one recovery manoeuvre: an arcing back-off from the waypoint."""
+    maximum_stall_recoveries: int = 4
+    """Recoveries allowed per waypoint before relaxed acceptance applies."""
+    relaxed_waypoint_scale: float = 2.5
+    """Tolerance multiplier for an intermediate waypoint once recoveries are spent.
+
+    An assembly that cannot turn on the spot may never meet an intermediate
+    waypoint's heading and position tolerance exactly. The final approach
+    steers while driving, so after ``maximum_stall_recoveries`` an
+    waypoint is accepted within this many times its tolerances. The final
+    approach is not relaxed: it must still reach latch distance.
+    """
 
     def __post_init__(self) -> None:
         for label, value in (
@@ -180,8 +197,14 @@ class DifferentialDriveReconfigurationConfig:
             ("lateral_residual_limit_m_s", self.lateral_residual_limit_m_s),
             ("latch_distance_m", self.latch_distance_m),
             ("action_timeout_s", self.action_timeout_s),
+            ("turn_stall_s", self.turn_stall_s),
+            ("turn_stall_rate_ratio", self.turn_stall_rate_ratio),
+            ("stall_recovery_s", self.stall_recovery_s),
+            ("relaxed_waypoint_scale", self.relaxed_waypoint_scale),
         ):
             require_finite_positive(value, name)
+        if isinstance(self.maximum_stall_recoveries, bool) or self.maximum_stall_recoveries < 0:
+            raise ValueError("maximum_stall_recoveries must be a non-negative integer")
         require_finite_nonnegative(
             self.heading_velocity_gain,
             "heading_velocity_gain",
@@ -218,6 +241,11 @@ class DifferentialDriveReconfigurationScenario:
     _action_index: int | None = None
     _waypoint_index: int = 0
     _turning_to_path: bool = False
+    _turn_stall_since_s: float | None = None
+    _recovery_until_s: float | None = None
+    _recovery_twist: tuple[float, float] = (0.0, 0.0)
+    _recoveries_this_waypoint: int = 0
+    _stall_recoveries_total: int = 0
     _moving_modules: tuple[ModuleInstanceId, ...] = ()
     _action_motion_started_at_s: float | None = None
     _maximum_requested_lateral_residual_m_s: float = 0.0
@@ -352,6 +380,7 @@ class DifferentialDriveReconfigurationScenario:
         self._action_index = index
         self._waypoint_index = 0
         self._turning_to_path = False
+        self._reset_stall_recovery()
         self._moving_modules = ()
         self._action_motion_started_at_s = None
         self._enter_phase(
@@ -407,14 +436,20 @@ class DifferentialDriveReconfigurationScenario:
             desired.position_m[0] - current.translation[0],
             desired.position_m[1] - current.translation[1],
         )
-        if distance > waypoint.position_tolerance_m * _WAYPOINT_HYSTERESIS:
+        scale = (
+            max(1.0, self.config.relaxed_waypoint_scale)
+            if self._recoveries_this_waypoint >= self.config.maximum_stall_recoveries
+            else 1.0
+        )
+        if distance > waypoint.position_tolerance_m * _WAYPOINT_HYSTERESIS * scale:
             return
         if abs(wrap_angle(desired.yaw_rad - _yaw_of(current.rotation))) > (
-            waypoint.heading_tolerance_rad
+            waypoint.heading_tolerance_rad * scale
         ):
             return
         self._waypoint_index += 1
         self._turning_to_path = False
+        self._reset_stall_recovery()
         route = self._current_route()
         action = self._current_action()
         if self._waypoint_index < len(route.waypoints):
@@ -484,9 +519,16 @@ class DifferentialDriveReconfigurationScenario:
             self._next_control_at_s += self.config.controller_period_s
 
     def _navigation_twist(self) -> tuple[float, float]:
+        now = self.session.world.time_s
+        if self._recovery_until_s is not None:
+            if now + _EPSILON < self._recovery_until_s:
+                return self._recovery_twist
+            self._recovery_until_s = None
+            self._turning_to_path = False
+            self._turn_stall_since_s = None
         waypoint = self._current_waypoint()
         target = self._resolve_waypoint(self._target_root_pose(), waypoint)
-        return self._pose_control_twist(
+        twist = self._pose_control_twist(
             target,
             drive_direction=waypoint.drive_direction,
             position_tolerance_m=waypoint.position_tolerance_m,
@@ -494,6 +536,65 @@ class DifferentialDriveReconfigurationScenario:
             speed_m_s=self.config.navigation_speed_m_s,
             allow_near_target_reversal=False,
         )
+        return self._watch_turn_stall(twist, waypoint.drive_direction)
+
+    def _watch_turn_stall(
+        self, twist: tuple[float, float], drive_direction: int
+    ) -> tuple[float, float]:
+        """Break out of a turn on the spot that the assembly cannot execute.
+
+        A rigid multi-module assembly can fail to rotate in place: its wheels
+        scrub sideways against ground friction and the commanded yaw rate is
+        never reached. Near a waypoint the path heading then keeps swinging
+        and the controller stays latched in the turn until the action times
+        out. When the measured yaw rate stays below ``turn_stall_rate_ratio``
+        of the command for ``turn_stall_s``, back away from the waypoint on an
+        arc that turns the same way, then retry from the new pose.
+        """
+        linear_m_s, yaw_rate_rad_s = twist
+        now = self.session.world.time_s
+        measured = self.session.world.modules[
+            self._moving_reference_module()
+        ].angular_velocity_rad_s[2]
+        stalled = (
+            self._turning_to_path
+            and linear_m_s == 0.0
+            and abs(yaw_rate_rad_s) >= 0.5 * self.config.maximum_yaw_rate_rad_s
+            and abs(measured) < self.config.turn_stall_rate_ratio * abs(yaw_rate_rad_s)
+        )
+        if not stalled:
+            self._turn_stall_since_s = None
+            return twist
+        if self._turn_stall_since_s is None:
+            self._turn_stall_since_s = now
+            return twist
+        if (
+            now - self._turn_stall_since_s + _EPSILON < self.config.turn_stall_s
+            or self._recoveries_this_waypoint >= self.config.maximum_stall_recoveries
+        ):
+            return twist
+        self._recoveries_this_waypoint += 1
+        self._stall_recoveries_total += 1
+        self._recovery_twist = (
+            -drive_direction * self.config.navigation_speed_m_s,
+            math.copysign(self.config.maximum_yaw_rate_rad_s, yaw_rate_rad_s),
+        )
+        self._recovery_until_s = now + self.config.stall_recovery_s
+        self._detail = (
+            f"{self._detail}; turn stalled, backing off on an arc "
+            f"(recovery {self._recoveries_this_waypoint}/{self.config.maximum_stall_recoveries})"
+        )
+        return self._recovery_twist
+
+    def _reset_stall_recovery(self) -> None:
+        self._turn_stall_since_s = None
+        self._recovery_until_s = None
+        self._recoveries_this_waypoint = 0
+
+    @property
+    def stall_recoveries(self) -> int:
+        """Return how many turn-stall recoveries this scenario has performed."""
+        return self._stall_recoveries_total
 
     def _approach_twist(self) -> tuple[float, float]:
         route = self._current_route()

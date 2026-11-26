@@ -33,7 +33,7 @@
       <inertial pos="0 0 0" mass="0.129"
                 fullinertia="0.00005375 0.00005375 0.00005375 0 0 0" />
       <geom name="base_visual" class="visual" mesh="base_link_mesh" material="shell_material" />
-      <geom name="base_collision_proxy" class="module_contact" size="0.025 0.025 0.025" />
+      <geom name="base_collision_proxy" class="module_contact" size="0.0248 0.0248 0.0248" />
 
       <body name="actuator_carrier_link_1">
         <inertial pos="0 0 0" mass="0.001"

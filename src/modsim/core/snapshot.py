@@ -2,17 +2,67 @@
 
 A snapshot carries only what modular-robot semantics need: where links are, how
 fast they are moving, optional connector frame poses, and optional constraint
-forces. It deliberately does not carry contacts, solver internals, or renderer
+wrenches. It deliberately does not carry contacts, solver internals, or renderer
 state, because ModSim does not reason about those.
+
+Timing contract (see ``docs/backends.md``): every pose, twist, joint state and
+connector frame in one snapshot describes the single instant ``time_s``.
+Constraint wrenches are interval quantities: they are what the solver applied
+during the step that ended at ``time_s``.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
+from typing import TypeVar
 
 from modsim.core.ids import ConstraintHandle, ModuleInstanceId
-from modsim.core.transforms import ZERO_VEC3, Transform, Vec3, vec_add, vec_cross, vec_sub
+from modsim.core.transforms import (
+    ZERO_VEC3,
+    Transform,
+    Vec3,
+    quat_conjugate,
+    quat_rotate,
+    vec_add,
+    vec_cross,
+    vec_norm,
+    vec_sub,
+)
+
+_K = TypeVar("_K")
+_V = TypeVar("_V")
+
+
+class FrozenMapping(Mapping[_K, _V]):
+    """Marker base for read-only mappings that a backend promises never to mutate.
+
+    A backend may return lazy, array-backed views instead of plain dictionaries
+    so that a snapshot costs one bulk copy of engine arrays rather than one
+    Python object per body, joint, and connector. ``WorldState`` keeps such
+    mappings by reference instead of copying them. Values must still be the
+    immutable types declared below, and must be the same on every lookup.
+    """
+
+    __slots__ = ()
+
+
+class LinkPoseView(FrozenMapping[str, Transform]):
+    """Link name to pose, read lazily from one module's ``BodyState`` mapping."""
+
+    __slots__ = ("_links",)
+
+    def __init__(self, links: Mapping[str, BodyState]) -> None:
+        self._links = links
+
+    def __getitem__(self, link: str) -> Transform:
+        return self._links[link].pose
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._links)
+
+    def __len__(self) -> int:
+        return len(self._links)
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +94,72 @@ class JointState:
 
 
 @dataclass(frozen=True, slots=True)
+class ConstraintWrench:
+    """Force and moment one physical connection transmits, as seen by module A.
+
+    Both vectors are in the world frame. ``force_n`` is the force the connection
+    applies to module A's connected link; ``torque_nm`` is the moment it applies
+    to that link, taken about connector A's origin. Module B receives the equal
+    and opposite wrench about the same point. "Module A" is the ``module_a`` of
+    the :class:`~modsim.backends.base.ConnectionRequest` that created the
+    connection.
+
+    ``torque_nm`` is ``None`` when a backend measures force but not moment.
+    """
+
+    force_n: Vec3 = ZERO_VEC3
+    torque_nm: Vec3 | None = ZERO_VEC3
+
+    @property
+    def force_magnitude_n(self) -> float:
+        """Return the magnitude of the transmitted force in newtons."""
+        return vec_norm(self.force_n)
+
+    @property
+    def torque_magnitude_nm(self) -> float | None:
+        """Return the magnitude of the transmitted moment, or ``None`` if unmeasured."""
+        return None if self.torque_nm is None else vec_norm(self.torque_nm)
+
+    def resolved_in(self, frame: Transform) -> ConstraintWrench:
+        """Return the same wrench with its vectors expressed in ``frame``'s axes.
+
+        Only the axes change: the moment keeps connector A's origin as its
+        reference point. Passing connector A's world frame gives the components
+        a connector datasheet uses (normal and shear force, twist and bending
+        moment about the connector's own axes).
+        """
+        inverse = quat_conjugate(frame.rotation)
+        return ConstraintWrench(
+            force_n=quat_rotate(inverse, self.force_n),
+            torque_nm=None if self.torque_nm is None else quat_rotate(inverse, self.torque_nm),
+        )
+
+
+class ForceMagnitudeView(FrozenMapping[ConstraintHandle, float]):
+    """Handle to force magnitude, read lazily from a wrench mapping."""
+
+    __slots__ = ("_magnitude", "_wrenches")
+
+    def __init__(self, wrenches: Mapping[ConstraintHandle, ConstraintWrench]) -> None:
+        self._wrenches = wrenches
+        # A backend's wrench mapping may answer magnitudes directly, without
+        # building a wrench per connection (the overload check reads every
+        # magnitude every tick).
+        self._magnitude = getattr(wrenches, "force_magnitude_n", None)
+
+    def __getitem__(self, handle: ConstraintHandle) -> float:
+        if self._magnitude is not None:
+            return float(self._magnitude(handle))
+        return self._wrenches[handle].force_magnitude_n
+
+    def __iter__(self) -> Iterator[ConstraintHandle]:
+        return iter(self._wrenches)
+
+    def __len__(self) -> int:
+        return len(self._wrenches)
+
+
+@dataclass(frozen=True, slots=True)
 class BackendStateSnapshot:
     """One immutable observation of backend state."""
 
@@ -65,10 +181,19 @@ class BackendStateSnapshot:
     backend disagreeing about where a connector is.
     """
 
-    constraint_forces_n: Mapping[ConstraintHandle, float] = field(
-        default_factory=dict[ConstraintHandle, float]
+    constraint_wrenches: Mapping[ConstraintHandle, ConstraintWrench] = field(
+        default_factory=dict[ConstraintHandle, ConstraintWrench]
     )
-    """Measured magnitude of each active constraint force, where supported."""
+    """Wrench each active connection transmitted during the last step, where supported.
+
+    A backend reports only connections that still exist when the snapshot is
+    taken. See :class:`ConstraintWrench` for the frame and sign convention.
+    """
+
+    @property
+    def constraint_forces_n(self) -> Mapping[ConstraintHandle, float]:
+        """Return the force magnitude of every reported connection, in newtons."""
+        return ForceMagnitudeView(self.constraint_wrenches)
 
     def body(self, module_id: ModuleInstanceId, link: str) -> BodyState | None:
         """Return the state of one link, or ``None`` when the backend omits it."""

@@ -18,6 +18,7 @@ from modsim.core.transforms import (
     vec_normalize,
     vec_scale,
 )
+from modsim_backend_mujoco.welds import LowestFreeIndex
 
 CONNECT_ANCHOR_BODY_A = slice(0, 3)
 CONNECT_ANCHOR_BODY_B = slice(3, 6)
@@ -98,6 +99,12 @@ class HingePool:
     _by_handle: dict[ConstraintHandle, HingeSlot] = field(
         default_factory=dict[ConstraintHandle, HingeSlot]
     )
+    _free: LowestFreeIndex = field(init=False)
+    _position: dict[int, int] = field(init=False)
+
+    def __post_init__(self) -> None:
+        self._position = {id(slot): index for index, slot in enumerate(self.slots)}
+        self._free = LowestFreeIndex(len(self.slots))
 
     @classmethod
     def over(cls, equality_pairs: tuple[tuple[int, int], ...]) -> HingePool:
@@ -123,11 +130,12 @@ class HingePool:
         """Reserve the lowest free pair for ``handle``."""
         if handle in self._by_handle:
             raise HingePoolExhaustedError(f"constraint '{handle}' already holds a hinge slot")
-        for slot in self.slots:
-            if slot.free:
-                slot.handle = handle
-                self._by_handle[handle] = slot
-                return slot
+        index = self._free.pop()
+        if index is not None:
+            slot = self.slots[index]
+            slot.handle = handle
+            self._by_handle[handle] = slot
+            return slot
         raise HingePoolExhaustedError(
             f"all {self.capacity} reserved hinge slots are in use; "
             "raise hinge_pool_size when constructing the backend"
@@ -139,6 +147,7 @@ class HingePool:
         if slot is None:
             return None
         slot.handle = None
+        self._free.push(self._position[id(slot)])
         return slot
 
     def slot_for(self, handle: ConstraintHandle) -> HingeSlot | None:
@@ -150,3 +159,4 @@ class HingePool:
         for slot in self.slots:
             slot.handle = None
         self._by_handle.clear()
+        self._free.reset(len(self.slots))

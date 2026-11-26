@@ -27,7 +27,7 @@ from modsim.runtime.session import RuntimeSession
 
 pytestmark = pytest.mark.mujoco
 
-_DURATION_S = 210.0
+_DURATION_S = 270.0
 _COMPLETED_HOLD_S = 20.0
 _WHEEL_JOINTS = ("joint_left_wheel", "joint_right_wheel")
 _MOTION_PHASES = frozenset(

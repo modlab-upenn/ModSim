@@ -5,11 +5,15 @@
     "tests/test_mujoco_contact_mechanics.py",
     "tests/test_mujoco_docking.py",
     "tests/test_mujoco_hinges.py",
+    "tests/test_mujoco_lazy_sampling.py",
     "tests/test_mujoco_physical_docking.py",
     "tests/test_mujoco_physical_reconfiguration.py",
     "tests/test_mujoco_runtime_inspector_process.py",
     "tests/test_mujoco_viewer.py",
-    "tests/test_mujoco_welds.py"
+    "tests/test_mujoco_welds.py",
+    "tests/test_backend_neutral_config.py",
+    "tests/test_mujoco_pool_allocation.py",
+    "tests/test_mujoco_wrenches.py"
   ],
   "pythonVersion": "3.11",
   "typeCheckingMode": "standard",

@@ -38,7 +38,7 @@ semantics identical across the mock backend, MuJoCo, and anything later.
 ```text
 1. adapter.step(dt)                 backend advances physics
 2. adapter.snapshot()               backend reports link poses, twists, forces
-3. world.ingest(snapshot)           resolve connector world frames
+3. world.ingest(snapshot)           adopt the sample; module roots and connector frames go stale
 4. overload evaluation              release connections past their break force
 5. docking.run(world, adapter)      releases, then detection, then commits
 ```
@@ -72,6 +72,16 @@ what a backend uses to populate that field.
 Docking and approach axes are authored in the **parent-link** frame, not the
 connector frame, so they are rotated by the link's world rotation rather than by
 the connector pose.
+
+Resolution is lazy, and so is each module's root `pose`, `linear_velocity_m_s`
+and `angular_velocity_rad_s`. Ingesting a sample only marks every connector frame stale;
+a connector derives its world pose, docking and approach axes, point velocity,
+and `resolved` flag the first time one of them is read, from the sample that
+was current at ingest, and caches them until the next sample. The values are
+exactly those an eager per-step refresh would produce, so a step in which no
+one inspects a connector (for example `process_connectors=False` transit) pays
+nothing per connector. Assigning one of these fields first brings the whole
+frame up to date, then overrides that field until the next sample.
 
 This convention does not apply to `physical_connection.hinge.axis`. A hinge
 axis is expressed in **each connector's own frame**, because it describes a
@@ -300,18 +310,18 @@ local hinge axis. Constraining two separated corresponding points removes
 translation and all rotation except rotation about their common line. Unlike a
 weld, a hinge does **not** claim a contact exclusion: collision remains active
 so a pivoting M-Block can interact with its support and the ground. The
-`hinge_pool_size` adapter option controls the number of simultaneously active
-hinges; each slot reserves two equality rows. Pool exhaustion refuses the
+scene's `ConnectionBudget.hinge` (or the MuJoCo `hinge_pool_size` override)
+controls the number of simultaneously active hinges; each slot reserves two equality rows. Pool exhaustion refuses the
 connection instead of faking a latch.
 
-**Constraint forces.** Snapshots now report scalar force magnitudes for every
-active weld and hinge through `constraint_forces_n`. For a weld this is the
-Euclidean norm of its three translational equality rows; rotational rows are
-not mixed into a value whose unit is newtons. For a two-point hinge it is the
-norm of the vector sum of the two three-axis point-force vectors. Their
-difference also represents a moment, which is deliberately not folded into
-this scalar field. These conventions feed the backend-neutral overload path;
-they are constraint-solver reactions, not yet a complete connector wrench.
+**Constraint wrenches.** Snapshots report a `ConstraintWrench` for every
+active weld and hinge through `constraint_wrenches`. The wrench is in the world
+frame: the force and moment the connection applies to module A, with the
+moment taken about connector A's origin (see `docs/backends.md`). The overload
+path compares the force magnitude (`constraint_forces_n`, derived from the
+wrenches) against `break_force_n`, exactly as before. The moment and the
+connector-frame components (`wrench.resolved_in(...)`) are available for
+normal, shear and bending limits.
 
 **Still deferred.** `constraint: compliant` needs an explicit conversion from
 physical stiffness units into MuJoCo `solref`/`solimp`. Long weld chains also

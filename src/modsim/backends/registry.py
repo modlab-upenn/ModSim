@@ -17,12 +17,15 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from modsim.backends.base import BackendAdapter, BackendError
+from modsim.backends.base import BackendAdapter, BackendCapabilities, BackendError
+from modsim.robot_packs.schema import ControlMode, PhysicalConstraintType
 
 DEFAULT_BACKEND = "mock"
 BACKEND_ENV_VAR = "MODSIM_BACKEND"
 
 BackendFactory = Callable[..., BackendAdapter]
+ViewerRunner = Callable[..., Any]
+"""Runs a session with the backend's native viewer open; see ``BackendEntry.viewer``."""
 
 
 class BackendUnavailableError(BackendError):
@@ -41,6 +44,19 @@ class BackendEntry:
     summary: str
     loader: Callable[[], BackendFactory]
     install_hint: str | None = None
+    viewer_loader: Callable[[], ViewerRunner] | None = None
+    """Lazily import the backend's native viewer runner, if it has one.
+
+    The runner is called as ``runner(session, duration_s=..., step_once=...)``
+    and returns the events produced while the viewer was open.
+    """
+    capabilities: BackendCapabilities | None = None
+    """What an adapter built with default options reports, declared up front.
+
+    Lets callers validate a request against an optional engine without importing
+    it, so a missing install is reported where the engine is actually needed.
+    Must equal ``factory()().capabilities()``; when ``None`` that is used instead.
+    """
 
     def factory(self) -> BackendFactory:
         """Import and return the adapter factory, or explain what is missing."""
@@ -50,6 +66,18 @@ class BackendEntry:
             hint = self.install_hint or f"install the '{self.name}' backend dependencies"
             raise BackendUnavailableError(
                 f"backend '{self.name}' is not available: {error}. {hint}"
+            ) from error
+
+    def viewer(self) -> ViewerRunner:
+        """Import and return the native viewer runner, or explain why there is none."""
+        if self.viewer_loader is None:
+            raise BackendError(f"backend '{self.name}' has no native viewer")
+        try:
+            return self.viewer_loader()
+        except ImportError as error:
+            hint = self.install_hint or f"install the '{self.name}' backend dependencies"
+            raise BackendUnavailableError(
+                f"the '{self.name}' viewer is not available: {error}. {hint}"
             ) from error
 
     @property
@@ -74,6 +102,12 @@ def _load_mujoco() -> BackendFactory:
     return MuJoCoBackendAdapter
 
 
+def _load_mujoco_viewer() -> ViewerRunner:
+    from modsim_backend_mujoco.viewer import run_with_viewer
+
+    return run_with_viewer
+
+
 _REGISTRY: dict[str, BackendEntry] = {
     "mock": BackendEntry(
         name="mock",
@@ -85,6 +119,26 @@ _REGISTRY: dict[str, BackendEntry] = {
         summary="MuJoCo rigid-body physics.",
         loader=_load_mujoco,
         install_hint="Install with: pip install 'modsim-robotics[mujoco]'",
+        viewer_loader=_load_mujoco_viewer,
+        capabilities=BackendCapabilities(
+            name="mujoco",
+            supports_runtime_constraints=True,
+            supports_constraint_removal=True,
+            supports_constraint_forces=True,
+            supports_constraint_torques=True,
+            supports_contact_forces=True,
+            supports_module_pose_write=True,
+            supports_joint_commands=True,
+            supported_joint_control_modes=frozenset({ControlMode.EFFORT}),
+            supports_external_viewer=True,
+            supports_gravity=True,
+            supports_ground_plane=True,
+            supports_contact_dynamics=True,
+            supported_constraint_types=frozenset(
+                {PhysicalConstraintType.FIXED, PhysicalConstraintType.HINGE}
+            ),
+            connection_change_delay_substeps=1,
+        ),
     ),
 }
 
@@ -103,6 +157,21 @@ def backend_entry(name: str) -> BackendEntry:
     except KeyError as error:
         known = ", ".join(available_backends())
         raise UnknownBackendError(f"unknown backend '{name}'; available: {known}") from error
+
+
+def backend_capabilities(name: str | None = None) -> BackendCapabilities:
+    """Return what a backend can do, without loading a scene.
+
+    Adapters must report capabilities that do not depend on a loaded scene.
+    A backend that declares them in its registry entry is answered without
+    importing its engine; otherwise this constructs an unloaded adapter with
+    default options and asks it. Callers use this to refuse an unsupported
+    request before any engine work.
+    """
+    entry = backend_entry(resolve_backend_name(name))
+    if entry.capabilities is not None:
+        return entry.capabilities
+    return entry.factory()().capabilities()
 
 
 def available_backends() -> tuple[str, ...]:

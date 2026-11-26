@@ -1,0 +1,138 @@
+
+---
+ pyproject.toml                          |  3 +++
+ pyright-mujoco.json                     |  5 ++++-
+ src/modsim/runtime/coordinated_pivot.py |  3 +--
+ src/modsim/runtime/inspector_runner.py  |  2 +-
+ src/modsim/runtime/momentum_pivot.py    |  3 +--
+ tests/test_backend_neutral_config.py    |  7 ++++++-
+ tests/test_mujoco_wrenches.py           | 12 +++++++++---
+ 7 files changed, 25 insertions(+), 10 deletions(-)
+
+diff --git a/pyproject.toml b/pyproject.toml
+index b6f5299..f4cae39 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -120,6 +120,9 @@ exclude = [
+   "tests/test_mujoco_runtime_inspector_process.py",
+   "tests/test_mujoco_viewer.py",
+   "tests/test_mujoco_welds.py",
++  "tests/test_backend_neutral_config.py",
++  "tests/test_mujoco_pool_allocation.py",
++  "tests/test_mujoco_wrenches.py",
+ ]
+ pythonVersion = "3.11"
+ typeCheckingMode = "strict"
+diff --git a/pyright-mujoco.json b/pyright-mujoco.json
+index 5b0d526..7530ffb 100644
+--- a/pyright-mujoco.json
++++ b/pyright-mujoco.json
+@@ -10,7 +10,10 @@
+     "tests/test_mujoco_physical_reconfiguration.py",
+     "tests/test_mujoco_runtime_inspector_process.py",
+     "tests/test_mujoco_viewer.py",
+-    "tests/test_mujoco_welds.py"
++    "tests/test_mujoco_welds.py",
++    "tests/test_backend_neutral_config.py",
++    "tests/test_mujoco_pool_allocation.py",
++    "tests/test_mujoco_wrenches.py"
+   ],
+   "pythonVersion": "3.11",
+   "typeCheckingMode": "standard",
+diff --git a/src/modsim/runtime/coordinated_pivot.py b/src/modsim/runtime/coordinated_pivot.py
+index d569476..4b0e921 100644
+--- a/src/modsim/runtime/coordinated_pivot.py
++++ b/src/modsim/runtime/coordinated_pivot.py
+@@ -798,8 +798,7 @@ class CoordinatedMomentumPivotScenario:
+             if all(speed <= config.flywheel_stop_speed_rad_s + _EPSILON for speed in projected):
+                 self._finish_brake()
+             elif (
+-                self._brake_started_at_s is not None
+-                and self.session.world.time_s - self._brake_started_at_s + _EPSILON
++                self.session.world.time_s - self._brake_started_at_s + _EPSILON
+                 >= config.brake_timeout_s
+             ):
+                 self._fail("mechanical brake did not stop every coordinated flywheel in time")
+diff --git a/src/modsim/runtime/inspector_runner.py b/src/modsim/runtime/inspector_runner.py
+index be1bf9f..0435e1d 100644
+--- a/src/modsim/runtime/inspector_runner.py
++++ b/src/modsim/runtime/inspector_runner.py
+@@ -984,7 +984,7 @@ def _create_session(
+ ) -> RuntimeSession:
+     demo = _resolve_demo(config.demo)
+     scene = scene.with_world(runtime_world_settings(config))
+-    budget = DEMO_CONNECTION_BUDGETS.get(demo) if demo is not None else None
++    budget = DEMO_CONNECTION_BUDGETS.get(demo)
+     if budget is not None:
+         scene = scene.with_connection_budget(budget)
+     try:
+diff --git a/src/modsim/runtime/momentum_pivot.py b/src/modsim/runtime/momentum_pivot.py
+index 10e4d0b..c991d51 100644
+--- a/src/modsim/runtime/momentum_pivot.py
++++ b/src/modsim/runtime/momentum_pivot.py
+@@ -505,8 +505,7 @@ class MomentumPivotScenario:
+             if projected_speed <= self.config.flywheel_stop_speed_rad_s + _EPSILON:
+                 self._finish_brake()
+             elif (
+-                self._brake_started_at_s is not None
+-                and self.session.world.time_s - self._brake_started_at_s + _EPSILON
++                self.session.world.time_s - self._brake_started_at_s + _EPSILON
+                 >= self.config.brake_timeout_s
+             ):
+                 self._fail("mechanical brake did not bring the flywheel to zero in time")
+diff --git a/tests/test_backend_neutral_config.py b/tests/test_backend_neutral_config.py
+index 1855be7..0dbd23b 100644
+--- a/tests/test_backend_neutral_config.py
++++ b/tests/test_backend_neutral_config.py
+@@ -139,7 +139,12 @@ def test_any_backend_with_the_capabilities_may_run_a_physical_demo(
+     monkeypatch.setitem(
+         registry._REGISTRY,  # pyright: ignore[reportPrivateUsage]
+         "capable_test_engine",
+-        BackendEntry(name="capable_test_engine", summary="test", loader=lambda: _Capable),
++        BackendEntry(
++            name="capable_test_engine",
++            summary="test",
++            # A capabilities-only stand-in: never instantiated as a real adapter here.
++            loader=lambda: _Capable,  # pyright: ignore[reportArgumentType]
++        ),
+     )
+     for demo in DEMO_REQUIREMENTS:
+         assert demo_backend_problems(demo, "capable_test_engine") == ()
+diff --git a/tests/test_mujoco_wrenches.py b/tests/test_mujoco_wrenches.py
+index 3b312b5..d7cf715 100644
+--- a/tests/test_mujoco_wrenches.py
++++ b/tests/test_mujoco_wrenches.py
+@@ -21,7 +21,7 @@ mujoco = pytest.importorskip("mujoco", reason="the MuJoCo backend extra is not i
+ import numpy as np
+ 
+ from modsim.core.events import DockCommitted
+-from modsim.core.ids import ConnectorInstanceId, ModuleInstanceId
++from modsim.core.ids import ConnectorInstanceId, ConstraintHandle, ModuleInstanceId
+ from modsim.core.scene import SceneSpec, WorldSettings
+ from modsim.core.snapshot import ConstraintWrench
+ from modsim.core.transforms import Transform, quat_conjugate, quat_from_axis_angle
+@@ -80,13 +80,19 @@ def _load_both(adapter: MuJoCoBackendAdapter) -> None:
+     adapter.apply_module_wrench(CUBE_0, force_n=(-0.2, 0.5, 0.4), torque_nm=(-0.02, 0.01, 0.0))
+ 
+ 
+-def _solver_generalized_force(adapter: MuJoCoBackendAdapter, handle: str) -> np.ndarray:
++def _solver_generalized_force(
++    adapter: MuJoCoBackendAdapter, handle: ConstraintHandle
++) -> np.ndarray:
+     """Return ``J.T @ f`` over the equality rows that realise ``handle``."""
+     model = adapter._require_compiled().model
+     _, data = adapter._require_loaded()
+     welds = adapter._welds.slot_for(handle)
+     hinges = adapter._hinges.slot_for(handle)
+-    equalities = {welds.equality_id} if welds is not None else set(hinges.equality_ids)
++    if welds is not None:
++        equalities = {welds.equality_id}
++    else:
++        assert hinges is not None, f"no weld or hinge slot realises {handle}"
++        equalities = set(hinges.equality_ids)
+     nefc, nv = data.nefc, model.nv
+     jacobian = np.asarray(data.efc_J[: nefc * nv]).reshape(nefc, nv)
+     rows = [
+-- 
+2.43.0
+

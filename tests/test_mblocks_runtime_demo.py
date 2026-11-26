@@ -13,10 +13,11 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
+from modsim.backends.base import BackendCapabilities
 from modsim.backends.mock import MockBackendAdapter
 from modsim.cli import app
 from modsim.core.events import Event
-from modsim.core.scene import SceneSpec
+from modsim.core.scene import ConnectionBudget, SceneSpec, WorldSettings
 from modsim.model_views import CubicLatticeView
 from modsim.robot_packs import LoadedRobotPack, RobotPackLoader
 from modsim.runtime import (
@@ -322,10 +323,22 @@ def test_physical_twelve_module_session_reserves_route_sized_constraint_pools(
 
     captured: dict[str, object] = {}
 
+    class _RecordingAdapter(MockBackendAdapter):
+        """A mock that accepts physical world settings and records the scene."""
+
+        def capabilities(self) -> BackendCapabilities:
+            return replace(
+                super().capabilities(), supports_gravity=True, supports_ground_plane=True
+            )
+
+        def load(self, pack, scene, *, root=None):  # type: ignore[no-untyped-def]
+            captured["scene"] = scene
+            return super().load(pack, scene, root=root)
+
     def fake_create_backend(name: str, **options: object) -> MockBackendAdapter:
         captured["name"] = name
         captured["options"] = options
-        return MockBackendAdapter()
+        return _RecordingAdapter()
 
     monkeypatch.setattr(runner_module, "create_backend", fake_create_backend)
     loaded = RobotPackLoader().load(_PACK_PATH)
@@ -347,16 +360,16 @@ def test_physical_twelve_module_session_reserves_route_sized_constraint_pools(
         config,
     )
     try:
-        assert captured == {
-            "name": "mujoco",
-            "options": {
-                "gravity": (0.0, 0.0, -9.81),
-                "ground": True,
-                "timestep_s": 0.00025,
-                "weld_pool_size": 12,
-                "hinge_pool_size": 2,
-            },
-        }
+        # World settings and the connection budget travel in the scene, so the
+        # backend constructor receives no engine options for this demo.
+        assert captured["name"] == "mujoco"
+        assert captured["options"] == {}
+        loaded_scene = captured["scene"]
+        assert isinstance(loaded_scene, SceneSpec)
+        assert loaded_scene.world == WorldSettings(
+            gravity_m_s2=(0.0, 0.0, -9.81), ground=True, timestep_s=0.00025
+        )
+        assert loaded_scene.connection_budget == ConnectionBudget(fixed=12, hinge=2)
     finally:
         session.shutdown()
 
@@ -390,7 +403,7 @@ def test_runner_rejects_non_kinematic_mblocks_demo_options(
 @pytest.mark.parametrize(
     ("overrides", "message"),
     (
-        ({"backend": "mock"}, "requires the MuJoCo backend"),
+        ({"backend": "mock"}, "needs a backend with"),
         ({"gravity": False}, "requires gravity and the ground plane"),
         ({"ground": False}, "requires gravity and the ground plane"),
         ({"height_m": 0.024}, "requires height_m >= 0.025"),
@@ -429,7 +442,7 @@ def test_runner_rejects_unsupported_momentum_pivot_options(
 @pytest.mark.parametrize(
     ("overrides", "message"),
     (
-        ({"backend": "mock"}, "requires the MuJoCo backend"),
+        ({"backend": "mock"}, "needs a backend with"),
         ({"gravity": False}, "requires gravity and the ground plane"),
         ({"ground": False}, "requires gravity and the ground plane"),
         ({"height_m": 0.024}, "requires height_m >= 0.025"),
@@ -676,7 +689,7 @@ def test_cli_rejects_non_kinematic_mblocks_demo_options(
 @pytest.mark.parametrize(
     ("extra_args", "message"),
     (
-        (("--backend", "mock"), "requires --backend mujoco"),
+        (("--backend", "mock"), "needs a backend with"),
         (("--no-ground",), "requires gravity and ground"),
         (("--height", "0.024"), "requires --height >= 0.025"),
         (("--dt", "0.001"), "requires --dt <= 0.0005"),
@@ -713,7 +726,7 @@ def test_cli_rejects_unsupported_mblocks_momentum_pivot_options(
 @pytest.mark.parametrize(
     ("extra_args", "message"),
     (
-        (("--backend", "mock"), "requires --backend mujoco"),
+        (("--backend", "mock"), "needs a backend with"),
         (("--no-ground",), "requires gravity and ground"),
         (("--height", "0.024"), "requires --height >= 0.025"),
         (("--dt", "0.001"), "requires --dt <= 0.0005"),

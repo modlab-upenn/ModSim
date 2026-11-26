@@ -1,0 +1,104 @@
+% ============================================================
+%  Motivation / Introduction with \cite commands inserted.
+%  Citation keys resolve against references.bib.
+%  Only citations were added; wording is unchanged from your draft
+%  except where noted in a % comment.
+% ============================================================
+
+\section{Motivation}
+
+Modular self-reconfigurable robots derive their utility from changing topology
+at runtime: modules dock into larger assemblies, undock, and rearrange into new
+morphologies for new tasks~\cite{yim2007modular,thalamy2019survey}. Simulation is
+the primary means by which such systems are designed, evaluated, and controlled
+prior to hardware. The difficulty is not the dynamics of any single
+configuration. It is that configuration is itself a runtime variable, and
+representing that change faithfully couples the physics engine, the robot model,
+and the control logic.
+
+High-fidelity engines such as MuJoCo~\cite{todorov2012mujoco}, Isaac
+Sim~\cite{nvidia_isaacsim}, and Gazebo~\cite{koenig2004gazebo} already integrate
+multi-body robots with mature contact and actuation models. A \emph{fixed}
+assembly is therefore comparatively well served. A dock or undock, however,
+changes the identity of the mechanism during the run: independent bodies become
+one, degrees of freedom appear or vanish, and the logical claim that two modules
+now constitute a single assembly must remain consistent with the constraint the
+engine actually enforces. General-purpose engines do not represent that second
+half. Four difficulties follow.
+
+First, topology is dynamic, yet most high-fidelity engines fix it at compile
+time. MuJoCo~\cite{todorov2012mujoco} compiles bodies, joints, and constraint
+slots once; model topology is immutable thereafter, so a dock cannot create a
+constraint. The practical alternative is a pre-reserved pool of inactive welds
+that are claimed, re-pointed, and released. Adding a joint on contact is not an
+engine operation. Recompilation is expensive and breaks state continuity;
+silently fabricating a connection is incorrect. Correct pool accounting,
+including refusal when the pool is exhausted, is therefore unavoidable systems
+work.
+
+Second, every dock is simultaneously a physical event and a semantic event, and
+the two must agree. A logical connection should be committed only after the
+backend confirms that the corresponding constraint exists. Otherwise the
+connectivity graph can assert a latch that physics never formed, or the converse,
+and every downstream controller inherits the inconsistency. Scripts that set a
+Boolean and add a joint in the same step provide neither confirmation nor
+atomicity, nor a defined failure mode. Intra-step order is equally consequential:
+releases must precede new detection so that a connection cannot break and reform
+within a single step.
+
+Third, modular semantics are expressed between connector frames, whereas physics
+constraints are expressed between body frames. A dock specifies a relative pose
+\(T_{\mathrm{connA}\leftarrow\mathrm{connB}}\); a weld constrains
+\[
+T_{\mathrm{bodyA}\leftarrow\mathrm{bodyB}}
+= T_{\mathrm{bodyA}\leftarrow\mathrm{connA}}\,
+T_{\mathrm{connA}\leftarrow\mathrm{connB}}\,
+T_{\mathrm{connB}\leftarrow\mathrm{bodyB}}.
+\]
+The conversion is stricter when a connector lies on an articulated child rather
+than the module root: the child's pose relative to the root must be measured and
+mapped back to a root free-joint pose before the weld is activated. Treating the
+child as the root, or composing frames in the wrong order, injects a large pose
+error that is easily misread as numerical instability rather than incorrect
+geometry.
+
+Fourth, correctness cannot be read from the physics alone. Compatibility,
+acceptance regions, assembly membership, mating orientation, and the event log
+are semantic judgments. An engine will weld incompatible connectors at an
+arbitrary pose; only a layer above the integrator can reject that outcome. The
+mating orientation in particular must be recorded, because configuration
+recognition and reconfiguration planning depend on the discrete mating
+state~\cite{liu2019distributed}. Verification further requires a notion of ``the
+same decision'' that is independent of exact poses: once dynamics act, poses may
+diverge, but docking decisions must not. When semantics and physics are fused in
+a single script, there is no independent oracle against which a frame-convention
+error can be distinguished from a genuine dynamical difference.
+% NOTE: the \cite{liu2019distributed} sentence above is an optional addition;
+% delete it if you want your paragraph exactly as drafted.
+
+Existing tools address only one side of this split. Lattice and behavioral
+simulators such as VisibleSim~\cite{thalamy2022visiblesim} treat reconfiguration
+semantics as first-class and scale to very large ensembles, but they omit
+rigid-body dynamics by design. Dedicated physics-based modular simulators such as
+ReMod3D~\cite{collins2013remod3d} combine docking with dynamics, yet they are
+bound to a single engine and offer no portable backend contract. Frameworks such
+as Revolve2~\cite{hupkes2018revolve,revolve2software} model modular bodies on
+MuJoCo but target the evaluation of fixed morphologies; runtime dock and undock
+lie outside their scope. General engines and kinematics
+libraries~\cite{pinciroli2012argos,iory_scikitrobot,coumans2021pybullet} provide
+dynamics without a native notion of module, connector, or dock, so each of the
+four difficulties is left as engine-specific glue. No existing system jointly
+owns faithful physics and portable, verifiable reconfiguration semantics.
+
+The problem is therefore to keep a changing logical topology in exact, checkable
+agreement with a fixed-topology physics engine across the instant of change,
+without binding modular meaning to one engine. This paper argues that the
+appropriate response is a semantic layer that owns topology, docking acceptance,
+and the dock/undock lifecycle, and that delegates physics to a swappable backend.
+The remainder of the paper presents that layer: a portable module description, a
+narrow adapter contract, a weld-pool bridge onto compile-time-fixed engines, and
+a differential conformance suite that runs identical scenarios on a
+dependency-free kinematic backend and on the physics backend and asserts they
+agree on connector frames, docking verdicts, and the committed event sequence,
+so that an adapter error surfaces as a semantic disagreement rather than a
+subtle dynamical difference.

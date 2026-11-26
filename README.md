@@ -400,7 +400,7 @@ pose, root velocity, or external wrench is injected after initialization. The
 viewer therefore shows wheel/contact dynamics throughout all four
 `6 → 5 → 6` graph transitions.
 
-The command reserves 210 simulated seconds. `--speed 4` requests four simulated
+The command reserves 270 simulated seconds. `--speed 4` requests four simulated
 seconds per wall-clock second without changing the physics timestep, motor
 limits, controller targets, or event timestamps. The tuned reference run still
 completes at about 177 simulated seconds—nominally about 44 seconds of wall time

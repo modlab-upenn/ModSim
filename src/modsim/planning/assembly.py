@@ -103,12 +103,62 @@ def plan_assembly(
     faces: Mapping[Face, Pose2] = NOMINAL_FACES,
     fixed_mapping: Mapping[str, str] | None = None,
     existing: tuple[GoalEdge, ...] = (),
+    move_single_modules: bool = False,
 ) -> AssemblyPlan:
     """Generate assignments and depth barriers; preserve already-correct bonds.
 
     Existing edges name physical modules. A mapping is required for reconfiguration;
     this deliberately does not claim the 2019 common-subconfiguration algorithm.
+
+    With ``move_single_modules``, an already-correct bond is kept only when the module
+    it hangs from never moves: the root, or a module itself held by a kept bond.
+    Otherwise the bond is released and re-made as its own dock, so every action
+    drives one module. Rigid differential-drive trains scrub sideways when they
+    turn and cannot follow planned routes, while single modules can turn in place.
+    If that releases every existing bond, which module fills which goal node no
+    longer matters, so all but the root module are reassigned by minimum travel,
+    as for an unconnected start. This avoids sending modules across each other.
     """
+    plan = _plan_assembly(
+        goal,
+        poses,
+        faces=faces,
+        fixed_mapping=fixed_mapping,
+        existing=existing,
+        move_single_modules=move_single_modules,
+    )
+    if not (
+        move_single_modules
+        and fixed_mapping is not None
+        and existing
+        and set(plan.releases) == set(existing)
+    ):
+        return plan
+    targets = {a.goal_node: a.target for a in plan.assignments}
+    nodes = sorted(n for n in goal.nodes if n != plan.root)
+    modules = sorted(m for m in poses if m != plan.root_module)
+    costs = [[poses[m].distance(targets[n]) for m in modules] for n in nodes]
+    mapping = {plan.root: plan.root_module}
+    mapping.update({n: modules[j] for n, j in zip(nodes, minimum_assignment(costs), strict=True)})
+    return _plan_assembly(
+        goal,
+        poses,
+        faces=faces,
+        fixed_mapping=mapping,
+        existing=existing,
+        move_single_modules=move_single_modules,
+    )
+
+
+def _plan_assembly(
+    goal: AssemblyGoal,
+    poses: Mapping[str, Pose2],
+    *,
+    faces: Mapping[Face, Pose2],
+    fixed_mapping: Mapping[str, str] | None,
+    existing: tuple[GoalEdge, ...],
+    move_single_modules: bool,
+) -> AssemblyPlan:
     if len(poses) != len(goal.nodes) or not poses:
         raise ValueError("one physical module is required per goal node")
     if existing and fixed_mapping is None:
@@ -172,6 +222,8 @@ def plan_assembly(
     )
     existing_by_key = {edge.key: edge for edge in existing}
     preserved_keys: set[tuple[str, str]] = set()
+    # Goal nodes that stay where they are: the root, and anything held to it by kept bonds.
+    anchored = {root}
     actions: list[AssemblyAction] = []
     for child in sorted(parents, key=lambda n: (depths[n], n)):
         parent, parent_face, child_face, orientation = parents[child]
@@ -195,8 +247,13 @@ def plan_assembly(
             old_angle = old.orientation_rad if old.a == action.parent else -old.orientation_rad
             delta = old_angle - action.orientation_rad
             matching_orientation = abs(math.atan2(math.sin(delta), math.cos(delta))) < 1e-6
-        if old is not None and matching_orientation:
+        if (
+            old is not None
+            and matching_orientation
+            and (not move_single_modules or parent in anchored)
+        ):
             preserved_keys.add(action.edge.key)
+            anchored.add(child)
         else:
             if child_face in {"left", "right"}:
                 raise ValueError(f"{action.id} requires a helping module for wheel-face docking")

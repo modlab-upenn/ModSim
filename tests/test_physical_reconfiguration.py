@@ -99,7 +99,7 @@ class _JointFeedbackMock(MockBackendAdapter):
                 for module_id, joint_ids in self._joint_ids.items()
             },
             connector_frames=snapshot.connector_frames,
-            constraint_forces_n=snapshot.constraint_forces_n,
+            constraint_wrenches=snapshot.constraint_wrenches,
         )
 
     def set_joint_commands(self, commands: tuple[JointCommand, ...]) -> None:

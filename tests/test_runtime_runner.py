@@ -255,7 +255,7 @@ def test_runner_wires_physical_driver_to_snake_without_starting_mujoco(
 @pytest.mark.parametrize(
     ("overrides", "message"),
     (
-        ({"backend": "mock"}, "smores_physical_driver_to_snake requires the MuJoCo backend"),
+        ({"backend": "mock"}, "smores_physical_driver_to_snake needs a backend with"),
         ({"gravity": False}, "requires gravity and the ground plane"),
         ({"ground": False}, "requires gravity and the ground plane"),
         ({"height_m": 0.03}, "requires height_m >= 0.04"),

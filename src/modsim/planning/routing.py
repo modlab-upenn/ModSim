@@ -125,7 +125,7 @@ def swept_clear(
                 if departure is not None:
                     initial = penetration(departure.compose(relative), obstacle.pose, footprint)
                     if initial > 0.0 and (initial <= 0.006 or allow_escape):
-                        allowance = initial + 1e-6
+                        allowance = initial + 0.0005
                 if penetration(body, obstacle.pose, footprint) > allowance:
                     return False
             for reservation in reservations:

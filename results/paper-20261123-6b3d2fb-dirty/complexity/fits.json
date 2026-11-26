@@ -1,0 +1,572 @@
+{
+  "meta": {
+    "python": "3.12.13",
+    "machine": "arm64",
+    "system": "Darwin",
+    "processor": "arm",
+    "mujoco": "3.11.0",
+    "quick": false
+  },
+  "fits": [
+    {
+      "experiment": "detect",
+      "backend": "mock",
+      "stage": "detect",
+      "slope": 0.366,
+      "x_range": [
+        32,
+        512
+      ],
+      "ms_range": [
+        12.2154,
+        33.6529
+      ]
+    },
+    {
+      "experiment": "detect_n",
+      "backend": "mock",
+      "stage": "detect",
+      "slope": 0.998,
+      "x_range": [
+        256,
+        1024
+      ],
+      "ms_range": [
+        2.7251,
+        10.8684
+      ]
+    },
+    {
+      "experiment": "event_a",
+      "backend": "mock",
+      "stage": "dock",
+      "slope": 0.315,
+      "x_range": [
+        16,
+        256
+      ],
+      "ms_range": [
+        0.0466,
+        0.1149
+      ]
+    },
+    {
+      "experiment": "event_a",
+      "backend": "mock",
+      "stage": "dock_next_step_extra",
+      "slope": 0.26,
+      "x_range": [
+        32,
+        256
+      ],
+      "ms_range": [
+        0.0458,
+        0.1248
+      ]
+    },
+    {
+      "experiment": "event_a",
+      "backend": "mock",
+      "stage": "plain_step",
+      "slope": -0.124,
+      "x_range": [
+        16,
+        256
+      ],
+      "ms_range": [
+        15.239,
+        10.6537
+      ]
+    },
+    {
+      "experiment": "event_a",
+      "backend": "mock",
+      "stage": "undock",
+      "slope": 0.657,
+      "x_range": [
+        16,
+        256
+      ],
+      "ms_range": [
+        0.0341,
+        0.2134
+      ]
+    },
+    {
+      "experiment": "event_a",
+      "backend": "mock",
+      "stage": "undock_next_step_extra",
+      "slope": 0.231,
+      "x_range": [
+        32,
+        256
+      ],
+      "ms_range": [
+        0.0714,
+        0.1502
+      ]
+    },
+    {
+      "experiment": "event_a",
+      "backend": "mujoco",
+      "stage": "dock",
+      "slope": 0.201,
+      "x_range": [
+        16,
+        256
+      ],
+      "ms_range": [
+        0.0707,
+        0.1223
+      ]
+    },
+    {
+      "experiment": "event_a",
+      "backend": "mujoco",
+      "stage": "plain_step",
+      "slope": 0.908,
+      "x_range": [
+        16,
+        256
+      ],
+      "ms_range": [
+        1.399,
+        17.33
+      ]
+    },
+    {
+      "experiment": "event_a",
+      "backend": "mujoco",
+      "stage": "undock",
+      "slope": 0.535,
+      "x_range": [
+        16,
+        256
+      ],
+      "ms_range": [
+        0.0476,
+        0.2018
+      ]
+    },
+    {
+      "experiment": "event_a",
+      "backend": "mujoco_immediate",
+      "stage": "dock",
+      "slope": 0.285,
+      "x_range": [
+        16,
+        256
+      ],
+      "ms_range": [
+        0.0645,
+        0.1223
+      ]
+    },
+    {
+      "experiment": "event_a",
+      "backend": "mujoco_immediate",
+      "stage": "dock_next_step_extra",
+      "slope": 0.217,
+      "x_range": [
+        16,
+        256
+      ],
+      "ms_range": [
+        0.3688,
+        0.6037
+      ]
+    },
+    {
+      "experiment": "event_a",
+      "backend": "mujoco_immediate",
+      "stage": "plain_step",
+      "slope": 0.894,
+      "x_range": [
+        16,
+        256
+      ],
+      "ms_range": [
+        1.3967,
+        16.4707
+      ]
+    },
+    {
+      "experiment": "event_a",
+      "backend": "mujoco_immediate",
+      "stage": "undock",
+      "slope": 0.603,
+      "x_range": [
+        16,
+        256
+      ],
+      "ms_range": [
+        0.0434,
+        0.2012
+      ]
+    },
+    {
+      "experiment": "event_a",
+      "backend": "mujoco_immediate",
+      "stage": "undock_next_step_extra",
+      "slope": 0.249,
+      "x_range": [
+        16,
+        256
+      ],
+      "ms_range": [
+        0.3053,
+        0.5627
+      ]
+    },
+    {
+      "experiment": "event_n",
+      "backend": "mock",
+      "stage": "dock",
+      "slope": 0.152,
+      "x_range": [
+        64,
+        1024
+      ],
+      "ms_range": [
+        0.0402,
+        0.067
+      ]
+    },
+    {
+      "experiment": "event_n",
+      "backend": "mock",
+      "stage": "dock_next_step_extra",
+      "slope": 1.164,
+      "x_range": [
+        32,
+        1024
+      ],
+      "ms_range": [
+        0.003,
+        0.1425
+      ]
+    },
+    {
+      "experiment": "event_n",
+      "backend": "mock",
+      "stage": "plain_step",
+      "slope": 1.444,
+      "x_range": [
+        64,
+        1024
+      ],
+      "ms_range": [
+        0.2743,
+        15.5788
+      ]
+    },
+    {
+      "experiment": "event_n",
+      "backend": "mock",
+      "stage": "undock",
+      "slope": 0.217,
+      "x_range": [
+        64,
+        1024
+      ],
+      "ms_range": [
+        0.0229,
+        0.048
+      ]
+    },
+    {
+      "experiment": "event_n",
+      "backend": "mock",
+      "stage": "undock_next_step_extra",
+      "slope": 1.026,
+      "x_range": [
+        32,
+        1024
+      ],
+      "ms_range": [
+        0.0044,
+        0.1819
+      ]
+    },
+    {
+      "experiment": "event_n",
+      "backend": "mujoco",
+      "stage": "dock",
+      "slope": 0.2,
+      "x_range": [
+        64,
+        1024
+      ],
+      "ms_range": [
+        0.0596,
+        0.1187
+      ]
+    },
+    {
+      "experiment": "event_n",
+      "backend": "mujoco",
+      "stage": "plain_step",
+      "slope": 0.401,
+      "x_range": [
+        64,
+        1024
+      ],
+      "ms_range": [
+        0.2403,
+        0.7563
+      ]
+    },
+    {
+      "experiment": "event_n",
+      "backend": "mujoco",
+      "stage": "undock",
+      "slope": 0.231,
+      "x_range": [
+        64,
+        1024
+      ],
+      "ms_range": [
+        0.034,
+        0.0751
+      ]
+    },
+    {
+      "experiment": "event_n",
+      "backend": "mujoco_immediate",
+      "stage": "dock",
+      "slope": 0.009,
+      "x_range": [
+        64,
+        1024
+      ],
+      "ms_range": [
+        0.0597,
+        0.0626
+      ]
+    },
+    {
+      "experiment": "event_n",
+      "backend": "mujoco_immediate",
+      "stage": "dock_next_step_extra",
+      "slope": 0.775,
+      "x_range": [
+        64,
+        1024
+      ],
+      "ms_range": [
+        0.0387,
+        0.3388
+      ]
+    },
+    {
+      "experiment": "event_n",
+      "backend": "mujoco_immediate",
+      "stage": "plain_step",
+      "slope": 0.355,
+      "x_range": [
+        64,
+        1024
+      ],
+      "ms_range": [
+        0.242,
+        0.6519
+      ]
+    },
+    {
+      "experiment": "event_n",
+      "backend": "mujoco_immediate",
+      "stage": "undock",
+      "slope": 0.024,
+      "x_range": [
+        64,
+        1024
+      ],
+      "ms_range": [
+        0.0343,
+        0.0373
+      ]
+    },
+    {
+      "experiment": "event_n",
+      "backend": "mujoco_immediate",
+      "stage": "undock_next_step_extra",
+      "slope": 1.55,
+      "x_range": [
+        256,
+        1024
+      ],
+      "ms_range": [
+        0.0315,
+        0.2706
+      ]
+    },
+    {
+      "experiment": "tick",
+      "backend": "mujoco",
+      "stage": "docking_pass",
+      "slope": 1.038,
+      "x_range": [
+        32,
+        512
+      ],
+      "ms_range": [
+        11.1734,
+        203.3258
+      ]
+    },
+    {
+      "experiment": "tick",
+      "backend": "mujoco",
+      "stage": "ingest",
+      "slope": 1.07,
+      "x_range": [
+        32,
+        512
+      ],
+      "ms_range": [
+        0.1008,
+        1.9666
+      ]
+    },
+    {
+      "experiment": "tick",
+      "backend": "mujoco",
+      "stage": "overloads",
+      "slope": 0.331,
+      "x_range": [
+        32,
+        512
+      ],
+      "ms_range": [
+        0.0013,
+        0.0036
+      ]
+    },
+    {
+      "experiment": "tick",
+      "backend": "mujoco",
+      "stage": "physics",
+      "slope": 1.005,
+      "x_range": [
+        32,
+        512
+      ],
+      "ms_range": [
+        0.3173,
+        5.369
+      ]
+    },
+    {
+      "experiment": "tick",
+      "backend": "mujoco",
+      "stage": "read_all_poses",
+      "slope": 1.179,
+      "x_range": [
+        32,
+        512
+      ],
+      "ms_range": [
+        0.0246,
+        0.6818
+      ]
+    },
+    {
+      "experiment": "tick",
+      "backend": "mujoco",
+      "stage": "snapshot",
+      "slope": 0.776,
+      "x_range": [
+        32,
+        512
+      ],
+      "ms_range": [
+        0.0363,
+        0.3405
+      ]
+    },
+    {
+      "experiment": "tick_conn",
+      "backend": "mujoco",
+      "stage": "docking_pass",
+      "slope": 1.007,
+      "x_range": [
+        64,
+        1024
+      ],
+      "ms_range": [
+        1.7436,
+        27.7741
+      ]
+    },
+    {
+      "experiment": "tick_conn",
+      "backend": "mujoco",
+      "stage": "ingest",
+      "slope": 1.013,
+      "x_range": [
+        64,
+        1024
+      ],
+      "ms_range": [
+        0.1775,
+        2.6504
+      ]
+    },
+    {
+      "experiment": "tick_conn",
+      "backend": "mujoco",
+      "stage": "overloads",
+      "slope": 0.972,
+      "x_range": [
+        64,
+        1024
+      ],
+      "ms_range": [
+        0.1695,
+        2.4635
+      ]
+    },
+    {
+      "experiment": "tick_conn",
+      "backend": "mujoco",
+      "stage": "physics",
+      "slope": 0.963,
+      "x_range": [
+        64,
+        1024
+      ],
+      "ms_range": [
+        4.1547,
+        58.1862
+      ]
+    },
+    {
+      "experiment": "tick_conn",
+      "backend": "mujoco",
+      "stage": "read_all_poses",
+      "slope": 0.937,
+      "x_range": [
+        64,
+        1024
+      ],
+      "ms_range": [
+        0.0641,
+        0.8129
+      ]
+    },
+    {
+      "experiment": "tick_conn",
+      "backend": "mujoco",
+      "stage": "snapshot",
+      "slope": 0.651,
+      "x_range": [
+        64,
+        1024
+      ],
+      "ms_range": [
+        0.0475,
+        0.2656
+      ]
+    }
+  ]
+}
