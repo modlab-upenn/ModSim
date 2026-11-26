@@ -327,13 +327,14 @@ class DockingManager:
             else virtual_attachment_connector(connector_b, contact, connector_b.world_velocity_m_s)
         )
         # A surface snap keeps the measured attachment frame, spin included,
-        # so it snaps to roll zero against A_q rather than to the measured roll.
+        # so it snaps to roll zero against A_q rather than to the measured
+        # roll. The request and the event then record roll zero as well, so
+        # orientation_rad always describes the committed relative pose.
+        orientation_rad = proposal.acceptance.orientation_rad
+        if snap and contact is not None:
+            orientation_rad = 0.0
         relative = (
-            nominal_relative_transform(
-                connector_a,
-                mate_b,
-                0.0 if contact is not None else proposal.acceptance.orientation_rad,
-            )
+            nominal_relative_transform(connector_a, mate_b, orientation_rad)
             if snap
             else proposal.acceptance.relative_transform
         )
@@ -349,7 +350,7 @@ class DockingManager:
             connector_b_local=mate_b.local_pose,
             relative_transform=relative,
             physical_connection=physical,
-            orientation_rad=proposal.acceptance.orientation_rad,
+            orientation_rad=orientation_rad,
             orientation_index=proposal.acceptance.orientation_index,
             snap_to_nominal=snap,
             snap_side="a" if contact is not None else "b",
@@ -412,7 +413,7 @@ class DockingManager:
                 constraint_handle=outcome.handle,
                 relative_transform=relative,
                 constraint=request.physical_connection.constraint,
-                orientation_rad=proposal.acceptance.orientation_rad,
+                orientation_rad=orientation_rad,
                 orientation_index=proposal.acceptance.orientation_index,
                 realization=realization,
                 alignment=AlignmentMode.NOMINAL if snap else AlignmentMode.MEASURED,

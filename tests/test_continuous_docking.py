@@ -228,6 +228,29 @@ def test_nominal_snap_keeps_tangent_position_and_spin(example_pack: RobotPack, t
     assert session.world.modules[NODE].pose.is_close(Transform.identity())
 
 
+@pytest.mark.parametrize("alignment", ["nominal", "measured"])
+def test_orientation_rad_describes_the_committed_pose(
+    example_pack: RobotPack, alignment: str
+) -> None:
+    # A tilt about x gives a small measured roll. A nominal surface snap
+    # commits roll zero against A_q, and the records must say so; a measured
+    # commit keeps the measured roll.
+    pose = strut_pose(DOWN, gap_m=0.001, spin_rad=0.7, tilt_axis=(1.0, 0.0, 0.0), tilt_rad=0.08)
+    pack = pack_with(example_pack, "static_fixed", docking_policy={"alignment": alignment})
+    session = make_session(pack, pose)
+    measured = proposal_for(session, 0).acceptance.orientation_rad
+    assert abs(measured) > 1e-4
+
+    committed = first(session.step(0.0), DockCommitted)
+    assert isinstance(committed, DockCommitted)
+    runtime = session.world.connections[link(0)]
+
+    expected = 0.0 if alignment == "nominal" else measured
+    assert committed.alignment is AlignmentMode(alignment)
+    assert committed.orientation_rad == pytest.approx(expected, abs=1e-12)
+    assert runtime.orientation_rad == pytest.approx(expected, abs=1e-12)
+
+
 def test_candidate_surface_pairs_finds_only_points_inside_the_shell() -> None:
     near = ConnectorInstanceId("strut_0/upper")
     far = ConnectorInstanceId("strut_1/upper")

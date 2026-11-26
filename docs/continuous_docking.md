@@ -273,9 +273,17 @@ pair:
 
 - `measured` alignment freezes `pose_q.relative_to(pose_p)`;
 - `nominal` alignment calls the existing `nominal_relative_transform` with
-  A_q as the surface side. Because both types are `continuous`,
-  `orientation_rad` is the measured roll, so snapping removes gap and tilt and
-  keeps the tangent position and spin. **No new snapping code is needed.**
+  A_q as the surface side and **roll 0**. A_q's x axis is already the point
+  connector's own x axis projected onto the tangent plane, so roll 0 keeps the
+  measured spin; passing the measured roll would turn the strut by that roll
+  a second time. Snapping therefore removes gap and tilt and keeps the tangent
+  position and spin. **No new snapping code is needed.**
+- `orientation_rad` describes the committed relative pose. On a nominal
+  surface commit it is therefore 0 on the `ConnectionRequest`, on
+  `DockCommitted` and on `ConnectionRuntime`, not the measured roll that
+  acceptance reported. On a measured commit, including one whose snap was
+  withheld (§5.3), it is the measured roll. The spin about the normal lives in
+  A_q and in the attachment (§6), not in `orientation_rad`.
 
 ### 4.3 Broad phase
 

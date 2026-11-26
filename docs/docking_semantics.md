@@ -208,7 +208,9 @@ unchanged, with the point connector always on side A. As a result:
 
 Nominal snapping uses the existing `nominal_relative_transform` against the
 virtual frame with zero roll, which removes gap and tilt and keeps the tangent
-position and spin. The request's `snap_side` is `"a"`, so the strut moves to the
+position and spin. `orientation_rad` always describes the committed pose: on a
+nominal surface commit the request, `DockCommitted` and the runtime connection
+record roll 0, while a measured commit records the measured roll. The request's `snap_side` is `"a"`, so the strut moves to the
 surface instead of the node moving to the strut. The snap is applied only
 when the strut is alone in its assembly; otherwise the commit keeps the measured pose, and `DockCommitted`
 records `alignment: measured` with `nominal_alignment_withheld: true`. Every
