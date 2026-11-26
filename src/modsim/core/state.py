@@ -80,6 +80,7 @@ class WorldState:
         "_parent_links_by_type",
         "_revision",
         "_sample_snapshot",
+        "_surface_connectors",
         "_time_s",
     )
 
@@ -106,6 +107,7 @@ class WorldState:
         # Surface attachments are derived from connector frames, so they are
         # cached against the frame clock and recomputed only when read.
         self._attachments: dict[ConnectionId, tuple[int, SurfaceAttachment | None]] = {}
+        self._surface_connectors: tuple[ConnectorInstanceId, ...] = ()
 
     # ------------------------------------------------------------------
     # construction
@@ -137,6 +139,9 @@ class WorldState:
                 world._connectors[instance.id] = instance
                 connector_ids.append(instance.id)
             world._connectors_by_module[module.id] = tuple(connector_ids)
+        world._surface_connectors = tuple(
+            sorted(cid for cid, connector in world._connectors.items() if connector.surface)
+        )
         world._assemblies.rebuild(world._modules, {})
         world._refresh_connector_frames()
         return world
@@ -337,6 +342,11 @@ class WorldState:
         if state is None:
             return None
         return spec.magnet_height_offset_m - state.position
+
+    @property
+    def surface_connectors(self) -> tuple[ConnectorInstanceId, ...]:
+        """Return every surface connector instance, sorted; empty for point-only packs."""
+        return self._surface_connectors
 
     def has_capacity(self, connector: ConnectorInstanceId) -> bool:
         """Return whether a connector can accept one more connection now."""

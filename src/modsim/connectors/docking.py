@@ -160,16 +160,14 @@ class DockingManager:
         informative ``DockFailed`` instead of silence.
         """
         radius = self.detection_radius(world)
-        connector_types = world.pack.hardware_catalog.connector_types
         positions = [
             (connector.id, connector.world_pose.translation)
             for connector in world.connectors.values()
-            if connector.resolved
-            and not connector.is_engaged
-            and not connector_types[connector.connector_type_id].is_surface
+            if connector.resolved and not connector.is_engaged and not connector.surface
         ]
         pairs = set(candidate_pairs(positions, radius))
-        pairs.update(self._surface_candidates(world, positions))
+        if world.surface_connectors:
+            pairs.update(self._surface_candidates(world, positions))
         pairs.update(self.requested_pairs)
 
         proposals: list[DockProposal] = []
@@ -189,7 +187,8 @@ class DockingManager:
         connector_types = world.pack.hardware_catalog.connector_types
         surfaces: list[tuple[ConnectorInstanceId, Vec3, float]] = []
         tolerance = 0.0
-        for connector in world.connectors.values():
+        for connector_id in world.surface_connectors:
+            connector = world.connector(connector_id)
             connector_type = connector_types[connector.connector_type_id]
             spec = connector_type.surface
             if spec is None or not connector.resolved or not world.has_capacity(connector.id):
