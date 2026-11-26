@@ -421,9 +421,10 @@ whatever twist they are given; nothing falls and nothing collides. What it does
 model faithfully is the part ModSim depends on: a physical connection makes two
 modules move as one rigid body, and removing it lets them move independently.
 
-The mock explicitly refuses `constraint: hinge`; treating it as a weld would
-hide the rotational degree of freedom and make a physics test misleading. Use
-MuJoCo for hinge execution. The refusal passes through ordinary two-phase
+The mock realises `constraint: fixed` only and explicitly refuses `hinge`,
+`compliant`, `ball` and `custom`; treating any of them as a weld would hide the
+compliance or rotational freedom asked for and make a physics test misleading.
+Use MuJoCo for hinge execution. The refusal passes through ordinary two-phase
 commit as `DockFailed(BACKEND_REFUSED)`.
 
 Every link of a module reports the module pose, because the mock has no

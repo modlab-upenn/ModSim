@@ -81,14 +81,9 @@ class MockBackendAdapter:
             supports_constraint_removal=True,
             supports_constraint_forces=True,
             supports_module_pose_write=True,
-            supported_constraint_types=frozenset(
-                {
-                    PhysicalConstraintType.FIXED,
-                    PhysicalConstraintType.COMPLIANT,
-                    PhysicalConstraintType.BALL,
-                    PhysicalConstraintType.CUSTOM,
-                }
-            ),
+            # The mock realises every connection as a rigid weld, so it
+            # advertises only the constraint type that a weld actually is.
+            supported_constraint_types=frozenset({PhysicalConstraintType.FIXED}),
         )
 
     def load(
@@ -162,10 +157,17 @@ class MockBackendAdapter:
         )
 
     def create_physical_connection(self, request: ConnectionRequest) -> ConnectionOutcome:
-        """Weld two modules together, honouring an injected failure if armed."""
-        if request.physical_connection.constraint is PhysicalConstraintType.HINGE:
+        """Weld two modules together, honouring an injected failure if armed.
+
+        Only ``fixed`` is realised. Every other constraint type is refused
+        rather than welded, because a rigid weld would hide the compliance or
+        the rotational freedom the Robot Pack asked for.
+        """
+        constraint = request.physical_connection.constraint
+        if constraint is not PhysicalConstraintType.FIXED:
             return ConnectionOutcome.refused(
-                "mock backend does not implement hinge constraints; use a physics backend"
+                f"mock backend does not implement {constraint.value} constraints; "
+                "it realises fixed connections only"
             )
         if self._next_failure is not None:
             detail, self._next_failure = self._next_failure, None

@@ -208,7 +208,7 @@ rather than rescanned per connection.
 | Joint state | omitted | position, velocity, actuator effort |
 | Joint commands | no | declared scalar effort modes |
 | Connector frames | composed from local pose | measured from sites |
-| Runtime docking | fixed-style constraints; hinge explicitly refused | fixed welds and two-point hinges |
+| Runtime docking | fixed only; every other type explicitly refused | fixed welds and two-point hinges |
 | Constraint wrenches | injectable force, for tests | full force and moment for active welds and hinges |
 | Connection change delay | 0 | 1 internal step by default; 0 with `immediate_connection_changes=True` |
 | Contact exclusion on dock | not applicable | one reserved body-pair exclusion per active weld; none for hinges |
@@ -227,9 +227,11 @@ backend before their non-root connectors mean anything.
 It stays in the project permanently as the CI backend and as the reference
 semantics the conformance suite compares against.
 
-The mock explicitly refuses hinge requests. Approximating a hinge as one of
-its rigid welds would erase the required rotational degree of freedom and
-could make a dynamics scenario appear to pass without hinge physics.
+The mock advertises and realises `fixed` connections only. It refuses
+`hinge`, `compliant`, `ball` and `custom` requests. Approximating any of them
+as one of its rigid welds would erase the compliance or rotational freedom the
+Robot Pack asked for, and could make a dynamics scenario appear to pass
+without the physics it names.
 
 ### mujoco
 
