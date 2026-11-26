@@ -23,7 +23,10 @@ UPPER = ConnectorInstanceId("strut_0/upper")
 LINK: ConnectionId = connection_id(UPPER, SHELL)
 DOWN: Vec3 = (0.0, 0.0, -1.0)
 # A strut seated below the node has its upper docking axis along world +z, so
-# world z is the normal direction and x, y are shear in the tests below.
+# world z is the normal direction and x, y are shear in the tests below. The
+# wrench is the force the connection applies to the strut (side A): +z pulls
+# the strut toward the node, which is tension, and -z pushes it away from the
+# node, which is compression.
 
 
 class _TorqueMock(MockBackendAdapter):
@@ -70,8 +73,8 @@ def _docked(pack: RobotPack, adapter: MockBackendAdapter) -> RuntimeSession:
     ("force", "quantity", "measured"),
     [
         ((0.0, 0.0, 80.0), "normal_force", 80.0),
-        ((0.0, 0.0, -80.0), "normal_force", 80.0),
         ((30.0, 40.0, 10.0), "shear_force", 50.0),
+        ((30.0, 40.0, -80.0), "shear_force", 50.0),
     ],
 )
 def test_an_exceeded_force_axis_releases_the_connection(
@@ -93,6 +96,24 @@ def test_an_exceeded_force_axis_releases_the_connection(
     assert "N exceeded" in format_event_detail(overload) and quantity in format_event_detail(
         overload
     )
+
+
+@pytest.mark.parametrize("normal_n", [-80.0, -500.0])
+def test_compression_never_counts_as_normal_overload(
+    example_pack: RobotPack, normal_n: float
+) -> None:
+    # The strut pressed into the node, as when its wheels carry load: only
+    # tension separates a magnetic connector.
+    adapter = MockBackendAdapter()
+    session = _docked(_pack(example_pack, max_normal_force_n=79.0), adapter)
+    adapter.set_constraint_force(
+        session.world.connections[LINK].constraint_handle, (0.0, 0.0, normal_n)
+    )
+
+    events = session.step(0.0)
+
+    assert not any(isinstance(event, ConnectorOverloaded) for event in events)
+    assert LINK in session.world.connections
 
 
 def test_loads_within_every_limit_keep_the_connection(example_pack: RobotPack) -> None:

@@ -382,7 +382,9 @@ declared break forces governs: a joint is only as strong as its weakest half.
 
 A connector type may also opt in to per-axis `docking_policy.break_limits`
 (normal, shear, bending, torsion). The wrench is decomposed about connector A's
-docking axis, and the first exceeded quantity is reported in
+docking axis. The normal quantity counts tension only: connector A's axis points
+toward side B, so F·â > 0 is the pair being pulled apart, and compression never
+releases a connection. The first exceeded quantity is reported in
 `ConnectorOverloaded.quantity` and releases the connection. The descriptive
 `limits` never break a connection. Moment limits need a backend that reports
 constraint moments; otherwise `RuntimeSession.create` raises `BackendError`.

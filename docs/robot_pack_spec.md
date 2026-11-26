@@ -335,7 +335,9 @@ description, so omitting it is identical to the defaults shown above:
   measured wrench exceeds its limit. It uses the `limits` field names plus
   `max_torsion_moment_nm`. Unlike `limits`, which is descriptive datasheet
   data and never breaks a connection, `break_limits` is consumed by the
-  runtime. Moment limits require a backend that reports constraint moments.
+  runtime. `max_normal_force_n` there limits tension (pull-off) only;
+  compression never breaks a connection. Moment limits require a backend
+  that reports constraint moments.
 
 `docs/docking_semantics.md` describes how the runtime evaluates these fields.
 The optional `metadata` and `docking_policy` mappings are independent: custom

@@ -532,9 +532,14 @@ class RuntimeSession:
             return None
         wrench = snapshot.constraint_wrenches[handle]
         axis = vec_normalize(self.world.connector(connector_a).world_docking_axis)
+        # The wrench is what the connection applies to side A, and A's docking
+        # axis points toward side B, so a positive F.a is the connection
+        # pulling A back toward B: tension, the load that separates the pair.
+        # Compression (A pressed into B) is carried by contact and never
+        # counts as normal overload.
         normal = vec_dot(wrench.force_n, axis)
         measured: dict[str, float | None] = {
-            "normal_force": abs(normal),
+            "normal_force": max(normal, 0.0),
             "shear_force": vec_norm(vec_sub(wrench.force_n, vec_scale(axis, normal))),
             "bending_moment": None,
             "torsion_moment": None,

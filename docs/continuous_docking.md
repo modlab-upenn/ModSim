@@ -649,9 +649,18 @@ connector A's **world docking axis** â (the axis is authored in the parent-link
 frame and need not be the connector frame's z):
 
 ```text
-normal   |F·â|            shear    |F − (F·â)â|
+normal   max(F·â, 0)      shear    |F − (F·â)â|
 torsion  |M·â|            bending  |M − (M·â)â|
 ```
+
+**Sign convention.** F and M are what the connection applies to side A
+(`backends.md`, constraint wrenches), and â points from connector A toward
+side B. F·â > 0 is therefore the connection pulling A back toward B: tension,
+the load that separates the pair. Only tension counts as normal load.
+Compression (F·â < 0, side A pressed into side B, for example a strut whose
+wheels carry load) is carried by contact and never releases a connection, so
+the normal quantity is clamped at zero. Shear, torsion and bending have no
+sign. The MuJoCo wrench gives F·â > 0 when the modules are pulled apart.
 
 The whole-force `break_force_n` check runs first, as before. For each axis
 quantity, the lower limit of the two sides governs. The first exceeded quantity
@@ -915,7 +924,7 @@ one-line note here.
   field and the fall-through on refusal are implemented; the request field and
   its use are Phase 2.
 - **A5** (§8.1): every exceeded axis releases; documented as an approximation.
-  Implemented.
+  Implemented. Normal load counts tension only (review finding G3).
 - **A6** (§1): the mock advertises and realises `fixed` only. Implemented as its
   own commit; no existing test relied on the old set.
 - **A7** (§3.1, §3.2): a surface pair must author `constraint: fixed`.

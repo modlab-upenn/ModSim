@@ -199,7 +199,9 @@ connector datasheet uses: normal and shear force, twist and bending moment.
 force magnitudes, which is what break-force overload checks use. Opt-in
 per-axis `break_limits` read the wrench itself, decomposed about connector A's
 docking axis, and only when such limits are declared, so a backend can keep
-computing moments lazily. A session whose pack declares moment limits on a
+computing moments lazily. Connector A's docking axis points toward module B,
+so a positive normal component F·â is tension (the modules being pulled
+apart). Only tension counts against `max_normal_force_n`. A session whose pack declares moment limits on a
 backend without `supports_constraint_torques` is refused at creation.
 
 **Measured connector frames are optional but preferred.** A backend that
