@@ -1,14 +1,15 @@
 # Continuous docking 0.1
 
-**Status: Phase 1 implemented; later phases are draft.** The schema, validator,
-core semantics and mock backend (§14.4) run and are tested. Sections and
-bullets marked *(Phase 2)* to *(Phase 5)* are still draft contract. **§14
+**Status: Phases 1 and 2 implemented; later phases are draft.** The schema,
+validator, core semantics and mock backend (§14.4), and the contract and
+cross-backend conformance work (§14.5), run and are tested. Sections and
+bullets marked *(Phase 3)* to *(Phase 5)* are still draft contract. **§14
 records the review decisions. Where §14 and an earlier section differ, §14
 wins;** amendments that are implemented have been folded into the sections
 they amend. The implemented parts are also stated in `docking_semantics.md`,
 `backends.md`, `robot_pack_spec.md` and `model_views.md`.
 
-Implemented in Phase 1:
+Implemented in Phases 1 and 2:
 
 | Area | Code |
 |---|---|
@@ -20,12 +21,16 @@ Implemented in Phase 1:
 | Per-axis break limits (§8.1) | `runtime/session.py` |
 | View fields and protocol version 4 (§9) | `model_views/`, `runtime/inspection_protocol.py` |
 | Slide driving (§11) | `runtime/surface_slide.py` |
+| Contact exclusion on the request (§7.4, A4; Phase 2) | `ConnectionRequest.extra_contact_exclusions`, `connectors/docking.py`, both adapters |
+| `spherical_attachment` builder (§9; Phase 2) | `model_views/spherical.py` |
 
 Tests: `tests/test_continuous_docking.py`,
 `tests/test_continuous_docking_schema.py`, `tests/test_surface_slide.py`,
-`tests/test_break_limits.py`, `tests/test_mock_constraint_types.py` and
+`tests/test_break_limits.py`, `tests/test_mock_constraint_types.py`,
 `tests/test_studio_surface_round_trip.py` (Studio edit, save and reload keep
-the new fields), using the synthetic pack in `tests/surface_fixtures.py`.
+the new fields) and, from Phase 2, the point-to-surface section of
+`tests/test_backend_conformance.py` and `tests/test_spherical_attachment_view.py`,
+using the synthetic pack in `tests/surface_fixtures.py`.
 
 Continuous (freeform) docking means a point connector can attach **anywhere**
 on a surface connector, several point connectors can share one surface, and an
@@ -148,7 +153,7 @@ Additions to `schema.py`:
 | `ConnectorLimits` | `max_torsion_moment_nm` | new and optional. The model has no torsion field today ([schema.py:385](../src/modsim/robot_packs/schema.py#L385)). |
 | `DockingPolicySpec` | `break_limits: ConnectorLimits \| None = None` | opt-in per-axis breaking (§8) |
 | `ConnectorSpec` | `magnet_height_joint: Identifier \| None` and `magnet_height_offset_m` (h₀, default 0) | optional prismatic joint whose position gives the magnet height h = h₀ − q (§8.2, A8) |
-| `ConnectorSpec` | `surface_contact_links: tuple[str, ...] = ()` | links that touch a mated surface; reserved for contact exclusion (A4, Phase 2) |
+| `ConnectorSpec` | `surface_contact_links: tuple[str, ...] = ()` | links that touch a mated surface; excluded from colliding with it under `driven_fixed` (A4, §7.4) |
 | `ConnectorSpec` | `surface_drive: SurfaceDriveSpec \| None` | `model: differential`, `left_joint`, `right_joint`, `wheel_radius_m`, `track_m` (§11) |
 
 **`ball` parameters are optional while authoring.** A bare `constraint: ball`
@@ -183,6 +188,10 @@ by the simulation profile.
   an error in the simulation profile (`connector.surface_realization_unsupported`).
 - `magnet_height_joint` must name a prismatic joint of the module, and the
   `surface_drive` joints must be revolute or continuous joints of the module.
+- Every entry of `surface_contact_links` must be a link of the module: its root
+  link, a joint's parent or child link, or a connector's parent link
+  (`connector.surface_contact_link_unknown`, an error in both profiles;
+  Phase 2).
 - `max_torsion_moment_nm` is not a completeness requirement, so existing packs
   that declare normal, shear and bending only stay valid for simulation.
 - A surface connector must be on the module's **root link**, or the simulation
@@ -580,19 +589,29 @@ The other existing types are not used here. `compliant` remains deferred: it
 needs the `solref` conversion described in `docking_semantics.md` §9. `custom`
 is not used.
 
-### 7.4 Contact exclusion *(Phase 2; decided by A4)*
+### 7.4 Contact exclusion *(implemented in Phase 2; decided by A4)*
 
 Under `driven_fixed`, any wheel contact that does not match the odometry loads
 the weld, and that load feeds the per-axis break check. So:
 
-- `ConnectionRequest.extra_contact_exclusions: tuple[tuple[str, str], ...]` is
-  added in Phase 2, defaulting to `()`;
+- `ConnectionRequest.extra_contact_exclusions: tuple[tuple[str, str], ...]`
+  defaults to `()`. Each pair is `(link of module A, link of module B)`, on
+  top of whatever contact the backend already excludes between the two
+  constrained links. Unlike `surface_realization`, the field is binding;
 - for a `driven_fixed` surface connection, the core fills it with every
   (point-side link, surface link) pair whose point-side link is listed in
   `ConnectorSpec.surface_contact_links` (FreeSN: the four wheels and the strut
-  body). The schema field exists from Phase 1; nothing consumes it yet;
+  body), in authored order without duplicates. `static_fixed` and `ball`
+  requests carry none;
 - a backend that cannot honour the exclusions refuses the request, and the
-  runtime falls through to the next realisation (already implemented, §7.1);
+  runtime falls through to the next realisation (§7.1). The mock has no
+  contact and honours any pair whose links exist. MuJoCo honours a pair that
+  resolves to the weld's own two bodies, which every weld already excludes,
+  and refuses any other pair, because it reserves one exclusion slot per weld.
+  MuJoCo does not advertise retarget yet, so it never receives a
+  `driven_fixed` request; reserving extra slots before it does is a Phase 3
+  deliverable (§14.5), or the FreeSN wheels on their own bodies will refuse
+  `driven_fixed`;
 - Phase 3 measures the residual weld wrench during a steady slide as a
   regression check.
 
@@ -720,13 +739,17 @@ about 79 N normal strength when seated on the wheels, and under 30 N by about
   adding these fields changes the wire format. **The Runtime Inspector protocol
   moves to version 4.** The framing tests in
   `tests/test_runtime_inspection_protocol.py` are updated accordingly.
-- *(Deferred to Phase 2.)* Discrete identity is a separate builder,
+- *(Implemented in Phase 2.)* Discrete identity is a separate builder,
   `spherical_attachment`, configured
   with `subdivision: icosphere_2`. A frequency-2 icosphere has 42 vertices and
   80 faces, which matches the T-RO paper's 42 sensors and 80 spherical
   triangles (confirmed, §14.1).
-  The builder reports each attachment's triangle index and residual and derives
-  its result without writing to `WorldState`, as the cubic lattice does.
+  The builder reports each attachment's triangle index and residual, and also
+  its nearest vertex (the T-RO sensors sit on the 42 vertices), and derives
+  its result without writing to `WorldState`, as the cubic lattice does. The
+  grid is in each surface connector frame and may be rotated by
+  `grid_orientation_local_wxyz`. `model_views.md` states the full contract.
+  The Runtime Inspector does not render it yet.
 - Rendering the attachment in the inspector (a sphere glyph with markers) is
   outside Phases 1 to 3. Until then the edge tooltip shows the DTO fields:
   the topology and lattice tooltips list the realisation, the normal, θ, φ,
@@ -841,6 +864,14 @@ implemented.
   realisation, and the conformance test asserts the recorded fallback rather
   than equality.
 
+All of the Phase 2 items above are implemented, with one difference: MuJoCo
+does not retarget until Phase 3, so the retarget test compares every
+retarget-capable backend (today, the mock) with a target computed
+independently of the slide driver, and with each other. MuJoCo is covered by
+the recorded fallback (`static_fixed`, and `set_surface_slide` refused). The
+fallback test also runs on a mock with retarget switched off, so it runs
+without MuJoCo. §14.5 lists the rest.
+
 **Phase 3: MuJoCo**
 
 - the retarget and the reported wrench agree with `J.T @ f`, as in
@@ -928,9 +959,9 @@ one-line note here.
   boundary. Implemented.
 - **A3** (§7.1, §7.3, §7.7): `ball` is free-sliding only; only retarget
   satisfies `surface_slide`. Implemented.
-- **A4** (§7.4): contact exclusion under `driven_fixed` is decided. The schema
-  field and the fall-through on refusal are implemented; the request field and
-  its use are Phase 2.
+- **A4** (§7.4): contact exclusion under `driven_fixed`. Implemented: the
+  schema field and fall-through in Phase 1, the request field and its use in
+  Phase 2.
 - **A5** (§8.1): every exceeded axis releases; documented as an approximation.
   Implemented. Normal load counts tension only (review finding G3).
 - **A6** (§1): the mock advertises and realises `fixed` only. Implemented as its
@@ -957,15 +988,15 @@ one-line note here.
 **Deferred:**
 
 - `SceneSpec.surface_realizations`, the per-scene override of the realisation
-  list (§3.3). It was not in the Phase 1 list. Schedule it with the Phase 2
-  contract work or later.
+  list (§3.3). It was not in the Phase 1 list, and Phase 2 did not take it up
+  either; it is still unscheduled.
 - **Side-A snapping in MuJoCo is a Phase 3 item.** Until then the adapter
   refuses any request with `snap_side="a"`, so on MuJoCo a nominal surface
   dock by a lone strut is refused through ordinary two-phase commit (and falls
   through to the next realisation, which is refused the same way). Measured
   alignment is unaffected. Phase 3 must move the strut's root free joint so
   the requested pose holds, as `_snap_to_nominal` already does for side B.
-- The `spherical_attachment` builder (Phase 2, see above).
+- The `spherical_attachment` builder. Delivered in Phase 2 (§14.5).
 - **Phase 4 note: reconfiguration retraction from a surface.** The scripted
   reconfiguration planner retracts along the fixed connector's
   `world_docking_axis` (`runtime/reconfiguration.py`, where the retraction
@@ -1042,3 +1073,78 @@ without MuJoCo. Implement, in this order, and stop for review at the end:
 ruff, all three pyright projects and the full pytest suite pass; SMORES-EP and
 M-Blocks tests are unchanged apart from any updated only because of A6, each
 named in the review summary; and the contracts are updated.
+
+### 14.5 Phase 2 scope
+
+Phase 2 = the backend contract and cross-backend conformance. It changes
+MuJoCo only where the contract requires.
+
+**Delivered:**
+
+1. **`ConnectionRequest.extra_contact_exclusions`** (§7.4, A4), filled by the
+   core for `driven_fixed` only. The mock honours pairs whose links exist; the
+   MuJoCo adapter honours pairs that resolve to the weld's own two bodies and
+   refuses everything else. That refusal check is the only MuJoCo change; no
+   physics changed. `WorldState.connector_spec` is new, so the core can read
+   `surface_contact_links`.
+2. **A second conformance fixture**: the sphere/strut pack, built with
+   `surface_pack(..., articulated=False, radius_m=0.12)`. The strut has no
+   wheel or lift joints, because the cube asset has no such links and MuJoCo
+   could not compile them, and the 0.12 m shell keeps a seated strut's 0.1 m
+   cube clear of the node's cube, so no contact moves a strut before it
+   commits. Three struts at least 90° apart cover spin, tilt and both signs of
+   the seat gap, with the list `[driven_fixed, ball, static_fixed]`.
+3. **The §12 Phase 2 tests**: surface proposals (verdicts, side A = point,
+   normal and seat gap), the committed sequence through dock and undock, the
+   realisation each backend records (first entry its capabilities admit;
+   equal across backends with equal capabilities), the attachment at commit
+   to 1e-6, retarget against an independent target, and the recorded
+   fallback. Also tested: `driven_fixed` requests carry the exclusions and
+   other realisations do not; a backend that refuses exclusions falls through
+   to `static_fixed`; every backend accepts exclusions of the welded links and
+   refuses an unknown link without leaking a constraint.
+4. **The optional protocols in conformance**: the capability flag implies
+   `SupportsConnectionRetarget`; `ExplainsRetargetRefusals` implies it too; an
+   empty batch returns `()`; a batch with an unknown handle returns
+   `(True, False)` and moves nothing; and `refusal_reason` is `None` exactly
+   for accepted updates. A backend without retarget skips the batch checks on
+   that capability, not on its name, with a reason naming Phase 3, so the
+   checks run on MuJoCo as soon as it advertises retarget.
+5. **The `spherical_attachment` builder** (§9) with its DTOs
+   (`SphericalAttachmentView`, `SphericalSurfaceOccupancy`,
+   `SphericalAttachmentCell`, `SphericalGridFace`), registered as a built-in.
+6. **Validator rule `connector.surface_contact_link_unknown`**: an error, in
+   both profiles, when `surface_contact_links` names a link that is not the
+   module's root link, a joint's parent or child link, or a connector's parent
+   link. Without it, a misspelt link would make every backend refuse
+   `driven_fixed`, and the dock would fall back to the next realisation with
+   nothing but the recorded realisation to show for it.
+
+**Existing tests changed:** `tests/test_model_views.py` and
+`tests/test_cli.py` each assert the exact set of built-in builders and now
+include `spherical_attachment`. `tests/surface_fixtures.py` gained the
+`articulated` and `radius_m` options; its defaults are unchanged.
+
+**Carried to Phase 3 as deliverables**, on top of the §12 Phase 3 list:
+
+- **The cross-backend retarget agreement test.** §12 asks both backends to
+  move the strut to the same commanded attachment. Phase 2 could check only
+  the mock against an independent target, because MuJoCo does not retarget.
+  Phase 3 implements MuJoCo retarget, advertises
+  `supports_connection_retarget`, and shows the existing conformance tests
+  running on MuJoCo: `test_retarget_moves_the_strut_to_the_commanded_attachment`
+  then compares the two backends with each other, and the two protocol tests
+  that skip on the capability today must pass without a skip.
+- **Enough MuJoCo exclusion slots for multi-body struts.** The adapter
+  reserves one contact-exclusion slot per weld, so it can honour only an
+  exclusion between the weld's own two bodies. A FreeSN strut lists its body
+  and four wheels in `surface_contact_links`, so a `driven_fixed` request
+  carries pairs on other bodies, and MuJoCo would refuse it and fall back to
+  `static_fixed`. Phase 3 reserves enough slots for the largest
+  `surface_contact_links` in the pack per weld (sized with the weld pool from
+  `ConnectionBudget`), claims and releases them with the weld, and tests that a
+  multi-body strut docks as `driven_fixed`.
+
+**Otherwise not in Phase 2:** MuJoCo `ball` and side-A snapping (Phase 3);
+`SceneSpec.surface_realizations` (unscheduled); inspector rendering of the
+spherical-attachment view.

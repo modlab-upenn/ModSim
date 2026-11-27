@@ -301,7 +301,11 @@ deterministic.
 **Surface realisations.** A point-to-surface pair is authored as `fixed` and
 lists its preferred realisations (`driven_fixed`, `ball`, `static_fixed`). The
 commit tries each one the backend advertises, in order; a refusal falls
-through to the next. The executed constraint (`fixed` or `ball`) is recorded on
+through to the next. A `driven_fixed` request also asks the backend not to
+collide the point connector's `surface_contact_links` with the surface link
+(`ConnectionRequest.extra_contact_exclusions`); a backend that cannot honour
+that refuses, and the next realisation is tried. The executed constraint
+(`fixed` or `ball`) is recorded on
 `DockCommitted.constraint`, and the chosen realisation and the attachment at
 commit on `DockCommitted.realization` and `DockCommitted.attachment`. The live
 attachment is measured state: `WorldState.surface_attachment(connection_id)`

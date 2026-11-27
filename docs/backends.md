@@ -116,7 +116,7 @@ before loading (`backend_capabilities` constructs an unloaded adapter).
 A point-to-surface connection (see `continuous_docking.md`) reaches the backend
 as an ordinary `fixed` or `ball` request: side A is the point connector, and
 `connector_b_local` is a virtual attachment frame on the surface, in link B's
-frame. A backend needs no surface knowledge. `ConnectionRequest` adds three
+frame. A backend needs no surface knowledge. `ConnectionRequest` adds four
 defaulted fields:
 
 - `snap_side` (`"b"` by default) says which side a nominal snap moves. Surface
@@ -124,6 +124,17 @@ defaulted fields:
   cannot snap side A must refuse the request. The MuJoCo adapter refuses it for
   now.
 - `surface_realization` and `surface_center_link_b` are informational.
+- `extra_contact_exclusions` (`()` by default) lists link pairs
+  `(link of module A, link of module B)` that must not collide, on top of
+  whatever contact the backend already excludes between the two constrained
+  links. It is binding: a backend that cannot honour every pair must refuse
+  the request, and the runtime then tries the next realisation. The core fills
+  it only for a `driven_fixed` surface connection, with every
+  `(link, surface link)` pair for the links in the point connector's
+  `surface_contact_links`. The mock simulates no contact, so it honours any
+  pair whose links exist and refuses one that names an unknown link. MuJoCo
+  honours a pair that resolves to the weld's own two bodies, which every weld
+  already excludes, and refuses any other pair and any pair on a hinge.
 
 `ball` requests carry `physical_connection.ball.anchor_m`, the pivot in
 connector A's frame.
@@ -138,6 +149,13 @@ the timing contract. The mock implements it; MuJoCo does not yet. An adapter
 may also implement `ExplainsRetargetRefusals.refusal_reason(update)`, which
 returns why an update would be refused or `None`. The slide driver puts that
 reason in `SlideRefusal.detail`. The mock implements it.
+
+`tests/test_backend_conformance.py` checks both optional protocols on every
+installed backend: the capability flag implies the protocol; a backend that
+explains refusals also retargets; an empty batch returns `()`; a batch with
+one unknown handle returns one flag per update and changes nothing; and
+`refusal_reason` is `None` exactly for the updates the batch accepts. A
+backend that does not advertise retarget skips the batch checks.
 
 ### Timing contract
 

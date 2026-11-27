@@ -481,8 +481,13 @@ connectors:
       track_m: 0.056
 ```
 
-`surface_contact_links` is reserved for runtime contact exclusion and not yet
-consumed. `surface_drive` describes how two wheels slide the connector over a
+`surface_contact_links` names the links of the module that touch a mated
+surface. For a `driven_fixed` connection the runtime asks the backend not to
+collide each of them with the surface link (`backends.md`,
+`extra_contact_exclusions`); other realisations ignore it. Each entry must be a
+link of the module (its root link, a joint's parent or child link, or a
+connector's parent link), or validation reports
+`connector.surface_contact_link_unknown` as an error. `surface_drive` describes how two wheels slide the connector over a
 surface; the runtime does not yet feed it measured wheel rates.
 
 ## Capabilities

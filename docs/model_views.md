@@ -24,6 +24,12 @@ multiple position-valid modules assigned to one cell, and labels connection
 endpoints by their nearest lattice-facing side. It is a derived diagnostic
 view; quantization never modifies `WorldState`.
 
+The third built-in view, `spherical_attachment`, gives every point-to-surface
+attachment a discrete identity: the triangle of a geodesic grid on its sphere
+that contains the attachment normal, and the nearest grid vertex, each with an
+angular residual. It is to a continuous attachment what the cubic lattice is
+to a module pose, and it does not modify `WorldState` either.
+
 ## Architecture
 
 Model-view generation has four separate responsibilities:
@@ -77,8 +83,8 @@ Recipe fields are:
 An unknown builder remains valid pack data because builder availability depends
 on the installed application and plugins. Attempting to build it produces an
 actionable factory error. `module_topology_graph` has no configuration options.
-`cubic_lattice` uses the configuration described below. Both built-ins
-currently support runtime state only.
+`cubic_lattice` and `spherical_attachment` use the configurations described
+below. All three built-ins currently support runtime state only.
 
 ### Cubic-lattice recipe
 
@@ -120,6 +126,59 @@ nearby cell from outside the positional tolerance cannot. Connection face
 labels are the nearest cardinal lattice directions to the live connector
 docking axes; their angular residuals remain in the DTO so consumers can judge
 non-axis-aligned measurements.
+
+### Spherical-attachment recipe
+
+```yaml
+model_views:
+  - id: node_attachments
+    name: Node Attachments
+    builder: spherical_attachment
+    modes: [runtime]
+    configuration:
+      subdivision: icosphere_2
+      grid_orientation_local_wxyz: [1.0, 0.0, 0.0, 0.0]
+```
+
+Both fields are optional. `subdivision` selects the grid; the only value in
+0.1 is `icosphere_2`, an icosahedron with every triangle split into four at
+its edge midpoints: 42 vertices (the 12 icosahedron vertices and 30 edge
+midpoints) and 80 spherical triangles. This is the division the FreeSN
+configuration-identification work uses (`continuous_docking.md` §14.1).
+`grid_orientation_local_wxyz` rotates the grid relative to each surface
+connector frame and defaults to identity; it must be a unit quaternion.
+Unknown fields and invalid values are a `ModelViewBuildError`.
+
+The grid lives in each surface connector's own frame, so the identity of an
+attachment does not change when the node moves. Vertex and face order is
+deterministic: the twelve icosahedron vertices, then midpoints in the order
+they are first met; each icosahedron face is replaced by its three corner
+triangles and then its centre triangle. The view carries the full catalog
+(`vertices_local`, and `faces` with their vertex indices and unit centroid
+directions), so consumers need not rebuild it.
+
+**The numbering and orientation are ModSim's own.** Vertex and face indices
+follow the construction above, and the grid's default orientation comes from
+the icosahedron coordinates ModSim uses, (0, ±1, ±φ) and their cyclic
+permutations, in the surface connector frame. Neither is taken from the T-RO
+paper. The paper's 42 sensors and 80 triangles have the same count and
+structure, but their labels and the grid's placement on the physical node are
+the hardware's. Comparing a `vertex_index` or `face_index` with a T-RO sensor
+or triangle label therefore needs a mapping: a `grid_orientation_local_wxyz`
+that places the grid as the sensors sit on the shell, and a table from ModSim
+indices to the paper's labels. Neither is provided in 0.1; the FreeSN pack in
+Phase 4 is where it belongs.
+
+`surfaces` lists every spherical surface connector in the world, sorted by
+connector id, with its capacity and its current attachments sorted by
+connection id. Each attachment reports its canonical `normal_local`, its
+`face_index` with `face_residual_rad` (the angle to the face centroid), its
+`vertex_index` with `vertex_residual_rad`, and the same `SurfaceAttachmentDTO`
+the topology edge carries. An attachment normal lies inside its face; one on a
+shared edge or vertex goes to the lowest-numbered face that contains it. A
+connection whose attachment is undefined in the current sample (an
+unresolved connector frame) is left out. The builder observes sample and
+topology revisions, so a sliding attachment refreshes the view.
 
 ## Generate a view
 
@@ -232,7 +291,9 @@ and never write to `WorldState` or the Robot Pack.
 ## Current scope
 
 The general factory currently includes the module-topology and cubic-lattice
-graphs. The following remain later extensions built through the same interface:
+graphs and the spherical-attachment view. The Runtime Inspector does not yet
+render the spherical-attachment view; selecting it there produces the same
+actionable error as any other unsupported builder. The following remain later extensions built through the same interface:
 
 - frame, port, matrix, and hybrid docking views;
 - platform-specific configuration-coordinate views;
