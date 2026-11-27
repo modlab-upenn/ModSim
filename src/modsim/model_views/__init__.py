@@ -29,7 +29,13 @@ from modsim.model_views.models import (
     ModelViewSourceStamp,
     ModuleGraphNode,
     ModuleTopologyGraphView,
+    SphericalAttachmentCell,
+    SphericalAttachmentView,
+    SphericalGridFace,
+    SphericalSurfaceOccupancy,
+    SurfaceAttachmentDTO,
 )
+from modsim.model_views.spherical import SphericalAttachmentBuilder
 from modsim.model_views.topology import ModuleTopologyGraphBuilder
 
 __all__ = [
@@ -59,5 +65,11 @@ __all__ = [
     "ModuleGraphNode",
     "ModuleTopologyGraphBuilder",
     "ModuleTopologyGraphView",
+    "SphericalAttachmentBuilder",
+    "SphericalAttachmentCell",
+    "SphericalAttachmentView",
+    "SphericalGridFace",
+    "SphericalSurfaceOccupancy",
+    "SurfaceAttachmentDTO",
     "UnknownModelViewBuilderError",
 ]

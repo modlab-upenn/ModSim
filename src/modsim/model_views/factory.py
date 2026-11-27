@@ -20,6 +20,7 @@ from modsim.model_views.base import (
 )
 from modsim.model_views.lattice import CubicLatticeBuilder
 from modsim.model_views.models import ModelView, ModelViewSourceStamp
+from modsim.model_views.spherical import SphericalAttachmentBuilder
 from modsim.model_views.topology import ModuleTopologyGraphBuilder
 from modsim.robot_packs.schema import Identifier, ModelViewMode, ModelViewSpec
 
@@ -55,6 +56,7 @@ class ModelViewFactory:
         if include_builtins:
             self.register(CubicLatticeBuilder())
             self.register(ModuleTopologyGraphBuilder())
+            self.register(SphericalAttachmentBuilder())
 
     def register(self, builder: ModelViewBuilder[ModelView]) -> None:
         """Register ``builder`` or reject a duplicate stable builder ID."""

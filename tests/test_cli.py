@@ -93,6 +93,7 @@ def test_cli_views_lists_pack_recipes_and_registered_builders(example_pack_dir: 
     assert {builder["builder"] for builder in payload["builders"]} == {
         "cubic_lattice",
         "module_topology_graph",
+        "spherical_attachment",
     }
 
 

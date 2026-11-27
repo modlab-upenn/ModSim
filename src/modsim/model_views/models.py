@@ -232,6 +232,92 @@ class CubicLatticeOccupancyConflict(ModelViewDTO):
         return value
 
 
+SphericalSubdivision = Literal["icosphere_2"]
+"""Supported geodesic grids. ``icosphere_2``: 42 vertices, 80 triangles."""
+
+
+class SphericalGridFace(ModelViewDTO):
+    """One spherical triangle of a geodesic grid, in the surface connector frame."""
+
+    index: int = Field(ge=0)
+    vertices: tuple[int, int, int]
+    """Indices into ``vertices_local``, counter-clockwise seen from outside."""
+    centroid_local: tuple[float, float, float]
+    """Unit direction through the triangle's centre."""
+
+
+class SphericalAttachmentCell(ModelViewDTO):
+    """One live attachment, identified by the grid face and vertex it falls on."""
+
+    connection_id: str = Field(min_length=1)
+    point_module: str = Field(min_length=1)
+    point_connector: str = Field(min_length=1)
+    normal_local: tuple[float, float, float]
+    """Outward attachment normal in the surface connector frame (canonical)."""
+    face_index: int = Field(ge=0)
+    face_residual_rad: float = Field(ge=0.0)
+    """Angle from the normal to the face centroid direction."""
+    vertex_index: int = Field(ge=0)
+    vertex_residual_rad: float = Field(ge=0.0)
+    """Angle from the normal to the nearest grid vertex."""
+    attachment: SurfaceAttachmentDTO
+
+
+class SphericalSurfaceOccupancy(ModelViewDTO):
+    """Every attachment currently on one spherical surface connector."""
+
+    module_id: str = Field(min_length=1)
+    connector_id: str = Field(min_length=1)
+    capacity: int = Field(ge=1)
+    attachments: tuple[SphericalAttachmentCell, ...]
+
+    @field_validator("attachments")
+    @classmethod
+    def require_sorted_attachments(
+        cls,
+        value: tuple[SphericalAttachmentCell, ...],
+    ) -> tuple[SphericalAttachmentCell, ...]:
+        ids = tuple(cell.connection_id for cell in value)
+        if ids != tuple(sorted(set(ids))):
+            raise ValueError("attachments must be unique and sorted by connection ID")
+        return value
+
+
+class SphericalAttachmentView(ModelView):
+    """Surface attachments quantised onto a geodesic grid on each sphere.
+
+    The grid is expressed in every surface connector's own frame, rotated by
+    ``grid_orientation_local_wxyz``. ``vertices_local`` and ``faces`` are the
+    complete catalog, so consumers need not rebuild the triangulation.
+    """
+
+    view_type: str = Field(default="spherical_attachment", pattern=r"^spherical_attachment$")
+    subdivision: SphericalSubdivision
+    grid_orientation_local_wxyz: tuple[float, float, float, float]
+    vertices_local: tuple[tuple[float, float, float], ...] = Field(min_length=12)
+    faces: tuple[SphericalGridFace, ...] = Field(min_length=20)
+    surfaces: tuple[SphericalSurfaceOccupancy, ...]
+
+    @model_validator(mode="after")
+    def require_consistent_grid_references(self) -> Self:
+        if tuple(face.index for face in self.faces) != tuple(range(len(self.faces))):
+            raise ValueError("grid faces must be indexed 0 through n-1 in order")
+        vertex_count = len(self.vertices_local)
+        if any(index >= vertex_count for face in self.faces for index in face.vertices):
+            raise ValueError("a grid face references a vertex outside the catalog")
+        for surface in self.surfaces:
+            for cell in surface.attachments:
+                if cell.face_index >= len(self.faces) or cell.vertex_index >= vertex_count:
+                    raise ValueError(
+                        f"attachment '{cell.connection_id}' references a cell outside the grid"
+                    )
+        if tuple(s.connector_id for s in self.surfaces) != tuple(
+            sorted({s.connector_id for s in self.surfaces})
+        ):
+            raise ValueError("surfaces must be unique and sorted by connector ID")
+        return self
+
+
 class CubicLatticeView(GraphModelView[CubicLatticeNode, CubicLatticeConnectionEdge]):
     """Spatial module graph quantized onto a configurable cubic lattice."""
 

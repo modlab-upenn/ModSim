@@ -124,7 +124,7 @@ def test_factory_lists_built_in_builder_and_filters_unavailable_inputs(
     descriptors = {descriptor.builder: descriptor for descriptor in factory.descriptors()}
     descriptor = descriptors["module_topology_graph"]
 
-    assert set(descriptors) == {"cubic_lattice", "module_topology_graph"}
+    assert set(descriptors) == {"cubic_lattice", "module_topology_graph", "spherical_attachment"}
     assert descriptor.builder == "module_topology_graph"
     assert descriptor.view_type == "module_topology_graph"
     assert descriptor.modes == (ModelViewMode.RUNTIME,)
@@ -135,6 +135,7 @@ def test_factory_lists_built_in_builder_and_filters_unavailable_inputs(
     assert {item.builder for item in factory.available(ModelViewContext(example_pack, world))} == {
         "cubic_lattice",
         "module_topology_graph",
+        "spherical_attachment",
     }
 
 
