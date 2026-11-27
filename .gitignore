@@ -228,3 +228,10 @@ __marimo__/
 .streamlit/secrets.toml
 .DS_Store
 Claude outputs/
+
+# Paper drafts and bulky or personal run outputs: keep local, never commit
+docs/paper/
+results/robustness/
+results/**/fig_*.pdf
+results/**/fig_*.png
+*.patch
