@@ -21,7 +21,9 @@ Examples:
   python scripts/regression/robustness.py --runs 20 --immediate 1 -- ...
 
 Results go to --out (default: results/robustness/<demo>-<time>/): one line per
-run in runs.csv and a summary.json.
+run in runs.csv and a summary.json. Each run's inspector frames (frames.jsonl,
+about 25 MB for a SMORES run) are deleted once the run is summarised; pass
+--keep-frames to keep them for replay.
 """
 
 from __future__ import annotations
@@ -101,6 +103,11 @@ def main() -> int:
         help="force MuJoCo immediate_connection_changes off (0) or on (1)",
     )
     parser.add_argument("--out", type=Path, default=None)
+    parser.add_argument(
+        "--keep-frames",
+        action="store_true",
+        help="keep each run's frames.jsonl (large) instead of deleting it",
+    )
     parser.add_argument("--worker", type=int, default=None, help=argparse.SUPPRESS)
     parser.add_argument("cli", nargs=argparse.REMAINDER, help="-- then modsim CLI arguments")
     args = parser.parse_args()
@@ -138,6 +145,8 @@ def main() -> int:
         (out / f"seed_{seed}.log").write_text(completed.stdout + completed.stderr)
         summary_path = run_dir / "summary.json"
         summary = json.loads(summary_path.read_text()) if summary_path.exists() else {}
+        if not args.keep_frames:
+            (run_dir / "frames.jsonl").unlink(missing_ok=True)
         row = {
             "seed": seed,
             "phase": summary.get("phase", "crashed"),
