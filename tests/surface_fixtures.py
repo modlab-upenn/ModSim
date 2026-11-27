@@ -103,7 +103,7 @@ def _magnet_type(realizations: Iterable[str]) -> dict[str, Any]:
     }
 
 
-def _point(connector_id: str, sign: float, drive: bool) -> dict[str, Any]:
+def _point(connector_id: str, sign: float, *, contact: bool, drive: bool) -> dict[str, Any]:
     connector: dict[str, Any] = {
         "id": connector_id,
         "connector_type": "magnet",
@@ -113,9 +113,10 @@ def _point(connector_id: str, sign: float, drive: bool) -> dict[str, Any]:
         "docking_axis": [0.0, 0.0, sign],
         "approach_axis": [0.0, 0.0, sign],
     }
+    if contact:
+        connector["surface_contact_links"] = ["base_link"]
     if drive:
         connector["magnet_height_joint"] = "lift_upper"
-        connector["surface_contact_links"] = ["base_link"]
         connector["surface_drive"] = {
             "model": "differential",
             "left_joint": "wheel_left",
@@ -143,12 +144,24 @@ def surface_pack(
     realizations: Iterable[str] = ("driven_fixed", "static_fixed"),
     shell: dict[str, Any] | None = None,
     magnet: dict[str, Any] | None = None,
+    articulated: bool = True,
+    radius_m: float | None = None,
 ) -> RobotPack:
-    """Return ``base`` (the generic cube pack) extended with node and strut modules."""
+    """Return ``base`` (the generic cube pack) extended with node and strut modules.
+
+    With ``articulated=False`` the strut declares no wheel or lift joints, so a
+    backend that compiles the cube asset (MuJoCo) can load it; the strut then
+    has no magnet-height joint or drive model, only its contact links.
+    ``radius_m``, when given, sets the shell radius. The cube asset is 0.1 m wide, so a
+    radius of at least about 0.11 m keeps a seated strut's cube clear of the
+    node's cube in every direction.
+    """
     data: dict[str, Any] = base.model_dump(mode="python")
     catalog = data["hardware_catalog"]
     asset = next(iter(catalog["module_types"].values()))["asset_ref"]
     shell_type = _shell_type() | (shell or {})
+    if radius_m is not None:
+        shell_type["surface"] = shell_type["surface"] | {"radius_m": radius_m}
     magnet_type = _magnet_type(realizations) | (magnet or {})
     catalog["connector_types"]["shell"] = shell_type
     catalog["connector_types"]["magnet"] = magnet_type
@@ -182,8 +195,13 @@ def surface_pack(
             _joint("wheel_left", "continuous", (0.0, 1.0, 0.0)),
             _joint("wheel_right", "continuous", (0.0, 1.0, 0.0)),
             _joint("lift_upper", "prismatic", (0.0, 0.0, 1.0)),
+        ]
+        if articulated
+        else [],
+        "connectors": [
+            _point("upper", 1.0, contact=True, drive=articulated),
+            _point("lower", -1.0, contact=False, drive=False),
         ],
-        "connectors": [_point("upper", 1.0, True), _point("lower", -1.0, False)],
         "capabilities": [],
     }
     for mapping in data["backend_mappings"].values():
@@ -197,7 +215,11 @@ def surface_pack(
         mapping["module_types"]["strut"] = {
             "asset_ref": asset,
             "link_map": {"base_link": "base_link"},
-            "joint_map": {name: name for name in ("wheel_left", "wheel_right", "lift_upper")},
+            "joint_map": (
+                {name: name for name in ("wheel_left", "wheel_right", "lift_upper")}
+                if articulated
+                else {}
+            ),
             "connector_frame_map": {},
             "constraint_map": {},
         }
@@ -212,6 +234,7 @@ def strut_pose(
     spin_rad: float = 0.0,
     tilt_axis: Vec3 | None = None,
     tilt_rad: float = 0.0,
+    radius_m: float = RADIUS_M,
 ) -> Transform:
     """Return a strut root pose that seats its ``upper`` connector on the shell.
 
@@ -225,7 +248,7 @@ def strut_pose(
     rotation = quat_multiply(
         quat_from_axis_angle(inward, spin_rad), minimal_rotation((0.0, 0.0, 1.0), inward)
     )
-    connector_point = vec_add(center, vec_scale(n, RADIUS_M + gap_m))
+    connector_point = vec_add(center, vec_scale(n, radius_m + gap_m))
     if tilt_axis is not None and tilt_rad:
         rotation = quat_multiply(quat_from_axis_angle(tilt_axis, tilt_rad), rotation)
     axis = Transform(rotation=rotation).apply_direction((0.0, 0.0, 1.0))
