@@ -292,6 +292,27 @@ def test_magnet_height_and_drive_joints_must_exist_with_the_right_type(
     assert codes["connector.surface_drive_joint_invalid"] is Severity.ERROR
 
 
+@pytest.mark.parametrize("profile", list(ValidationProfile))
+def test_surface_contact_links_must_name_links_of_the_module(
+    loaded: LoadedRobotPack, profile: ValidationProfile
+) -> None:
+    def misname(catalog: dict[str, Any]) -> None:
+        upper = catalog["module_types"]["strut"]["connectors"][0]
+        upper["surface_contact_links"] = ["base_link", "wheel_left_link", "no_such_link"]
+
+    candidate = _with(loaded, _edit(surface_pack(loaded.pack), misname))
+    issues = [
+        issue
+        for issue in RobotPackValidator().validate(candidate, profile=profile).issues
+        if issue.code == "connector.surface_contact_link_unknown"
+    ]
+
+    # base_link is the root and wheel_left_link a joint's child; only the third is unknown.
+    assert [issue.severity for issue in issues] == [Severity.ERROR]
+    assert "no_such_link" in issues[0].message
+    assert issues[0].path[-2:] == ("surface_contact_links", 2)
+
+
 def test_new_torsion_limit_is_not_a_completeness_requirement(loaded: LoadedRobotPack) -> None:
     # Existing packs declare normal, shear and bending only. Adding torsion to
     # the schema must not make them incomplete for simulation.

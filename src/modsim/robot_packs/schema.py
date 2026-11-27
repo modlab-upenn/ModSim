@@ -379,7 +379,7 @@ class ConnectorSpec(StrictModel):
         default=(),
         description=(
             "Links of this module that touch a mated surface (wheels, casters). "
-            "Reserved for runtime contact exclusion; not consumed in format 0.1."
+            "A driven_fixed connection excludes their contact with the surface link."
         ),
     )
     surface_drive: SurfaceDriveSpec | None = None

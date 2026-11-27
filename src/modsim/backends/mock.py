@@ -179,6 +179,16 @@ class MockBackendAdapter:
         for module_id in (request.module_a, request.module_b):
             if module_id not in self._bodies:
                 return ConnectionOutcome.refused(f"unknown module '{module_id}'")
+        # The mock simulates no contact at all, so every exclusion is honoured
+        # trivially, provided it names links that exist.
+        links_a = self._bodies[request.module_a].links
+        links_b = self._bodies[request.module_b].links
+        for link_a, link_b in request.extra_contact_exclusions:
+            if link_a not in links_a or link_b not in links_b:
+                return ConnectionOutcome.refused(
+                    f"contact exclusion ({link_a!r}, {link_b!r}) names a link that "
+                    f"'{request.module_a}' or '{request.module_b}' does not have"
+                )
 
         handle = ConstraintHandle(f"weld:{request.connection_id}")
         if handle in self._welds:

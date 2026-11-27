@@ -180,6 +180,17 @@ class ConnectionRequest:
     """
     surface_center_link_b: Vec3 | None = None
     """The surface's sphere centre in link B's frame; informational."""
+    extra_contact_exclusions: tuple[tuple[str, str], ...] = ()
+    """Link pairs ``(link of module A, link of module B)`` that must not collide.
+
+    These come on top of whatever contact the backend already excludes between
+    the two constrained links. The core fills them for a ``driven_fixed``
+    surface connection from the point connector's ``surface_contact_links``,
+    so wheel contact that disagrees with the commanded slide does not load the
+    weld. Unlike the two informational fields above, this one is binding: a
+    backend that cannot honour every pair must refuse the request, and the
+    runtime then falls through to the next realisation. Empty by default.
+    """
 
 
 @dataclass(frozen=True, slots=True)

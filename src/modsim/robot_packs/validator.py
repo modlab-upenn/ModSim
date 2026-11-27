@@ -894,6 +894,14 @@ class RobotPackValidator:
 
         for module_id, module in pack.hardware_catalog.module_types.items():
             joints = {joint.id: joint for joint in module.joints}
+            # A pack names links only through the root link, joints and
+            # connectors, the same set a backend builds bodies for.
+            module_links = {
+                module.root_link,
+                *(joint.parent_link for joint in module.joints),
+                *(joint.child_link for joint in module.joints),
+                *(other.parent_link for other in module.connectors),
+            }
             for index, connector in enumerate(module.connectors):
                 ref = f"module_type:{module_id}/connector:{connector.id}"
                 path: tuple[str | int, ...] = ("module_types", module_id, "connectors", index)
@@ -933,6 +941,26 @@ class RobotPackValidator:
                             document=module_document,
                             path=(*path, "magnet_height_joint"),
                             entity_ref=ref,
+                        )
+                    )
+                for link_index, contact_link in enumerate(connector.surface_contact_links):
+                    if contact_link in module_links:
+                        continue
+                    issues.append(
+                        self._issue(
+                            severity=Severity.ERROR,
+                            code="connector.surface_contact_link_unknown",
+                            message=(
+                                f"surface_contact_links names '{contact_link}', which is not a "
+                                "link of this module"
+                            ),
+                            document=module_document,
+                            path=(*path, "surface_contact_links", link_index),
+                            entity_ref=ref,
+                            suggested_fix=(
+                                "Name the root link, a joint's parent or child link, or a "
+                                "connector's parent link."
+                            ),
                         )
                     )
                 drive = connector.surface_drive

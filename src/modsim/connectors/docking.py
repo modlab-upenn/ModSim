@@ -481,6 +481,17 @@ class DockingManager:
                 realised[SurfaceRealization.DRIVEN_FIXED] = fixed
         if PhysicalConstraintType.BALL in supported:
             realised[SurfaceRealization.BALL] = ball
+        # Under driven_fixed, wheel contact that disagrees with the commanded
+        # slide would load the weld (A4), so the links that touch the surface
+        # are excluded from colliding with it. A backend that cannot honour
+        # the exclusions refuses, and the next realisation is tried.
+        surface_link = request.link_b
+        driven_exclusions = tuple(
+            dict.fromkeys(
+                (link, surface_link)
+                for link in world.connector_spec(request.connector_a).surface_contact_links
+            )
+        )
         for realization in preferred:
             spec = realised.get(realization)
             # ``physical`` needs a link-wrench primitive no backend offers yet.
@@ -493,6 +504,11 @@ class DockingManager:
                             physical_connection=spec,
                             surface_realization=realization,
                             surface_center_link_b=center_link_b,
+                            extra_contact_exclusions=(
+                                driven_exclusions
+                                if realization is SurfaceRealization.DRIVEN_FIXED
+                                else ()
+                            ),
                         ),
                     )
                 )

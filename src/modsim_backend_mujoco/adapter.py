@@ -383,6 +383,9 @@ class MuJoCoBackendAdapter:
             return ConnectionOutcome.refused(
                 "the MuJoCo backend snaps module B only; side-A nominal snapping is not implemented"
             )
+        refusal = self._contact_exclusion_refusal(request)
+        if refusal is not None:
+            return ConnectionOutcome.refused(refusal)
         if constraint is PhysicalConstraintType.FIXED:
             outcome = self._create_weld(request)
         elif constraint is PhysicalConstraintType.HINGE:
@@ -396,6 +399,38 @@ class MuJoCoBackendAdapter:
             "the MuJoCo backend supports fixed and hinge physical connections; "
             f"received '{constraint.value}'"
         )
+
+    def _contact_exclusion_refusal(self, request: ConnectionRequest) -> str | None:
+        """Explain why ``request.extra_contact_exclusions`` cannot be honoured, if so.
+
+        A weld already excludes contact between its two bodies, so a pair that
+        resolves to exactly those bodies is honoured. Any other pair would need
+        exclusion slots this adapter does not reserve, and a hinge keeps body
+        contact by design, so both are refused rather than ignored.
+        """
+        if not request.extra_contact_exclusions:
+            return None
+        try:
+            welded = {
+                self._body_id(request.module_a, request.link_a),
+                self._body_id(request.module_b, request.link_b),
+            }
+            for link_a, link_b in request.extra_contact_exclusions:
+                pair = {
+                    self._body_id(request.module_a, link_a),
+                    self._body_id(request.module_b, link_b),
+                }
+                if request.physical_connection.constraint is not PhysicalConstraintType.FIXED or (
+                    pair != welded
+                ):
+                    return (
+                        f"the MuJoCo backend cannot exclude contact between '{link_a}' and "
+                        f"'{link_b}' for a {request.physical_connection.constraint.value} "
+                        "connection; it excludes only the two bodies of a weld"
+                    )
+        except BackendError as error:
+            return str(error)
+        return None
 
     def _create_weld(self, request: ConnectionRequest) -> ConnectionOutcome:
         """Claim and configure one reserved weld slot."""

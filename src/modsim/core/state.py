@@ -325,6 +325,13 @@ class WorldState:
             return None
         return attachment_from_contact(contact, surface.world_pose, self.magnet_height_m(point_id))
 
+    def connector_spec(self, connector: ConnectorInstanceId) -> ConnectorSpec:
+        """Return the Robot Pack declaration of one connector instance."""
+        instance = self.connector(connector)
+        module = self.module(instance.module_id)
+        module_type = self._pack.hardware_catalog.module_types[module.module_type_id]
+        return self._connector_spec(module_type.connectors, instance.connector_id)
+
     def magnet_height_m(self, connector: ConnectorInstanceId) -> float | None:
         """Return a point connector's magnet height from its declared lift joint.
 
@@ -332,13 +339,12 @@ class WorldState:
         protrudes the magnet). ``None`` when no joint is declared or the
         backend has not reported its state.
         """
-        instance = self.connector(connector)
-        module = self.module(instance.module_id)
-        module_type = self._pack.hardware_catalog.module_types[module.module_type_id]
-        spec = self._connector_spec(module_type.connectors, instance.connector_id)
+        spec = self.connector_spec(connector)
         if spec.magnet_height_joint is None:
             return None
-        state = module.joint_states.get(spec.magnet_height_joint)
+        state = self.module(self.connector(connector).module_id).joint_states.get(
+            spec.magnet_height_joint
+        )
         if state is None:
             return None
         return spec.magnet_height_offset_m - state.position
